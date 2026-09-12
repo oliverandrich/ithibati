@@ -24,8 +24,8 @@ jobs:
         include:
           # The pinned pair, which is also what a laptop gets from mise.toml.
           - name: check
-          # The floor of the `elixir` requirement in mix.exs. `MISE_ELIXIR_VERSION` overrides the
-          # pin without editing mise.toml, which stays the single source for a local checkout.
+          # The floor of the `elixir` requirement in mix.exs. The pin moves by a file written
+          # below; mise.toml stays the single source for a local checkout.
           - name: floor (elixir 1.17)
             elixir: "1.17"
             erlang: "27"
@@ -44,8 +44,6 @@ jobs:
             without_optional: "1"
 
     env:
-      MISE_ELIXIR_VERSION: ${{ matrix.elixir }}
-      MISE_ERLANG_VERSION: ${{ matrix.erlang }}
       ITHIBATI_USERS_KEY_TYPE: ${{ matrix.users_key_type }}
       ITHIBATI_WITHOUT_OPTIONAL: ${{ matrix.without_optional }}
       # Through the environment rather than straight into `run:`, which is where a workflow
@@ -77,31 +75,41 @@ jobs:
         with:
           persist-credentials: false
 
+      # A file rather than `MISE_ELIXIR_VERSION`. The variable was set for every step of the job
+      # and mise-action honoured it — it installed 1.17.3-otp-27 — but the `mise run` two steps
+      # below ignored it, re-resolved mise.toml, and tried to start Elixir 1.20 on OTP 27, which
+      # crashes at boot. Why that invocation ignored it is unexplained and reproduces nowhere
+      # locally; a config file is honoured by both, which is the property worth depending on. It
+      # also leaves the tracked pin alone.
+      - name: Pin the toolchain this leg is for
+        if: matrix.elixir
+        env:
+          ELIXIR: ${{ matrix.elixir }}
+          ERLANG: ${{ matrix.erlang }}
+        run: printf '[tools]\nelixir = "%s"\nerlang = "%s"\n' "$ELIXIR" "$ERLANG" > mise.local.toml
+
       - uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4.3.0
         with:
-          # Pinned like everything else here, and for a specific reason: three of the four legs
-          # leave MISE_ELIXIR_VERSION empty and rely on mise reading that as "no override". A mise
-          # release that changed its mind would break those three at once, and it would look like
-          # a toolchain outage rather than a version bump.
+          # Pinned like everything else here.
           version: 2026.9.5
-          # Its own tool cache keys on the config files, not on the MISE_*_VERSION overrides, so
-          # without this all four legs compute the same key and whichever runs first decides which
-          # toolchain is cached for all of them. Keyed on the toolchain rather than on the leg,
-          # because three of the four install the same one and renaming a leg should not throw its
-          # cache away.
+          # Keyed on the toolchain rather than on the leg: three of the four install the same one
+          # and should share a cache entry, and renaming a leg should not throw one away. Set
+          # explicitly rather than left to the action's own key, which is computed from the config
+          # files it knows about.
           cache_key_prefix: mise-${{ matrix.elixir || 'pinned' }}-${{ matrix.erlang || 'pinned' }}
 
-      # A cold Elixir compile is otherwise the whole job. The key carries the leg as well as the
-      # mise.toml hash: _build is only reusable under the Erlang and Elixir that produced it, and a
-      # leg that compiled under a different `users_key_type` does not merely rebuild — Elixir
-      # refuses to boot at all, because that setting is read with `compile_env`.
+      # A cold Elixir compile is otherwise the whole job. _build is only reusable under the Erlang
+      # and Elixir that produced it, so the key names them directly rather than trusting that a leg
+      # bumping its toolchain also renames itself. The leg is in there too, because a build under a
+      # different `users_key_type` does not merely rebuild: Elixir refuses to boot at all, since
+      # that setting is read with `compile_env`.
       - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
             deps
             _build
-          key: ${{ runner.os }}-mix-${{ matrix.name }}-${{ hashFiles('mise.toml') }}-${{ hashFiles('mix.lock') }}
-          restore-keys: ${{ runner.os }}-mix-${{ matrix.name }}-${{ hashFiles('mise.toml') }}-
+          key: ${{ runner.os }}-mix-${{ matrix.name }}-${{ matrix.elixir || 'pinned' }}-${{ matrix.erlang || 'pinned' }}-${{ hashFiles('mise.toml') }}-${{ hashFiles('mix.lock') }}
+          restore-keys: ${{ runner.os }}-mix-${{ matrix.name }}-${{ matrix.elixir || 'pinned' }}-${{ matrix.erlang || 'pinned' }}-${{ hashFiles('mise.toml') }}-
 
       - name: Fetch dependencies
         run: |

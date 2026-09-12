@@ -29,3 +29,7 @@ ithibati-*.tar
 # of the source stronger rather than weaker: nothing here can resolve one.
 /.beans/
 /.beans.yml
+
+# A per-checkout toolchain override. CI writes one per matrix leg; a local experiment with
+# another Elixir belongs here too, and never in the tracked pin.
+mise.local.toml
