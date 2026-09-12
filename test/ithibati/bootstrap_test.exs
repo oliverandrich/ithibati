@@ -10,6 +10,8 @@ defmodule Ithibati.BootstrapTest do
   """
   use ExUnit.Case, async: false
 
+  import Ithibati.DataCase, only: [user_fixture: 1]
+
   alias Ecto.Adapters.SQL.Sandbox
   alias Ithibati.Bootstrap
   alias Ithibati.TestRepo
@@ -56,7 +58,7 @@ defmodule Ithibati.BootstrapTest do
   # The whole reason this is a row rather than a flag on the account. Deleting the account that set
   # an instance up must not make a second setup possible.
   test "the record outlives the account that made it" do
-    {:ok, user} = account("founder@example.test")
+    user = user_fixture(%{email: "founder@example.test"})
     {:ok, claim} = TestRepo.insert(Bootstrap.changeset(%Bootstrap{}, %{user_id: user.id}))
 
     {:ok, _} = TestRepo.delete(user)
@@ -67,11 +69,9 @@ defmodule Ithibati.BootstrapTest do
   end
 
   defp race(email) do
-    {:ok, user} = account(email)
+    user = user_fixture(%{email: email})
     TestRepo.insert(Bootstrap.changeset(%Bootstrap{}, %{user_id: user.id}))
   end
-
-  defp account(email), do: %TestUser{} |> TestUser.changeset(%{email: email}) |> TestRepo.insert()
 
   defp clear do
     TestRepo.delete_all(Bootstrap)

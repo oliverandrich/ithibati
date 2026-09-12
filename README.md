@@ -75,10 +75,9 @@ use User, identifier: :username, format: ~r/^[a-z0-9][a-z0-9_-]{2,31}$/
 use User, identifier: :handle
 ```
 
-`format:` is optional, and `email_format/0` offers a pattern for addresses rather than imposing
-one. `constraint_name:` is an opt-out: say it when your application maintains the unique index on
-that column itself, and this library will not create one — name it, because the constraint still has
-to match. Values written through `identifier_changeset/2` are trimmed and lowercased, so a plain unique index refuses `AdaLovelace`
+`format:` is optional, and `email_format/0` offers a pattern for addresses rather than imposing one.
+`constraint_name:` and `unique_index:` concern the index on that column — see the migration below.
+Values written through `identifier_changeset/2` are trimmed and lowercased, so a plain unique index refuses `AdaLovelace`
 beside `adalovelace` with no functional index for you to remember — a write that bypasses the
 changeset stores whatever it is given.
 
@@ -119,15 +118,19 @@ in. The column itself is yours to add, on your own table:
 add :username, :string, null: false
 ```
 
-If you would rather maintain that index yourself — a partial one, an expression, `citext`, or a
-composite with a tenant column — say so and name it, and this library will leave it alone:
+If your naming convention is not the one Ecto derives, say what the index should be called and the
+library creates it under that name:
 
 ```elixir
-# in your migration
-create unique_index(:users, [:username], name: :users_username_uniq)
-
-# in your schema
 use User, identifier: :username, constraint_name: :users_username_uniq
+```
+
+And if you would rather create it yourself — a partial one, an expression, `citext`, or a composite
+with a tenant column — say that instead. The library then checks that a unique index on that column
+exists rather than making one, and refuses the migration if it does not:
+
+```elixir
+use User, identifier: :username, unique_index: false
 ```
 
 Configure anything that does not match the defaults:

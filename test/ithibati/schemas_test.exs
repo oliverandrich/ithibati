@@ -15,10 +15,7 @@ defmodule Ithibati.SchemasTest do
   alias Ithibati.UserToken
 
   setup do
-    {:ok, user} =
-      %TestUser{} |> TestUser.changeset(%{email: "holder@example.test"}) |> TestRepo.insert()
-
-    %{user: user}
+    %{user: user_fixture(%{email: "holder@example.test"})}
   end
 
   test "a passkey round-trips", %{user: user} do

@@ -16,7 +16,8 @@ defmodule Ithibati.Schema.UserTest do
   @fixtures [
     {TestUser, :email, [:id, :nickname, :inserted_at, :updated_at]},
     {MemberUser, :username, [:id, :inserted_at, :updated_at]},
-    {GuestUser, :handle, [:id, :inserted_at, :updated_at]}
+    {GuestUser, :handle, [:id, :inserted_at, :updated_at]},
+    {NamedUser, :email, [:id, :nickname, :inserted_at, :updated_at]}
   ]
 
   describe "what the macro contributes" do

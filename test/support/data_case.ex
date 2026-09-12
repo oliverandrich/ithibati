@@ -39,6 +39,23 @@ defmodule Ithibati.DataCase do
     end)
   end
 
+  @doc """
+  An account, for tests that need one to hang something off rather than to examine.
+
+  Four test files were each building this by hand; what they all wanted was a row with a unique
+  address.
+  """
+  def user_fixture(attrs \\ %{}) do
+    address = Map.get(attrs, :email, "someone-#{System.unique_integer([:positive])}@example.test")
+
+    {:ok, user} =
+      %Ithibati.TestUser{}
+      |> Ithibati.TestUser.changeset(Map.put(attrs, :email, address))
+      |> Ithibati.TestRepo.insert()
+
+    user
+  end
+
   setup tags do
     pid = Sandbox.start_owner!(Ithibati.TestRepo, shared: not tags[:async])
     on_exit(fn -> Sandbox.stop_owner(pid) end)

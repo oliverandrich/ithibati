@@ -23,16 +23,23 @@ defmodule Ithibati.MigrationTest do
     use Ecto.Migration
 
     # The account table is the consumer's, so the probe brings its own before asking for the rest —
-    # and, when the configured schema says it maintains its own unique index, that too. It is playing
-    # the application's part in both cases.
+    # and, when the configured schema says it creates the unique index itself, that too. It is
+    # playing the application's part, including the part where an application forgets: setting
+    # `:test_app_skips_index` is how a test shows what happens then.
     def up do
       create table(:users, primary_key: false) do
         add :id, :binary_id, primary_key: true
         add :email, :string
       end
 
-      if name = Ithibati.Config.user_schema().__ithibati__(:constraint) do
-        create unique_index(:users, [:email], name: name)
+      schema = Ithibati.Config.user_schema()
+
+      case {schema.__ithibati__(:unique_index),
+            Application.get_env(:ithibati, :test_app_index, :unique)} do
+        {true, _} -> :ok
+        {false, :unique} -> create(unique_index(:users, [:email], name: :users_email_uniq))
+        {false, :plain} -> create(index(:users, [:email], name: :users_email_uniq))
+        {false, :none} -> :ok
       end
 
       Ithibati.Migration.up(version: 1)
@@ -42,23 +49,6 @@ defmodule Ithibati.MigrationTest do
       Ithibati.Migration.down(version: 1)
       drop table(:users)
     end
-  end
-
-  # The same, minus the index — so a schema that claims to maintain its own can be driven against a
-  # database where it does not exist.
-  defmodule ProbeWithoutIndex do
-    use Ecto.Migration
-
-    def up do
-      create table(:users, primary_key: false) do
-        add :id, :binary_id, primary_key: true
-        add :email, :string
-      end
-
-      Ithibati.Migration.up(version: 1)
-    end
-
-    def down, do: :ok
   end
 
   # The sandbox is switched off for this module rather than checked out: `Ecto.Migrator` does its
@@ -95,9 +85,6 @@ defmodule Ithibati.MigrationTest do
     assert missing() == tables()
   end
 
-  # The account lookup is `Repo.get_by/3`, which raises on a second match rather than signing anybody
-  # in — so this index is a requirement, and requiring something an application has to remember is
-  # what this arrangement exists to avoid.
   test "the unique index its own lookup depends on is one of the things it creates" do
     :ok = migrate(:up)
 
@@ -117,12 +104,36 @@ defmodule Ithibati.MigrationTest do
 
   # Saying "I maintain my own" and not having one is the same failure the creation exists to prevent,
   # so the claim is checked rather than believed.
-  test "and a claimed index that does not exist stops the migration" do
+  test "and an application that says so and then does not have one is stopped" do
     as_account_schema(Ithibati.OptedOutUser)
+    as_application_index(:none)
 
-    assert_raise ArgumentError, ~r/no index named probe.users_email_uniq/, fn ->
-      Ecto.Migrator.up(TestRepo, @version + 1, ProbeWithoutIndex, prefix: @schema, log: false)
+    assert_raise ArgumentError, ~r/unique index on users\.email — there is none/, fn ->
+      migrate(:up)
     end
+
+    # Stopped, not merely complained about: the refusal comes after `flush()`, so the tables were
+    # already written when it fired, and only the surrounding transaction takes them back.
+    assert missing() == tables()
+  end
+
+  # Asked of `pg_index` rather than of the name: a relation of the right name that is not a unique
+  # index over that column is exactly what a name check would wave through.
+  test "and an index that is not unique does not count as one" do
+    as_account_schema(Ithibati.OptedOutUser)
+    as_application_index(:plain)
+
+    assert_raise ArgumentError, ~r/unique index on users\.email — there is none/, fn ->
+      migrate(:up)
+    end
+  end
+
+  test "the index it creates carries the name the application asked for" do
+    as_account_schema(Ithibati.NamedIndexUser)
+
+    :ok = migrate(:up)
+
+    assert "users_email_house" in indexes("users")
   end
 
   test "the foreign key takes the account table's key type" do
@@ -160,9 +171,15 @@ defmodule Ithibati.MigrationTest do
     type
   end
 
+  defp as_application_index(kind) do
+    Application.put_env(:ithibati, :test_app_index, kind)
+    on_exit(fn -> Application.delete_env(:ithibati, :test_app_index) end)
+  end
+
   defp as_account_schema(module) do
+    configured = Application.get_env(:ithibati, :user_schema)
     Application.put_env(:ithibati, :user_schema, module)
-    on_exit(fn -> Application.put_env(:ithibati, :user_schema, Ithibati.TestUser) end)
+    on_exit(fn -> Application.put_env(:ithibati, :user_schema, configured) end)
   end
 
   defp indexes(table) do

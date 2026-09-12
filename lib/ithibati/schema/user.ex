@@ -28,9 +28,11 @@ defmodule Ithibati.Schema.User do
 
     * `identifier:` — required, a literal atom: the field an account is known by.
     * `format:` — optional, a regular expression, evaluated once when your module compiles.
-    * `constraint_name:` — optional, and an opt-out: say it when your application maintains the
-      unique index on that column itself, and this library will not create one. Name it, because
-      the constraint still has to match.
+    * `constraint_name:` — optional, the name of the unique index on that column. Say it when your
+      naming convention is not the one Ecto derives; this library then creates it under that name,
+      and the changeset's constraint matches it.
+    * `unique_index: false` — optional, an opt-out: say it when your application creates that index
+      itself, and this library will check that one exists rather than create it.
 
   Whatever the field is called, values written through `identifier_changeset/2` are trimmed and
   lowercased.
@@ -96,6 +98,7 @@ defmodule Ithibati.Schema.User do
     field = identifier!(opts)
     format = format!(opts, __CALLER__)
     constraint = constraint_name!(opts)
+    unique_index = unique_index!(opts)
 
     quote do
       import Ithibati.Schema.User, only: [ithibati_account: 0]
@@ -105,6 +108,7 @@ defmodule Ithibati.Schema.User do
       @ithibati_identifier unquote(field)
       @ithibati_format unquote(Macro.escape(format))
       @ithibati_constraint unquote(Macro.escape(constraint))
+      @ithibati_unique_index unquote(unique_index)
 
       @doc """
       A name for this account that a passkey dialog can show, or `nil`.
@@ -134,6 +138,7 @@ defmodule Ithibati.Schema.User do
     field = declared!(env)
     format = Module.get_attribute(env.module, :ithibati_format)
     constraint = Module.get_attribute(env.module, :ithibati_constraint)
+    unique_index = Module.get_attribute(env.module, :ithibati_unique_index)
 
     quote do
       @doc """
@@ -142,6 +147,7 @@ defmodule Ithibati.Schema.User do
       """
       def __ithibati__(:identifier), do: unquote(field)
       def __ithibati__(:constraint), do: unquote(constraint)
+      def __ithibati__(:unique_index), do: unquote(unique_index)
 
       @doc """
       Casts and validates the identifier, and declares the constraint this library relies on.
@@ -245,8 +251,8 @@ defmodule Ithibati.Schema.User do
     end
   end
 
-  # The bare name, because two callers want different things from it: the changeset needs an option
-  # list, and the migration needs to know whether one was given at all.
+  # The bare name: the changeset turns it into an option list, and the migration names the index it
+  # creates.
   defp constraint_name!(opts) do
     case Keyword.fetch(opts, :constraint_name) do
       :error ->
@@ -259,6 +265,20 @@ defmodule Ithibati.Schema.User do
 
       {:ok, other} ->
         raise ArgumentError, "`constraint_name:` must be an atom, got: #{Macro.to_string(other)}"
+    end
+  end
+
+  defp unique_index!(opts) do
+    case Keyword.fetch(opts, :unique_index) do
+      :error ->
+        true
+
+      {:ok, value} when is_boolean(value) ->
+        value
+
+      {:ok, other} ->
+        raise ArgumentError,
+              "`unique_index:` must be true or false, got: #{Macro.to_string(other)}"
     end
   end
 
@@ -279,6 +299,15 @@ defmodule Ithibati.Schema.User do
   defp validate_pattern(changeset, _field, nil), do: changeset
   defp validate_pattern(changeset, field, format), do: validate_format(changeset, field, format)
 
+  @doc """
+  Whether a module carries what this macro injects.
+
+  One predicate rather than two spellings of it: the marker function has been renamed once already,
+  and a second caller checking it by hand is a second thing to find by grep next time.
+  """
+  def account_schema?(module),
+    do: Code.ensure_loaded?(module) and function_exported?(module, :__ithibati__, 1)
+
   @doc "An identifier as it is stored: trimmed and lowercased, whatever it is called."
   def normalize(nil), do: nil
   def normalize(value), do: value |> String.trim() |> String.downcase()
@@ -292,7 +321,7 @@ defmodule Ithibati.Schema.User do
   instance has no account at all, which is why the second clause exists.
   """
   def credential_user(%module{} = account) do
-    function_exported?(module, :__ithibati__, 1) ||
+    account_schema?(module) ||
       raise(ArgumentError, "#{inspect(module)} does not `use Ithibati.Schema.User`")
 
     identifier = Map.fetch!(account, module.__ithibati__(:identifier))

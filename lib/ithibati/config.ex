@@ -2,14 +2,16 @@ defmodule Ithibati.Config do
   @moduledoc """
   The handful of things a consuming application decides and this library is told.
 
-  All of them are read at compile time, because a schema's table name and a field's type are fixed
-  when the module is compiled. `Application.compile_env/3` is what makes that safe: Elixir records
-  the value it saw and refuses to boot against a different one rather than running with a table name
-  nobody meant.
+  Most are read at compile time, because a schema's table name and a field's type are fixed when the
+  module is compiled. `Application.compile_env/3` is what makes that safe: Elixir records the value
+  it saw and refuses to boot against a different one rather than running with a table name nobody
+  meant. `user_schema/0` is the exception and says why at its own documentation.
   """
 
   # Not `:prefix`: in Ecto that already means the Postgres schema, which is a separate thing this
   # library may want to support later, and two meanings under one name is a trap for that release.
+  alias Ithibati.Schema.User
+
   @table_prefix Application.compile_env(:ithibati, :table_prefix, "ithibati")
 
   # The type of the *consumer's* account primary key, which this library's tables take a foreign key
@@ -39,8 +41,11 @@ defmodule Ithibati.Config do
   @doc """
   The account schema an application owns, as a module.
 
-  Read at runtime rather than compiled in, because what needs it runs at runtime: a migration asks it
-  for the table accounts live in and the field they are known by.
+  Read at runtime, unlike everything else here, and not because a migration runs at runtime — that is
+  true of the compile-time settings too. A consuming application's schema module compiles *after* the
+  dependencies it uses, so at the moment this library is compiled there is nothing to read out of it:
+  `compile_env` would pin an atom from which nothing was derived, forcing a recompile that protects
+  nothing.
   """
   def user_schema do
     schema =
@@ -53,7 +58,7 @@ defmodule Ithibati.Config do
 
     # Checked here rather than left to whatever calls it: a module that is merely wrong fails with
     # `__ithibati__/1 is undefined`, which names neither this library nor the configuration.
-    (Code.ensure_loaded?(schema) and function_exported?(schema, :__ithibati__, 1)) ||
+    User.account_schema?(schema) ||
       raise(
         ArgumentError,
         "config :ithibati, user_schema: #{inspect(schema)} — that module does not " <>
