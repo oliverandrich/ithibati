@@ -62,17 +62,27 @@ keeps no second copy of that. A consequence worth stating: `priv/` never has to 
 removes a standing hazard, because anything placed there is published and the test suite's own
 migrations must not be.
 
-**The macro contributes one field and three associations.** The address, with its normalisation,
-validation and unique constraint offered as a fragment the application composes into its own
-changeset. Nothing else: not `superadmin`, which is authorization and whose granting becomes a step
+**The macro contributes one field, three associations and three functions.** The field is the one
+the application names — there is no default. A library that never sends mail has no business
+requiring an address: that would be a personal detail collected and never used, and an application
+that identifies people by username should be able to say so rather than work around an assumption.
+`format:` is optional beside it, and the pattern for an address is *offered* as
+`Ithibati.Schema.User.email_format/0` rather than imposed.
+
+That pattern is the one the HTML specification publishes for `<input type=email>`, not RFC 5322 or a
+parser of it. An identifier here is a credential rather than a mailbox, so there is no deliverability
+to protect, and the full grammar accepts quoted local parts with spaces in them — a hazard rather
+than a feature. It also does not demand a dot in the domain, because `you@localhost` is a real
+address on a self-hosted instance.
+
+Whatever the field is called, values written through the library's changeset are trimmed and
+lowercased. That is what makes a plain unique index refuse a capitalisation of a name somebody already has, with no functional index for an
+application to remember; a capitalisation worth keeping is a display concern, and display belongs to
+the application.
+
+Nothing else comes across: not `superadmin`, which is authorization and whose granting becomes a step
 the application composes into the same transaction, and not any of the profile the reference
 implementation keeps on an account.
-
-The address is checked against the pattern the HTML specification publishes for `<input type=email>`
-rather than against RFC 5322 or a parser of it. This library never sends mail — an address here is a
-login identifier — so there is no deliverability to protect, and the full grammar accepts quoted
-local parts with spaces, which as a credential is a hazard rather than a feature. It also does not
-demand a dot in the domain, because `you@localhost` is a real address on a self-hosted instance.
 
 **That an instance has been set up is a row in a table of this library's, not a flag on an account.**
 The first draft put a boolean on the application's own table with a partial unique index beside it,
@@ -88,10 +98,10 @@ up, by nobody who is still here — and that is not expressible as a column.
 
 **The name a passkey dialog shows is derived by this library, not supplied by the application.**
 `passkey_display_name/1` may answer `nil`, and answering `nil` is correct; the fallback to the
-address belongs here. An overridable function that had to carry its own fallback put that
+identifier belongs here. An overridable function that had to carry its own fallback put that
 correctness in a sentence of documentation instead, which is where it was first got wrong. And the
 very first registration on an instance has no account to call anything on, so the derivation takes
-an address directly in that case.
+an identifier directly in that case.
 
 One question remains open, and it will otherwise be settled by accident while the code is being
 moved:

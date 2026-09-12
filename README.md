@@ -38,13 +38,16 @@ Five decisions shape it, and [`docs/design.md`](docs/design.md) carries each one
 
 ## The account schema
 
-Your application keeps its own account schema and its own table. This library adds one field and
-three associations to it, and nothing else:
+Your application keeps its own account schema and its own table. This library adds one field — the
+one you name — three associations and three functions, and nothing else:
 
 ```elixir
 defmodule MyApp.Accounts.User do
   use Ecto.Schema
-  use Ithibati.Schema.User
+
+  alias Ithibati.Schema.User
+
+  use User, identifier: :email, format: User.email_format()
 
   import Ecto.Changeset
 
@@ -57,29 +60,37 @@ defmodule MyApp.Accounts.User do
 
   def changeset(user, attrs) do
     user
-    |> Ithibati.Schema.User.email_changeset(attrs)
+    |> identifier_changeset(attrs)
     |> cast(attrs, [:name])
   end
 end
 ```
 
-`email_changeset/2` casts and validates the address and declares the unique constraint — you compose
-it into your own changeset rather than being handed one that owns the account. Roles, profiles and
-everything else stay yours.
+### The identifier is yours to choose
 
-The address is validated against the pattern the HTML specification publishes for
-`<input type=email>`, which is deliberately not RFC 5322: this library never sends mail, so an
-address here is a login identifier. `you@localhost` is accepted; `"a b"@example.com` is not.
+There is no default. Pass the field an account is known by, and a pattern if you want one:
 
-If your application has a better name for a person than their address, say so and a passkey dialog
-shows it:
+```elixir
+use User, identifier: :username, format: ~r/^[a-z0-9][a-z0-9_-]{2,31}$/
+use User, identifier: :handle
+```
+
+`email_format/0` offers a pattern for addresses rather than imposing one. Values written through
+`identifier_changeset/2` are trimmed and lowercased, so a plain unique index refuses `AdaLovelace`
+beside `adalovelace` with no functional index for you to remember — a write that bypasses the
+changeset stores whatever it is given.
+
+Why there is no default, and why the offered pattern is not RFC 5322, is in
+[decision 2](docs/design.md#2-the-application-owns-the-users-table).
+
+If a passkey dialog should show something nicer than the identifier, say so:
 
 ```elixir
 def passkey_display_name(account), do: account.name
 ```
 
 No fallback is needed. An account that has not filled that in answers `nil`, and this library then
-shows the address.
+shows the identifier.
 
 ## The migration
 
@@ -102,9 +113,13 @@ each with a foreign key to your own account table. The one column the schema mac
 create, on your own table, in your own migration:
 
 ```elixir
-add :email, :string, null: false
-create unique_index(:users, [:email])
+add :username, :string, null: false
+create unique_index(:users, [:username])
 ```
+
+Name the column and the index after whatever you passed to `identifier:`. The index name matters:
+this library declares `unique_constraint/2` on that field, so a duplicate comes back as a changeset
+error only while the index carries Ecto's derived name.
 
 Configure anything that does not match the defaults:
 
