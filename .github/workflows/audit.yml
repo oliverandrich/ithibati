@@ -1,0 +1,41 @@
+# Dependency advisories. An advisory is a property of the world, not of the diff in front of you,
+# so this is deliberately outside the gate — a pipeline permanently red for something nobody can fix
+# teaches people to stop reading it.
+#
+# A separate workflow rather than a third job in ci.yml, because a failing job fails the whole run:
+# an audit job there would still block the pull request it was moved out of the gate to stop
+# blocking.
+#
+# Not on pull requests — Dependabot opens one itself when a dependency has a known advisory. This is
+# the backstop for what its ecosystems do not cover.
+name: Audit
+
+on:
+  schedule:
+    # Monday morning, before the week's work.
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    name: audit
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4.3.0
+
+      - name: Fetch dependencies
+        run: |
+          mix local.hex --force
+          mix local.rebar --force
+          mix deps.get
+
+      - name: Audit dependencies
+        run: mise run audit

@@ -1,0 +1,33 @@
+# The workflow pins every action by commit SHA, and a SHA pin never updates on its own. Pinning and
+# this file are one decision, not two: without it the pins rot silently, which is worse than a
+# version tag.
+#
+# The cooldown is zizmor's `dependabot-cooldown` audit: a bump proposed the hour a release lands is
+# a bump made before anyone has noticed it was yanked or compromised.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    cooldown:
+      default-days: 7
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 3
+    groups:
+      actions:
+        update-types:
+          - minor
+          - patch
+
+  - package-ecosystem: mix
+    directory: /
+    cooldown:
+      default-days: 7
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 3
+    groups:
+      hex:
+        update-types:
+          - minor
+          - patch

@@ -1,0 +1,18 @@
+[tools]
+elixir = "1.20"
+erlang = "29"
+
+# Also pinned in the `version:` input of zizmor-action in .github/workflows/ci.yml, because
+# Dependabot does not read this file. The two move by hand, together.
+zizmor = "1.30.0"
+
+[tasks.check]
+description = "Everything that has to be green before a change is done"
+# Named so that CI can run the task instead of a second copy of what it contains.
+run = ["zizmor .github/", "mix precommit"]
+
+# Deliberately not part of `check`; it runs on a schedule instead. Why, in
+# .github/workflows/audit.yml.
+[tasks.audit]
+description = "Audit dependencies for advisories and retired packages"
+run = ["mix deps.audit", "mix hex.audit"]

@@ -1,0 +1,71 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: check
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4.3.0
+
+      # A cold Elixir compile is otherwise the whole job. Both the key and the fallback carry the
+      # mise.toml hash, because _build is only reusable under the Erlang and Elixir that produced it.
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            deps
+            _build
+          key: ${{ runner.os }}-mix-${{ hashFiles('mise.toml') }}-${{ hashFiles('mix.lock') }}
+          restore-keys: ${{ runner.os }}-mix-${{ hashFiles('mise.toml') }}-
+
+      - name: Fetch dependencies
+        run: |
+          mix local.hex --force
+          mix local.rebar --force
+          mix deps.get
+
+      - name: Run the gate
+        run: mise run check
+
+  zizmor:
+    name: zizmor
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      # What zizmor's online audits need. No `security-events: write`: the security tab needs
+      # GitHub Advanced Security, which a private repository does not have, so findings arrive as
+      # pull-request annotations instead.
+      actions: read
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: zizmorcore/zizmor-action@70fb788f84895a7701f5643d103d587e460b5c99 # v0.6.3
+        with:
+          # Kept equal to `[tools]` in mise.toml by hand; see the note there.
+          #
+          # This job overlaps the `zizmor` step inside `mise run check` on purpose: the gate catches
+          # a workflow finding before the push, this one adds the online audits and the pull-request
+          # annotations that a local run has no way to produce.
+          version: 1.30.0
+          advanced-security: false
+          annotations: true
