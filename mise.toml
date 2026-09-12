@@ -16,3 +16,9 @@ run = ["zizmor .github/", "mix precommit"]
 [tasks.audit]
 description = "Audit dependencies for advisories and retired packages"
 run = ["mix deps.audit", "mix hex.audit"]
+
+# Not `beans list --ready`, which also hides in-progress and draft. A mise task rather than a mix
+# alias because `mix cmd` runs through an Erlang port instead of a pty, so beans drops its colours.
+[tasks.beans]
+description = "List the live backlog (everything not completed or scrapped)"
+run = "beans list --no-status completed --no-status scrapped"
