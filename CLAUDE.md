@@ -41,6 +41,16 @@ Each of these is the enforceable form of a decision; the reasoning is behind the
   caller's separate decision.
 - No `util`/`common`/`helpers`/`shared`/`misc` modules.
 
+## The tracker is not in the repository
+
+`.beans/` and `.beans.yml` are gitignored here, unlike in the reference implementation. The tracker
+is a personal tool in a format nobody else reads, and this library ships to strangers; it is also
+transitional and will be replaced. So: **do not commit bean files, and do not add them back.**
+
+Two things follow. The backlog lives on one machine and is not backed up by `git push` — say so
+rather than assuming a bean is safe. And the rule below keeping bean ids out of the source is
+stronger here than it looks: nothing in this repository can resolve one.
+
 ## Conventions
 
 - Error paths with `with` and pattern matching, not nested `if`. Expected failures as
