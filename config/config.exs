@@ -13,7 +13,14 @@ if config_env() == :test do
     end
   end
 
-  config :ithibati, ecto_repos: [Ithibati.TestRepo], user_schema: Ithibati.TestUser
+  config :ithibati,
+    ecto_repos: [Ithibati.TestRepo],
+    user_schema: Ithibati.TestUser,
+    repo: Ithibati.TestRepo,
+    # Two contexts beyond the built-in "session", so the token tests can prove that validity is
+    # resolved per context and that the unit is read — without moving application environment,
+    # which would cost them their `async: true`.
+    token_validity: %{"device" => {90, :day}, "brief" => {5, :second}}
 
   config :ithibati, Ithibati.TestRepo,
     username: env.("PGUSER", "postgres"),

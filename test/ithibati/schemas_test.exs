@@ -54,7 +54,7 @@ defmodule Ithibati.SchemasTest do
   test "a token round-trips and carries its context", %{user: user} do
     {:ok, token} =
       %UserToken{}
-      |> UserToken.changeset(%{token: <<10, 11>>, context: "session", user_id: user.id})
+      |> UserToken.changeset(%{token_hash: <<10, 11>>, context: "session", user_id: user.id})
       |> TestRepo.insert()
 
     assert %UserToken{context: "session"} = TestRepo.get!(UserToken, token.id)
@@ -70,7 +70,7 @@ defmodule Ithibati.SchemasTest do
   test "the rows die with the account they belong to", %{user: user} do
     {:ok, _} =
       %UserToken{}
-      |> UserToken.changeset(%{token: <<12>>, context: "s", user_id: user.id})
+      |> UserToken.changeset(%{token_hash: <<12>>, context: "s", user_id: user.id})
       |> TestRepo.insert()
 
     {:ok, _} =

@@ -1,7 +1,8 @@
 defmodule Ithibati.UserToken do
   @moduledoc """
-  One revocable credential. The cookie or the bearer header carries only the token; the row is what
-  makes it revocable, and `context` is what makes one kind of token unusable as another.
+  One revocable credential. The cookie or the bearer header carries the secret; this row carries
+  only its sha256, so the table is not a set of usable tokens. The row is what makes the credential
+  revocable, and `context` is what makes one kind of token unusable as another.
   """
   use Ecto.Schema
 
@@ -12,7 +13,7 @@ defmodule Ithibati.UserToken do
   @primary_key {:id, :binary_id, autogenerate: true}
 
   schema Config.table("tokens") do
-    field :token, :binary
+    field :token_hash, :binary
     field :context, :string
     field :user_id, Config.users_key_type()
 
@@ -23,9 +24,9 @@ defmodule Ithibati.UserToken do
   @doc false
   def changeset(user_token, attrs) do
     user_token
-    |> cast(attrs, [:token, :context, :user_id])
-    |> validate_required([:token, :context, :user_id])
-    |> unique_constraint(:token)
+    |> cast(attrs, [:token_hash, :context, :user_id])
+    |> validate_required([:token_hash, :context, :user_id])
+    |> unique_constraint(:token_hash)
     |> foreign_key_constraint(:user_id)
   end
 end

@@ -139,12 +139,21 @@ Configure anything that does not match the defaults:
 ```elixir
 config :ithibati,
   user_schema: MyApp.Accounts.User,   # required — the module that uses Ithibati.Schema.User
+  repo: MyApp.Repo,                   # required — the repo this library reads and writes through
+  token_validity: %{                  # "session" is 60 days unless you say otherwise
+    "device" => {90, :day}
+  },
   users_key_type: :id,                # default :binary_id — compiled into the schemas
   table_prefix: "auth"                # default "ithibati" — compiled into the schemas
 ```
 
-The last two are read when this library is compiled, so changing them recompiles it; Elixir refuses
-to boot against a value it was not built for rather than looking for a table nobody meant. The
+`token_validity` is merged over the built-in `"session"` entry, so adding a context for a browser
+extension does not mean restating the one the session functions promise. A context with no entry
+raises rather than inheriting a number nobody chose. The units are `:second`, `:minute`, `:hour`,
+`:day` and `:week` — `:month` and `:year` are missing because neither has a fixed length.
+
+The last two settings are read when this library is compiled, so changing them recompiles it; Elixir
+refuses to boot against a value it was not built for rather than looking for a table nobody meant. The
 migration reads the table names and the foreign-key type back out of those schemas, so it cannot
 build something they will not go on to read.
 

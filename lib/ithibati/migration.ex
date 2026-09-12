@@ -123,13 +123,13 @@ defmodule Ithibati.Migration do
     create table(source(UserToken), primary_key: false) do
       add :id, :binary_id, primary_key: true
       add :user_id, holder, null: false
-      add :token, :binary, null: false
+      add :token_hash, :binary, null: false
       add :context, :string, null: false
 
       timestamps(type: :utc_datetime_usec, updated_at: false)
     end
 
-    create unique_index(source(UserToken), [:token])
+    create unique_index(source(UserToken), [:token_hash])
     create index(source(UserToken), [:user_id])
 
     create table(source(Bootstrap), primary_key: false) do

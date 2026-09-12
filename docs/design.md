@@ -183,6 +183,15 @@ What follows from that, and what does not:
   column does not: the token functions become general before the first release, not after. `generate_token(user, context)` with
   `generate_session_token/1` as the convenience over it, and the same generalisation for lookup and
   revocation.
+- **Decided now**, and a departure from the reference implementation, which stores the secret as
+  `phx.gen.auth` does: the row carries the token's **sha256**, and the secret is handed to the
+  caller once. The table is about to hold bearer tokens for an extension and a native app — longer
+  lived than a session cookie and copied to more places — and a digest at rest costs one hash per
+  lookup while making a database dump, or a read-only injection, useless for logging in. The column
+  is named `token_hash` so that nothing reads as if it held the secret, and what is handed out is
+  the URL-safe encoding of the 32 bytes rather than the bytes: raw bytes cannot go in an
+  `authorization` header at all, and the reference implementation never noticed because a Plug
+  session cookie encodes the whole payload for it.
 - **Not now**: no speculative columns (a device label, a last-used timestamp), no scopes, no
   OAuth2, no device-authorization flow. Each of those is additive, and inventing them against no
   real client produces the wrong shape.
