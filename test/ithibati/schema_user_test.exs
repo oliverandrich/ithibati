@@ -11,28 +11,36 @@ defmodule Ithibati.Schema.UserTest do
 
   alias Ithibati.Schema
 
-  # Everything `Ithibati.TestUser` has that the macro did not put there.
-  @consumer_fields [:id, :nickname, :inserted_at, :updated_at]
+  # Every account schema the suite carries, with the field it is identified by and the fields it
+  # declared itself. One list, so a fourth fixture is one line and no test forgets it.
+  @fixtures [
+    {TestUser, :email, [:id, :nickname, :inserted_at, :updated_at]},
+    {MemberUser, :username, [:id, :inserted_at, :updated_at]},
+    {GuestUser, :handle, [:id, :inserted_at, :updated_at]}
+  ]
 
   describe "what the macro contributes" do
     test "exactly one field, the one the application named" do
-      assert TestUser.__schema__(:fields) -- @consumer_fields == [:email]
-      assert MemberUser.__schema__(:fields) -- [:id, :inserted_at, :updated_at] == [:username]
+      for {schema, identifier, own} <- @fixtures do
+        assert schema.__schema__(:fields) -- own == [identifier]
+      end
     end
 
     test "one association per table this library owns, and no others" do
-      assert TestUser.__schema__(:associations) == [:passkeys, :recovery_codes, :auth_tokens]
+      for {schema, _identifier, _own} <- @fixtures do
+        assert schema.__schema__(:associations) == [:passkeys, :recovery_codes, :auth_tokens]
+      end
     end
 
     test "the associations reach this library's schemas by the foreign key it declares" do
-      for {name, schema} <- [
+      for {name, related} <- [
             passkeys: Ithibati.UserKey,
             recovery_codes: Ithibati.RecoveryCode,
             auth_tokens: Ithibati.UserToken
           ] do
         assoc = TestUser.__schema__(:association, name)
 
-        assert assoc.related == schema
+        assert assoc.related == related
         assert assoc.related_key == :user_id
       end
     end
@@ -42,7 +50,11 @@ defmodule Ithibati.Schema.UserTest do
     # before asserting, and the test could then only notice a disappearance.
     test "three functions, and a fourth would have to be a decision" do
       plain = probe("Plain", "")
-      injected = probe("Injected", "use Ithibati.Schema.User, identifier: :email")
+
+      injected =
+        probe("Injected", "use Ithibati.Schema.User, identifier: :email",
+          inside: "ithibati_account()"
+        )
 
       assert Enum.sort(injected.__info__(:functions) -- plain.__info__(:functions)) ==
                [__ithibati_identifier__: 0, identifier_changeset: 2, passkey_display_name: 1]
@@ -54,12 +66,7 @@ defmodule Ithibati.Schema.UserTest do
     # assumption.
     test "has to be chosen — omitting it is a compile error that says so" do
       assert_raise ArgumentError, ~r/needs `identifier:`/, fn ->
-        Code.compile_string("""
-        defmodule Ithibati.NoIdentifierProbe do
-          use Ecto.Schema
-          use Ithibati.Schema.User
-        end
-        """)
+        probe("NoIdentifier", "use Ithibati.Schema.User")
       end
     end
 
@@ -76,9 +83,52 @@ defmodule Ithibati.Schema.UserTest do
       end
     end
 
+    # The field the functions target comes from what the schema block declared, so the two cannot
+    # name different things.
+    test "is whatever the schema block declared, even if the attribute moved in between" do
+      module =
+        probe(
+          "Moved",
+          "use Ithibati.Schema.User, identifier: :email\n  @ithibati_identifier :handle",
+          inside: "ithibati_account()"
+        )
+
+      assert module.__schema__(:fields) == [:id, :handle]
+      assert module.__ithibati_identifier__() == :handle
+    end
+
+    test "has to reach the schema block, or the module does not compile" do
+      assert_raise ArgumentError, ~r/never calls ithibati_account\/0/, fn ->
+        probe("Forgotten", "use Ithibati.Schema.User, identifier: :email")
+      end
+    end
+
+    # At arity zero Elixir does not warn about a redefinition, so this has to be refused rather than
+    # noticed.
+    test "cannot be answered by a function of the application's own" do
+      assert_raise ArgumentError, ~r/silently replaces the library/, fn ->
+        probe("Shadow", "use Ithibati.Schema.User, identifier: :email",
+          inside: "ithibati_account()",
+          after_schema: "def __ithibati_identifier__, do: :something_else"
+        )
+      end
+    end
+
+    # `@ithibati_declared` is an ordinary attribute, so a line below the schema block would otherwise
+    # be what the hook reads.
+    test "cannot be moved after the schema block either" do
+      assert_raise ArgumentError, ~r/has no field :handle/, fn ->
+        probe("Late", "use Ithibati.Schema.User, identifier: :email",
+          inside: "ithibati_account()",
+          after_schema: "@ithibati_declared :handle"
+        )
+      end
+    end
+
     test "is the field the schema declares and the one the library reads" do
-      assert TestUser.__ithibati_identifier__() == :email
-      assert MemberUser.__ithibati_identifier__() == :username
+      for {schema, identifier, _own} <- @fixtures do
+        assert schema.__ithibati_identifier__() == identifier
+      end
     end
 
     test "is trimmed and lowercased whatever it is called" do
@@ -128,22 +178,49 @@ defmodule Ithibati.Schema.UserTest do
     end
   end
 
-  test "the identifier is unique, and a duplicate comes back as an error on the field" do
-    {:ok, _} = insert("taken@example.test")
-
-    assert {:error, changeset} = insert("taken@example.test")
-    assert %{email: ["has already been taken"]} = errors_on(changeset)
+  describe "the index name, when an application names its own" do
+    # A constraint named "true" matches no index, so every duplicate would surface as the
+    # `Ecto.ConstraintError` the option exists to prevent.
+    test "a constraint name that is a boolean is refused" do
+      assert_raise ArgumentError, ~r/`constraint_name:` must be an atom/, fn ->
+        probe(
+          "BoolConstraint",
+          "use Ithibati.Schema.User, identifier: :email, constraint_name: true"
+        )
+      end
+    end
   end
 
-  # Lowercasing is what makes the unique index refuse a capitalisation of a name somebody already
-  # has, without a functional index the application would have to remember.
-  test "a capitalisation of an identifier somebody has is the same identifier" do
-    {:ok, _} = TestRepo.insert(MemberUser.changeset(%MemberUser{}, %{username: "adalovelace"}))
+  describe "uniqueness" do
+    test "a duplicate comes back as an error on the field" do
+      {:ok, _} = insert("taken@example.test")
 
-    assert {:error, changeset} =
-             TestRepo.insert(MemberUser.changeset(%MemberUser{}, %{username: "AdaLovelace"}))
+      assert {:error, changeset} = insert("taken@example.test")
+      assert %{email: ["has already been taken"]} = errors_on(changeset)
+    end
 
-    assert %{username: ["has already been taken"]} = errors_on(changeset)
+    # Lowercasing is what makes a plain unique index refuse a capitalisation of a name somebody
+    # already has, without a functional index the application would have to remember.
+    test "a capitalisation of an identifier somebody has is the same identifier" do
+      {:ok, _} = TestRepo.insert(MemberUser.changeset(%MemberUser{}, %{username: "adalovelace"}))
+
+      assert {:error, changeset} =
+               TestRepo.insert(MemberUser.changeset(%MemberUser{}, %{username: "AdaLovelace"}))
+
+      assert %{username: ["has already been taken"]} = errors_on(changeset)
+    end
+
+    # Ecto derives `guests_handle_index` from the schema and the field; this application's index is
+    # called something else, which without `constraint_name:` means an unhandled
+    # `Ecto.ConstraintError` on the second registration instead of a message on a form.
+    test "and still does when the application named its own index" do
+      {:ok, _} = TestRepo.insert(GuestUser.changeset(%GuestUser{}, %{handle: "ada"}))
+
+      assert {:error, changeset} =
+               TestRepo.insert(GuestUser.changeset(%GuestUser{}, %{handle: "ada"}))
+
+      assert %{handle: ["has already been taken"]} = errors_on(changeset)
+    end
   end
 
   # The documented contract, and the reason it is a fragment rather than a changeset that owns the
@@ -203,17 +280,25 @@ defmodule Ithibati.Schema.UserTest do
     )
   end
 
-  # Each probe gets a name of its own: a module compiled twice warns about redefinition.
-  defp probe(name, body) do
-    source =
-      "defmodule Ithibati.Probe" <>
-        name <>
-        " do\n  use Ecto.Schema\n  " <>
-        body <>
-        "\n\n  @primary_key {:id, :binary_id, autogenerate: true}\n" <>
-        "  schema \"probes\" do\n  end\nend\n"
+  # Each probe gets a name of its own: a module compiled twice warns about redefinition. `inside:` is
+  # what goes in the schema block — a module that uses the macro has to call `ithibati_account/0`
+  # there or fail to compile — and `after_schema:` is what follows it.
+  defp probe(name, body, opts \\ []) do
+    [{module, _bytecode} | _] =
+      Code.compile_string("""
+      defmodule Ithibati.Probe#{name} do
+        use Ecto.Schema
+        #{body}
 
-    [{module, _bytecode} | _] = Code.compile_string(source)
+        @primary_key {:id, :binary_id, autogenerate: true}
+        schema "probes" do
+          #{opts[:inside]}
+        end
+
+        #{opts[:after_schema]}
+      end
+      """)
+
     module
   end
 end

@@ -75,8 +75,10 @@ use User, identifier: :username, format: ~r/^[a-z0-9][a-z0-9_-]{2,31}$/
 use User, identifier: :handle
 ```
 
-`email_format/0` offers a pattern for addresses rather than imposing one. Values written through
-`identifier_changeset/2` are trimmed and lowercased, so a plain unique index refuses `AdaLovelace`
+`format:` is optional, and `email_format/0` offers a pattern for addresses rather than imposing
+one. `constraint_name:` is optional too, for when your unique index carries a name Ecto would not
+derive — see the migration below. Values written through `identifier_changeset/2` are trimmed and
+lowercased, so a plain unique index refuses `AdaLovelace`
 beside `adalovelace` with no functional index for you to remember — a write that bypasses the
 changeset stores whatever it is given.
 
@@ -117,9 +119,17 @@ add :username, :string, null: false
 create unique_index(:users, [:username])
 ```
 
-Name the column and the index after whatever you passed to `identifier:`. The index name matters:
-this library declares `unique_constraint/2` on that field, so a duplicate comes back as a changeset
-error only while the index carries Ecto's derived name.
+Name the column and the index after whatever you passed to `identifier:`. If your index carries a
+name Ecto would not derive — many teams name theirs by a house convention — say so, or a duplicate
+arrives as an `Ecto.ConstraintError` instead of a message on a form:
+
+```elixir
+# in your migration
+create unique_index(:users, [:username], name: :users_username_uniq)
+
+# in your schema
+use User, identifier: :username, constraint_name: :users_username_uniq
+```
 
 Configure anything that does not match the defaults:
 

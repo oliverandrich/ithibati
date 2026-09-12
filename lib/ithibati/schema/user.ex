@@ -24,19 +24,30 @@ defmodule Ithibati.Schema.User do
         end
       end
 
-  `identifier:` is required and takes a literal atom — the field an account is known by. `format:` is
-  optional and takes a regular expression, evaluated once when your module compiles. Whatever the
-  field is called, values written through `identifier_changeset/2` are trimmed and lowercased.
+  ## Options
+
+    * `identifier:` — required, a literal atom: the field an account is known by.
+    * `format:` — optional, a regular expression, evaluated once when your module compiles.
+    * `constraint_name:` — optional, needed when the unique index on that column carries a name Ecto
+      would not derive. Without it a duplicate arrives as an `Ecto.ConstraintError` rather than as a
+      changeset error.
+
+  Whatever the field is called, values written through `identifier_changeset/2` are trimmed and
+  lowercased.
 
   Why there is no default, and why the offered pattern is not RFC 5322, is in `docs/design.md`,
   decision 2.
 
-  ## What it injects
+  ## What it injects, and what it refuses
 
   One field, three associations, and three functions: `identifier_changeset/2`,
   `passkey_display_name/1` (overridable, `nil` by default) and `__ithibati_identifier__/0`. The list
   is pinned in `Ithibati.Schema.UserTest` against a schema that does not use this macro, so a fourth
   one has to be a decision.
+
+  Two things it refuses, both at compile time: a module that never calls `ithibati_account/0` inside
+  its schema block, and one that defines `identifier_changeset/2` or `__ithibati_identifier__/0`
+  itself.
   """
 
   import Ecto.Changeset
@@ -64,7 +75,11 @@ defmodule Ithibati.Schema.User do
       @ithibati_identifier ||
         raise(ArgumentError, "ithibati_account/0 needs `use Ithibati.Schema.User` above it")
 
-      field @ithibati_identifier, :string
+      # The field and the generated functions both come from this one value, so they cannot name
+      # different things.
+      @ithibati_declared @ithibati_identifier
+
+      field @ithibati_declared, :string
 
       has_many :passkeys, Ithibati.UserKey, foreign_key: :user_id
       has_many :recovery_codes, Ithibati.RecoveryCode, foreign_key: :user_id
@@ -81,12 +96,47 @@ defmodule Ithibati.Schema.User do
 
     field = identifier!(opts)
     format = format!(opts, __CALLER__)
+    constraint = constraint_name!(opts)
 
     quote do
       import Ithibati.Schema.User, only: [ithibati_account: 0]
 
-      @ithibati_identifier unquote(field)
+      @before_compile Ithibati.Schema.User
 
+      @ithibati_identifier unquote(field)
+      @ithibati_format unquote(Macro.escape(format))
+      @ithibati_constraint unquote(Macro.escape(constraint))
+
+      @doc """
+      A name for this account that a passkey dialog can show, or `nil`.
+
+      Returning `nil` is the ordinary answer, and this library then shows the identifier. Override it
+      when the application has something better:
+
+          def passkey_display_name(account), do: account.name
+
+      No fallback is needed in an override — an account that has not filled the better name in
+      returns `nil`, which is correct rather than broken.
+      """
+      def passkey_display_name(_account), do: nil
+
+      defoverridable passkey_display_name: 1
+    end
+  end
+
+  @doc false
+  # The field has to come from what the schema block declared, which is only known once the module
+  # body is done. `passkey_display_name/1` stays at `use` time instead: `defoverridable` needs the
+  # original to exist before an override, and anything generated here comes after everything the
+  # consumer wrote.
+  defmacro __before_compile__(env) do
+    refuse_shadowing!(env)
+
+    field = declared!(env)
+    format = Module.get_attribute(env.module, :ithibati_format)
+    constraint = Module.get_attribute(env.module, :ithibati_constraint)
+
+    quote do
       @doc "The field this account is known by."
       def __ithibati_identifier__, do: unquote(field)
 
@@ -104,25 +154,48 @@ defmodule Ithibati.Schema.User do
           account_or_changeset,
           attrs,
           unquote(field),
-          unquote(Macro.escape(format))
+          unquote(Macro.escape(format)),
+          unquote(Macro.escape(constraint))
         )
       end
-
-      @doc """
-      A name for this account that a passkey dialog can show, or `nil`.
-
-      Returning `nil` is the ordinary answer, and this library then shows the identifier. Override it
-      when the application has something better:
-
-          def passkey_display_name(account), do: account.name
-
-      No fallback is needed in an override — an account that has not filled the better name in
-      returns `nil`, which is correct rather than broken.
-      """
-      def passkey_display_name(_account), do: nil
-
-      defoverridable passkey_display_name: 1
     end
+  end
+
+  # At arity zero Elixir does not warn about a redefinition, so a consumer's own
+  # `__ithibati_identifier__/0` would silently stand in front of this one.
+  defp refuse_shadowing!(env) do
+    Enum.each([__ithibati_identifier__: 0, identifier_changeset: 2], fn {name, arity} ->
+      Module.defines?(env.module, {name, arity}) &&
+        raise(
+          ArgumentError,
+          "#{inspect(env.module)} defines #{name}/#{arity}, which use Ithibati.Schema.User " <>
+            "generates. Rename yours — a definition here silently replaces the library's."
+        )
+    end)
+  end
+
+  # `@ithibati_declared` is an ordinary attribute, so a line below the schema block can reassign it.
+  # Holding it against the fields Ecto recorded is what makes the claim above true.
+  defp declared!(env) do
+    field = Module.get_attribute(env.module, :ithibati_declared)
+
+    field ||
+      raise(
+        ArgumentError,
+        "#{inspect(env.module)} uses Ithibati.Schema.User but never calls ithibati_account/0 " <>
+          "inside its schema block, so it has no identifier field"
+      )
+
+    declared = env.module |> Module.get_attribute(:ecto_fields) |> Keyword.keys()
+
+    field in declared ||
+      raise(
+        ArgumentError,
+        "#{inspect(env.module)} has no field #{inspect(field)}; its schema declares " <>
+          "#{inspect(declared)}. Something reassigned @ithibati_declared after the schema block."
+      )
+
+    field
   end
 
   # Told apart from "not given", because a non-literal reports the option as missing when it was in
@@ -169,15 +242,31 @@ defmodule Ithibati.Schema.User do
     end
   end
 
+  # Returns the options `unique_constraint/3` takes, so there is nothing to translate later.
+  defp constraint_name!(opts) do
+    case Keyword.fetch(opts, :constraint_name) do
+      :error ->
+        []
+
+      # `true`/`false` are atoms too, and a constraint named "true" matches no index — every
+      # duplicate would then surface as the `Ecto.ConstraintError` this option exists to prevent.
+      {:ok, name} when is_atom(name) and name not in [nil, true, false] ->
+        [name: name]
+
+      {:ok, other} ->
+        raise ArgumentError, "`constraint_name:` must be an atom, got: #{Macro.to_string(other)}"
+    end
+  end
+
   @doc false
-  def __changeset__(account_or_changeset, attrs, field, format) do
+  def __changeset__(account_or_changeset, attrs, field, format, unique_opts) do
     account_or_changeset
     |> cast(attrs, [field])
     |> update_change(field, &normalize/1)
     |> validate_required([field])
     |> validate_pattern(field, format)
     |> validate_length(field, max: @max)
-    |> unique_constraint(field)
+    |> unique_constraint(field, unique_opts)
   end
 
   defp validate_pattern(changeset, _field, nil), do: changeset

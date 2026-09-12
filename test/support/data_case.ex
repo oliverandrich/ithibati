@@ -17,6 +17,7 @@ defmodule Ithibati.DataCase do
 
       import Ithibati.DataCase
 
+      alias Ithibati.GuestUser
       alias Ithibati.MemberUser
       alias Ithibati.NamedUser
       alias Ithibati.TestRepo
