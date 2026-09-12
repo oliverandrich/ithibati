@@ -36,6 +36,51 @@ Five decisions shape it, and [`docs/design.md`](docs/design.md) carries each one
 4. [A grant is `Ecto.Multi` composition, not an event](docs/design.md#4-a-grant-is-ectomulti-composition-not-an-event)
 5. [Non-browser clients ride on the token, not on OAuth2](docs/design.md#5-non-browser-clients-the-token-is-the-boundary-not-oauth2)
 
+## The account schema
+
+Your application keeps its own account schema and its own table. This library adds one field and
+three associations to it, and nothing else:
+
+```elixir
+defmodule MyApp.Accounts.User do
+  use Ecto.Schema
+  use Ithibati.Schema.User
+
+  import Ecto.Changeset
+
+  schema "users" do
+    ithibati_account()
+
+    field :name, :string
+    timestamps(type: :utc_datetime_usec)
+  end
+
+  def changeset(user, attrs) do
+    user
+    |> Ithibati.Schema.User.email_changeset(attrs)
+    |> cast(attrs, [:name])
+  end
+end
+```
+
+`email_changeset/2` casts and validates the address and declares the unique constraint — you compose
+it into your own changeset rather than being handed one that owns the account. Roles, profiles and
+everything else stay yours.
+
+The address is validated against the pattern the HTML specification publishes for
+`<input type=email>`, which is deliberately not RFC 5322: this library never sends mail, so an
+address here is a login identifier. `you@localhost` is accepted; `"a b"@example.com` is not.
+
+If your application has a better name for a person than their address, say so and a passkey dialog
+shows it:
+
+```elixir
+def passkey_display_name(account), do: account.name
+```
+
+No fallback is needed. An account that has not filled that in answers `nil`, and this library then
+shows the address.
+
 ## The migration
 
 The tables this library owns are created by a migration you write and it fills in:
@@ -52,8 +97,16 @@ end
 Pin the version, as above. An unpinned call would mean a different set of tables depending on when
 it runs, and a rollback that undoes neither.
 
-That creates `ithibati_keys`, `ithibati_recovery_codes` and `ithibati_tokens`, each with a foreign
-key to your own account table. Configure anything that does not match the defaults:
+That creates `ithibati_keys`, `ithibati_recovery_codes`, `ithibati_tokens` and `ithibati_bootstrap`,
+each with a foreign key to your own account table. The one column the schema macro adds is yours to
+create, on your own table, in your own migration:
+
+```elixir
+add :email, :string, null: false
+create unique_index(:users, [:email])
+```
+
+Configure anything that does not match the defaults:
 
 ```elixir
 config :ithibati,

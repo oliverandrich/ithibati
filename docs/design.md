@@ -39,7 +39,7 @@ too, resolved once when the migrations are generated, and so is the **type** of 
 reference implementation is `binary_id` throughout, and a consumer with `bigserial` accounts would
 otherwise be handed a migration that does not fit.
 
-Four questions followed from this decision. Two are settled, and the answers belong here rather
+Four questions followed from this decision. Three are settled, and the answers belong here rather
 than in the code that implements them.
 
 **The tables this library owns are `ithibati_keys`, `ithibati_recovery_codes` and
@@ -62,15 +62,40 @@ keeps no second copy of that. A consequence worth stating: `priv/` never has to 
 removes a standing hazard, because anything placed there is published and the test suite's own
 migrations must not be.
 
-Two questions remain open, and each of them will otherwise be settled by accident while the code is
-being moved:
+**The macro contributes one field and three associations.** The address, with its normalisation,
+validation and unique constraint offered as a fragment the application composes into its own
+changeset. Nothing else: not `superadmin`, which is authorization and whose granting becomes a step
+the application composes into the same transaction, and not any of the profile the reference
+implementation keeps on an account.
 
-- **Which columns the macro contributes, by name.** "Exactly one is the library's business" is the
-  shape of the answer, not the answer. `avatar_path` is written by the code being moved, and
-  `superadmin` and `bootstrap` are authorization — the thing this library says it does not know
-  about. The proposal: the *check* stays (whether this is the first account is a question about
-  identity), and *granting* the role becomes a step the consumer composes in, which is what
-  decision 4 provides for anyway.
+The address is checked against the pattern the HTML specification publishes for `<input type=email>`
+rather than against RFC 5322 or a parser of it. This library never sends mail — an address here is a
+login identifier — so there is no deliverability to protect, and the full grammar accepts quoted
+local parts with spaces, which as a credential is a hazard rather than a feature. It also does not
+demand a dot in the domain, because `you@localhost` is a real address on a self-hosted instance.
+
+**That an instance has been set up is a row in a table of this library's, not a flag on an account.**
+The first draft put a boolean on the application's own table with a partial unique index beside it,
+which the application had to remember to create — and forgetting it fails nothing until two people
+register at the same moment. Measured in the reference implementation: nothing ever *reads* that
+flag. Its entire value is the index. So the index moves to a table `Ithibati.Migration.up/1` creates,
+where it cannot be forgotten.
+
+The deciding argument is not the forgetting, though. A boolean on an account conflates *this instance
+has been set up* with *this account set it up*: delete that account and both facts vanish, and a
+second setup becomes possible. A row whose `user_id` is nilified on delete says the true thing — set
+up, by nobody who is still here — and that is not expressible as a column.
+
+**The name a passkey dialog shows is derived by this library, not supplied by the application.**
+`passkey_display_name/1` may answer `nil`, and answering `nil` is correct; the fallback to the
+address belongs here. An overridable function that had to carry its own fallback put that
+correctness in a sentence of documentation instead, which is where it was first got wrong. And the
+very first registration on an instance has no account to call anything on, so the derivation takes
+an address directly in that case.
+
+One question remains open, and it will otherwise be settled by accident while the code is being
+moved:
+
 - **How the library announces a change.** The code being moved broadcasts over `Phoenix.PubSub`
   with a hardcoded server name, while Phoenix here is an optional dependency — so the core would
   not compile without it. Following decision 3, notification should become the consumer's step, the

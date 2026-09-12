@@ -15,9 +15,26 @@ defmodule Ithibati.DataCase do
       import Ecto.Changeset
       import Ecto.Query
 
+      import Ithibati.DataCase
+
+      alias Ithibati.NamedUser
       alias Ithibati.TestRepo
       alias Ithibati.TestUser
     end
+  end
+
+  @doc """
+  The messages a changeset carries, as a map of field to a list of strings.
+
+  Ecto keeps them as `{message, opts}` so that a count or a limit can be interpolated late; this
+  does that interpolation, which is what the assertion wants to read.
+  """
+  def errors_on(changeset) do
+    Ecto.Changeset.traverse_errors(changeset, fn {message, opts} ->
+      Regex.replace(~r"%{(\w+)}", message, fn _whole, key ->
+        opts |> Keyword.get(String.to_existing_atom(key), key) |> to_string()
+      end)
+    end)
   end
 
   setup tags do

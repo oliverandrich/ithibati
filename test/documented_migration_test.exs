@@ -1,25 +1,30 @@
 defmodule Ithibati.DocumentedMigrationTest do
   @moduledoc """
-  The migration in the README and the one the suite runs are the same two lines.
+  Every call the suite's own migrations make is a call the README shows.
 
-  The support migration exists to exercise the documented path; that is worth nothing the moment the
-  two drift, and a drift of exactly that kind — an unpinned `up()` against a pinned one — is what a
-  review found here.
+  The support migrations exist to exercise the documented path; that is worth nothing the moment the
+  two drift.
   """
   use ExUnit.Case, async: true
 
-  @support "test/support/migrations/20260912000100_add_ithibati.exs"
+  @support Path.wildcard("test/support/migrations/*.exs")
 
-  test "every call the support migration makes appears in the README verbatim" do
+  test "every call the support migrations make appears in the README verbatim" do
     readme = File.read!("README.md")
 
     calls =
       @support
-      |> File.read!()
-      |> then(&Regex.scan(~r/Ithibati\.Migration\.\w+\([^)]*\)/, &1))
+      |> Enum.flat_map(&Regex.scan(~r/Ithibati\.Migration\.\w+\([^)]*\)/, File.read!(&1)))
       |> List.flatten()
+      |> Enum.uniq()
 
-    assert length(calls) == 2, "expected an up and a down call, found: #{inspect(calls)}"
+    names =
+      calls
+      |> Enum.map(&(&1 |> String.split(".") |> Enum.at(2) |> String.split("(") |> hd()))
+      |> Enum.sort()
+
+    assert names == ["down", "up"],
+           "expected an up and a down call, found: #{inspect(calls)}"
 
     for call <- calls do
       assert String.contains?(readme, call), "the README does not show `#{call}`"

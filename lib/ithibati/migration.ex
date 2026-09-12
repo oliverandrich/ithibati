@@ -22,6 +22,7 @@ defmodule Ithibati.Migration do
   """
   use Ecto.Migration
 
+  alias Ithibati.Bootstrap
   alias Ithibati.Config
   alias Ithibati.RecoveryCode
   alias Ithibati.UserKey
@@ -31,7 +32,7 @@ defmodule Ithibati.Migration do
 
   # Ordered as they are created; `down` reverses it, so a table added to one clause cannot be
   # forgotten in the other.
-  @v1_schemas [UserKey, RecoveryCode, UserToken]
+  @v1_schemas [UserKey, RecoveryCode, UserToken, Bootstrap]
 
   @doc "The newest schema version this release knows."
   def current_version, do: @current_version
@@ -123,6 +124,19 @@ defmodule Ithibati.Migration do
 
     create unique_index(source(UserToken), [:token])
     create index(source(UserToken), [:user_id])
+
+    create table(source(Bootstrap), primary_key: false) do
+      add :id, :binary_id, primary_key: true
+      # Nilified rather than cascaded: the account that set an instance up may be deleted, and the
+      # instance is still set up. A cascade here would make a second setup possible again.
+      add :user_id, references(opts.users_table, type: key_type(), on_delete: :nilify_all)
+      add :claimed, :boolean, null: false, default: true
+
+      timestamps(type: :utc_datetime_usec)
+    end
+
+    # The guarantee. Every row carries the same value, so at most one row can exist.
+    create unique_index(source(Bootstrap), [:claimed])
   end
 
   defp step(1, :down, _opts) do
