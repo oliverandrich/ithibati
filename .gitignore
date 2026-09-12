@@ -22,3 +22,10 @@ erl_crash.dump
 # Ignore package tarball (built via "mix hex.build").
 ithibati-*.tar
 
+
+# The issue tracker, deliberately not in the repository. It is a personal tool in a format nobody
+# else reads, and this library ships to strangers — a backlog in the tree is noise for them and
+# archaeology for us the day the tracker is replaced. It also makes the rule keeping bean ids out
+# of the source stronger rather than weaker: nothing here can resolve one.
+/.beans/
+/.beans.yml
