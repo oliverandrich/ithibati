@@ -39,7 +39,7 @@ too, resolved once when the migrations are generated, and so is the **type** of 
 reference implementation is `binary_id` throughout, and a consumer with `bigserial` accounts would
 otherwise be handed a migration that does not fit.
 
-Three things this decision does *not* yet settle, and each of them will otherwise be settled by
+Four things this decision does *not* yet settle, and each of them will otherwise be settled by
 accident while the code is being moved:
 
 - **Which columns the macro contributes, by name.** "Exactly one is the library's business" is the
@@ -57,6 +57,13 @@ accident while the code is being moved:
   with a hardcoded server name, while Phoenix here is an optional dependency — so the core would
   not compile without it. Following decision 3, notification should become the consumer's step, the
   way the content and media calls already did.
+- **What form the library's own migration takes.** A static file under `priv/` cannot be
+  parametrised, and the two things named above — the table's name and its key type — are exactly
+  what it would have to be parametrised by; a template plus a generator task is a second mechanism
+  doing the same job. The proposal is the shape `oban` uses: a module in `lib/` with `up/0` and
+  `down/0` taking those two as options, invoked from a migration the consumer writes in their own
+  `priv/repo/migrations`. It also means `priv/` never has to exist here, which removes a standing
+  hazard — anything placed there is published, and the test suite's own migrations must not be.
 
 ## 3. `Ithibati.Identity` may not name another context
 

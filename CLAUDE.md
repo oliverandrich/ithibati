@@ -69,7 +69,11 @@ stronger here than it looks: nothing in this repository can resolve one.
 - Tests first, and **every new test gets a control check**: break the thing it guards, watch *that
   assertion* go red, restore from a copy. A test that does not go red is not evidence.
 - Before "done": `mise run check` is green. That is the whole gate; `mix precommit` is its Elixir
-  half.
+  half. **It needs a running Postgres**: the suite creates and migrates its own database, but it
+  cannot invent a server. Credentials come from `PGUSER`/`PGPASSWORD`/`PGHOST`/`PGPORT`, defaulting
+  to `postgres`/`postgres` on `localhost:5432`; a local role named anything else has to be passed in
+  (`PGUSER=oa PGPASSWORD= mise run check`). Without a server the run stops in the test helper, naming
+  the address it tried, before any test runs.
 
 ## Scope
 

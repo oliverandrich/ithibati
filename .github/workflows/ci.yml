@@ -17,6 +17,25 @@ jobs:
     name: check
     runs-on: ubuntu-latest
 
+    services:
+      postgres:
+        # A tag, where every action below is pinned by SHA, and the difference is deliberate: an
+        # action runs inside this job with its token and its workspace, while this is a database
+        # the tests reach over TCP. A tag that moves breaks the run visibly; an action that moves
+        # does not.
+        image: postgres:18-alpine
+        # No credentials in the job: config/config.exs falls back to postgres/postgres on
+        # localhost:5432, which is exactly what this container offers.
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
