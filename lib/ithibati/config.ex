@@ -25,8 +25,6 @@ defmodule Ithibati.Config do
       "config :ithibati, users_key_type: must be :binary_id or :id, got: #{inspect(@users_key_type)}"
     )
 
-  @users_table Application.compile_env(:ithibati, :users_table, "users")
-
   @doc "The prefix every table this library owns carries."
   def table_prefix, do: @table_prefix
 
@@ -35,9 +33,33 @@ defmodule Ithibati.Config do
   """
   def table(suffix) when is_binary(suffix), do: "#{@table_prefix}_#{suffix}"
 
-  @doc "The account table this library's foreign keys point at."
-  def users_table, do: @users_table
-
   @doc "The type of that table's primary key, and therefore of every `user_id` here."
   def users_key_type, do: @users_key_type
+
+  @doc """
+  The account schema an application owns, as a module.
+
+  Read at runtime rather than compiled in, because what needs it runs at runtime: a migration asks it
+  for the table accounts live in and the field they are known by.
+  """
+  def user_schema do
+    schema =
+      Application.get_env(:ithibati, :user_schema) ||
+        raise(
+          ArgumentError,
+          "config :ithibati, user_schema: MyApp.Accounts.User — the module that uses " <>
+            "Ithibati.Schema.User. This library is told which schema is yours; it does not guess."
+        )
+
+    # Checked here rather than left to whatever calls it: a module that is merely wrong fails with
+    # `__ithibati__/1 is undefined`, which names neither this library nor the configuration.
+    (Code.ensure_loaded?(schema) and function_exported?(schema, :__ithibati__, 1)) ||
+      raise(
+        ArgumentError,
+        "config :ithibati, user_schema: #{inspect(schema)} — that module does not " <>
+          "`use Ithibati.Schema.User`"
+      )
+
+    schema
+  end
 end

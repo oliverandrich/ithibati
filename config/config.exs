@@ -13,7 +13,7 @@ if config_env() == :test do
     end
   end
 
-  config :ithibati, ecto_repos: [Ithibati.TestRepo]
+  config :ithibati, ecto_repos: [Ithibati.TestRepo], user_schema: Ithibati.TestUser
 
   config :ithibati, Ithibati.TestRepo,
     username: env.("PGUSER", "postgres"),

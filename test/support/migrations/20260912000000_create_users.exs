@@ -12,7 +12,5 @@ defmodule Ithibati.TestRepo.Migrations.CreateUsers do
 
       timestamps(type: :utc_datetime_usec)
     end
-
-    create unique_index(:users, [:email])
   end
 end

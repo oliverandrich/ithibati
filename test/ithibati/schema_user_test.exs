@@ -57,7 +57,7 @@ defmodule Ithibati.Schema.UserTest do
         )
 
       assert Enum.sort(injected.__info__(:functions) -- plain.__info__(:functions)) ==
-               [__ithibati_identifier__: 0, identifier_changeset: 2, passkey_display_name: 1]
+               [__ithibati__: 1, identifier_changeset: 2, passkey_display_name: 1]
     end
   end
 
@@ -94,7 +94,29 @@ defmodule Ithibati.Schema.UserTest do
         )
 
       assert module.__schema__(:fields) == [:id, :handle]
-      assert module.__ithibati_identifier__() == :handle
+      assert module.__ithibati__(:identifier) == :handle
+    end
+
+    # Reachable by importing the macro by hand rather than through `use`, which otherwise compiles a
+    # field named `nil`.
+    test "cannot be declared without the macro that decides what it is" do
+      # Elixir warns about the missing attribute on its own; captured because a warning is what this
+      # turns into a refusal, and the suite should not print it as if something went wrong here.
+      ExUnit.CaptureIO.capture_io(:stderr, fn ->
+        assert_raise ArgumentError, ~r/needs `use Ithibati.Schema.User` above it/, fn ->
+          probe("BareImport", "import Ithibati.Schema.User, only: [ithibati_account: 0]",
+            inside: "ithibati_account()"
+          )
+        end
+      end)
+    end
+
+    # The shape another macro forwarding its own options produces. Without this it fails inside
+    # `Keyword.get/3`, naming an Elixir internal rather than this library.
+    test "options have to be a literal list, not something to be worked out later" do
+      assert_raise ArgumentError, ~r/takes a literal keyword list/, fn ->
+        probe("Forwarded", "@opts [identifier: :email]\n  use Ithibati.Schema.User, @opts")
+      end
     end
 
     test "has to reach the schema block, or the module does not compile" do
@@ -103,13 +125,13 @@ defmodule Ithibati.Schema.UserTest do
       end
     end
 
-    # At arity zero Elixir does not warn about a redefinition, so this has to be refused rather than
-    # noticed.
+    # A clause of the application's own would win by clause order, so this has to be refused rather
+    # than noticed.
     test "cannot be answered by a function of the application's own" do
       assert_raise ArgumentError, ~r/silently replaces the library/, fn ->
         probe("Shadow", "use Ithibati.Schema.User, identifier: :email",
           inside: "ithibati_account()",
-          after_schema: "def __ithibati_identifier__, do: :something_else"
+          after_schema: "def __ithibati__(:identifier), do: :something_else"
         )
       end
     end
@@ -127,7 +149,7 @@ defmodule Ithibati.Schema.UserTest do
 
     test "is the field the schema declares and the one the library reads" do
       for {schema, identifier, _own} <- @fixtures do
-        assert schema.__ithibati_identifier__() == identifier
+        assert schema.__ithibati__(:identifier) == identifier
       end
     end
 

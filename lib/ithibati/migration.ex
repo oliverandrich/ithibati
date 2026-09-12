@@ -13,12 +13,12 @@ defmodule Ithibati.Migration do
       these tables. A release that adds to the schema reaches a consumer as a second migration of
       their own saying where it starts; what has already been applied is recorded where Ecto records
       it, in that application's own `schema_migrations`.
-    * `:users_table` — the account table the foreign keys point at. Defaults to the configured one.
 
-  The tables' own names and the type of their foreign key are deliberately **not** options. They are
-  read from the schemas that will go on to query these tables, so the two cannot disagree — an
-  argument could have built `x_tokens` while `Ithibati.UserToken` went on looking for
-  `ithibati_tokens`, and nothing would have failed at the time the mistake was made.
+  Every table name and the type of the foreign key are deliberately **not** options. They are read
+  from the schemas that will go on to query these tables — this library's own, and the account schema
+  `config :ithibati, user_schema:` names — so the two cannot disagree. An argument could have built
+  `x_tokens` while `Ithibati.UserToken` went on looking for `ithibati_tokens`, and nothing would have
+  failed at the time the mistake was made.
   """
   use Ecto.Migration
 
@@ -74,7 +74,7 @@ defmodule Ithibati.Migration do
     %{
       version: version,
       from: from,
-      users_table: Keyword.get(opts, :users_table, Config.users_table())
+      users_table: Config.user_schema().__schema__(:source)
     }
   end
 
@@ -125,6 +125,8 @@ defmodule Ithibati.Migration do
     create unique_index(source(UserToken), [:token])
     create index(source(UserToken), [:user_id])
 
+    account_index(opts, :up)
+
     create table(source(Bootstrap), primary_key: false) do
       add :id, :binary_id, primary_key: true
       # Nilified rather than cascaded: the account that set an instance up may be deleted, and the
@@ -139,8 +141,60 @@ defmodule Ithibati.Migration do
     create unique_index(source(Bootstrap), [:claimed])
   end
 
-  defp step(1, :down, _opts) do
+  defp step(1, :down, opts) do
+    account_index(opts, :down)
+
     for schema <- Enum.reverse(@v1_schemas), do: drop(table(source(schema)))
+  end
+
+  # The account lookup this library performs is `Repo.get_by/3`, which raises on a second match
+  # rather than signing anybody in — so the unique index on the identifier is not decoration, and
+  # leaving it to an application to remember would be requiring something and then hoping.
+  #
+  # Skipped when the schema passed `constraint_name:`, which is how an application says it maintains
+  # its own — a partial, expression or composite index this library has no business guessing at.
+  defp account_index(opts, direction) do
+    schema = Config.user_schema()
+
+    case {schema.__ithibati__(:constraint), direction} do
+      {nil, :up} ->
+        create(unique_index(opts.users_table, [schema.__ithibati__(:identifier)]))
+
+      # Not `drop/1`: the decision is read from configuration that can change between the two runs,
+      # and a rollback that dies half-way is worse than one that finds nothing to remove.
+      {nil, :down} ->
+        drop_if_exists(unique_index(opts.users_table, [schema.__ithibati__(:identifier)]))
+
+      {name, :up} ->
+        confirm_index!(name)
+
+      {_name, :down} ->
+        :ok
+    end
+  end
+
+  # Saying "I maintain my own" and then not having one is the same failure this whole arrangement
+  # exists to prevent, one level up: the migration would succeed, no unique index would exist, and
+  # the crash would arrive at somebody's second registration. So the claim is checked rather than
+  # believed.
+  defp confirm_index!(name) do
+    # `create/1` queues its statement and `Ecto.Migration` runs the queue at the end, while a query
+    # runs at once — so without this the check would look for an index the calling migration has
+    # asked for but not yet created, and refuse a consumer who did everything right.
+    flush()
+
+    qualified = if p = prefix(), do: "#{p}.#{name}", else: to_string(name)
+
+    %{rows: [[oid]]} = repo().query!("SELECT to_regclass($1)", [qualified])
+
+    oid ||
+      raise(
+        ArgumentError,
+        "no index named #{qualified} — #{inspect(Config.user_schema())} passes " <>
+          "`constraint_name: #{inspect(name)}`, which tells this library the application maintains " <>
+          "the unique index on its identifier itself. Create it, or drop the option and let this " <>
+          "library create one."
+      )
   end
 
   defp source(schema), do: schema.__schema__(:source)

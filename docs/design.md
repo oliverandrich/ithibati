@@ -75,6 +75,13 @@ to protect, and the full grammar accepts quoted local parts with spaces in them 
 than a feature. It also does not demand a dot in the domain, because `you@localhost` is a real
 address on a self-hosted instance.
 
+**The unique index on that column is the library's to create, not the application's to remember.**
+Account lookup is `Repo.get_by/3`, which raises on a second match rather than signing anybody in — so
+the index is a requirement, and a requirement somebody can forget is the arrangement this document
+rejected for the bootstrap guarantee. `constraint_name:` is the opt-out and names the index an
+application maintains itself, which is the case where the shape is genuinely theirs: partial,
+expression, `citext`, composite with a tenant column.
+
 Whatever the field is called, values written through the library's changeset are trimmed and
 lowercased. That is what makes a plain unique index refuse a capitalisation of a name somebody already has, with no functional index for an
 application to remember; a capitalisation worth keeping is a display concern, and display belongs to

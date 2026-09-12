@@ -22,10 +22,17 @@ defmodule Ithibati.MigrationTest do
   defmodule Probe do
     use Ecto.Migration
 
-    # The account table is the consumer's, so the probe brings its own before asking for the rest.
+    # The account table is the consumer's, so the probe brings its own before asking for the rest —
+    # and, when the configured schema says it maintains its own unique index, that too. It is playing
+    # the application's part in both cases.
     def up do
       create table(:users, primary_key: false) do
         add :id, :binary_id, primary_key: true
+        add :email, :string
+      end
+
+      if name = Ithibati.Config.user_schema().__ithibati__(:constraint) do
+        create unique_index(:users, [:email], name: name)
       end
 
       Ithibati.Migration.up(version: 1)
@@ -35,6 +42,23 @@ defmodule Ithibati.MigrationTest do
       Ithibati.Migration.down(version: 1)
       drop table(:users)
     end
+  end
+
+  # The same, minus the index — so a schema that claims to maintain its own can be driven against a
+  # database where it does not exist.
+  defmodule ProbeWithoutIndex do
+    use Ecto.Migration
+
+    def up do
+      create table(:users, primary_key: false) do
+        add :id, :binary_id, primary_key: true
+        add :email, :string
+      end
+
+      Ithibati.Migration.up(version: 1)
+    end
+
+    def down, do: :ok
   end
 
   # The sandbox is switched off for this module rather than checked out: `Ecto.Migrator` does its
@@ -71,6 +95,36 @@ defmodule Ithibati.MigrationTest do
     assert missing() == tables()
   end
 
+  # The account lookup is `Repo.get_by/3`, which raises on a second match rather than signing anybody
+  # in — so this index is a requirement, and requiring something an application has to remember is
+  # what this arrangement exists to avoid.
+  test "the unique index its own lookup depends on is one of the things it creates" do
+    :ok = migrate(:up)
+
+    assert "users_email_index" in indexes("users")
+  end
+
+  test "and it is not, when the application said it maintains its own" do
+    as_account_schema(Ithibati.OptedOutUser)
+
+    :ok = migrate(:up)
+
+    # Exactly the application's own, and no second one beside it. A redundant unique index breaks
+    # nothing and would therefore never be noticed, which is why this reads the catalogue rather than
+    # a changeset.
+    assert Enum.reject(indexes("users"), &String.ends_with?(&1, "_pkey")) == ["users_email_uniq"]
+  end
+
+  # Saying "I maintain my own" and not having one is the same failure the creation exists to prevent,
+  # so the claim is checked rather than believed.
+  test "and a claimed index that does not exist stops the migration" do
+    as_account_schema(Ithibati.OptedOutUser)
+
+    assert_raise ArgumentError, ~r/no index named probe.users_email_uniq/, fn ->
+      Ecto.Migrator.up(TestRepo, @version + 1, ProbeWithoutIndex, prefix: @schema, log: false)
+    end
+  end
+
   test "the foreign key takes the account table's key type" do
     :ok = migrate(:up)
 
@@ -104,6 +158,21 @@ defmodule Ithibati.MigrationTest do
       )
 
     type
+  end
+
+  defp as_account_schema(module) do
+    Application.put_env(:ithibati, :user_schema, module)
+    on_exit(fn -> Application.put_env(:ithibati, :user_schema, Ithibati.TestUser) end)
+  end
+
+  defp indexes(table) do
+    %{rows: rows} =
+      query("SELECT indexname FROM pg_indexes WHERE schemaname = $1 AND tablename = $2", [
+        @schema,
+        table
+      ])
+
+    rows |> List.flatten() |> Enum.sort()
   end
 
   defp query(sql, params), do: TestRepo.query!(sql, params, log: false)

@@ -28,9 +28,9 @@ defmodule Ithibati.Schema.User do
 
     * `identifier:` — required, a literal atom: the field an account is known by.
     * `format:` — optional, a regular expression, evaluated once when your module compiles.
-    * `constraint_name:` — optional, needed when the unique index on that column carries a name Ecto
-      would not derive. Without it a duplicate arrives as an `Ecto.ConstraintError` rather than as a
-      changeset error.
+    * `constraint_name:` — optional, and an opt-out: say it when your application maintains the
+      unique index on that column itself, and this library will not create one. Name it, because
+      the constraint still has to match.
 
   Whatever the field is called, values written through `identifier_changeset/2` are trimmed and
   lowercased.
@@ -41,13 +41,12 @@ defmodule Ithibati.Schema.User do
   ## What it injects, and what it refuses
 
   One field, three associations, and three functions: `identifier_changeset/2`,
-  `passkey_display_name/1` (overridable, `nil` by default) and `__ithibati_identifier__/0`. The list
+  `passkey_display_name/1` (overridable, `nil` by default) and `__ithibati__/1`. The list
   is pinned in `Ithibati.Schema.UserTest` against a schema that does not use this macro, so a fourth
   one has to be a decision.
 
   Two things it refuses, both at compile time: a module that never calls `ithibati_account/0` inside
-  its schema block, and one that defines `identifier_changeset/2` or `__ithibati_identifier__/0`
-  itself.
+  its schema block, and one that defines `identifier_changeset/2` or `__ithibati__/1` itself.
   """
 
   import Ecto.Changeset
@@ -137,8 +136,12 @@ defmodule Ithibati.Schema.User do
     constraint = Module.get_attribute(env.module, :ithibati_constraint)
 
     quote do
-      @doc "The field this account is known by."
-      def __ithibati_identifier__, do: unquote(field)
+      @doc """
+      What this library was told about this schema: `:identifier` is the field an account is known
+      by, `:constraint` the unique index name the application said it maintains itself, or `nil`.
+      """
+      def __ithibati__(:identifier), do: unquote(field)
+      def __ithibati__(:constraint), do: unquote(constraint)
 
       @doc """
       Casts and validates the identifier, and declares the constraint this library relies on.
@@ -161,10 +164,10 @@ defmodule Ithibati.Schema.User do
     end
   end
 
-  # At arity zero Elixir does not warn about a redefinition, so a consumer's own
-  # `__ithibati_identifier__/0` would silently stand in front of this one.
+  # A consumer's own clause for `__ithibati__(:identifier)` would win by clause order, and the
+  # library's would never run.
   defp refuse_shadowing!(env) do
-    Enum.each([__ithibati_identifier__: 0, identifier_changeset: 2], fn {name, arity} ->
+    Enum.each([__ithibati__: 1, identifier_changeset: 2], fn {name, arity} ->
       Module.defines?(env.module, {name, arity}) &&
         raise(
           ArgumentError,
@@ -242,16 +245,17 @@ defmodule Ithibati.Schema.User do
     end
   end
 
-  # Returns the options `unique_constraint/3` takes, so there is nothing to translate later.
+  # The bare name, because two callers want different things from it: the changeset needs an option
+  # list, and the migration needs to know whether one was given at all.
   defp constraint_name!(opts) do
     case Keyword.fetch(opts, :constraint_name) do
       :error ->
-        []
+        nil
 
       # `true`/`false` are atoms too, and a constraint named "true" matches no index — every
       # duplicate would then surface as the `Ecto.ConstraintError` this option exists to prevent.
       {:ok, name} when is_atom(name) and name not in [nil, true, false] ->
-        [name: name]
+        name
 
       {:ok, other} ->
         raise ArgumentError, "`constraint_name:` must be an atom, got: #{Macro.to_string(other)}"
@@ -259,15 +263,18 @@ defmodule Ithibati.Schema.User do
   end
 
   @doc false
-  def __changeset__(account_or_changeset, attrs, field, format, unique_opts) do
+  def __changeset__(account_or_changeset, attrs, field, format, constraint) do
     account_or_changeset
     |> cast(attrs, [field])
     |> update_change(field, &normalize/1)
     |> validate_required([field])
     |> validate_pattern(field, format)
     |> validate_length(field, max: @max)
-    |> unique_constraint(field, unique_opts)
+    |> unique_constraint(field, unique_opts(constraint))
   end
+
+  defp unique_opts(nil), do: []
+  defp unique_opts(name), do: [name: name]
 
   defp validate_pattern(changeset, _field, nil), do: changeset
   defp validate_pattern(changeset, field, format), do: validate_format(changeset, field, format)
@@ -285,10 +292,10 @@ defmodule Ithibati.Schema.User do
   instance has no account at all, which is why the second clause exists.
   """
   def credential_user(%module{} = account) do
-    function_exported?(module, :__ithibati_identifier__, 0) ||
+    function_exported?(module, :__ithibati__, 1) ||
       raise(ArgumentError, "#{inspect(module)} does not `use Ithibati.Schema.User`")
 
-    identifier = Map.fetch!(account, module.__ithibati_identifier__())
+    identifier = Map.fetch!(account, module.__ithibati__(:identifier))
 
     %{name: identifier, display_name: module.passkey_display_name(account) || identifier}
   end

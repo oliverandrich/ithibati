@@ -76,9 +76,9 @@ use User, identifier: :handle
 ```
 
 `format:` is optional, and `email_format/0` offers a pattern for addresses rather than imposing
-one. `constraint_name:` is optional too, for when your unique index carries a name Ecto would not
-derive — see the migration below. Values written through `identifier_changeset/2` are trimmed and
-lowercased, so a plain unique index refuses `AdaLovelace`
+one. `constraint_name:` is an opt-out: say it when your application maintains the unique index on
+that column itself, and this library will not create one — name it, because the constraint still has
+to match. Values written through `identifier_changeset/2` are trimmed and lowercased, so a plain unique index refuses `AdaLovelace`
 beside `adalovelace` with no functional index for you to remember — a write that bypasses the
 changeset stores whatever it is given.
 
@@ -111,17 +111,16 @@ Pin the version, as above. An unpinned call would mean a different set of tables
 it runs, and a rollback that undoes neither.
 
 That creates `ithibati_keys`, `ithibati_recovery_codes`, `ithibati_tokens` and `ithibati_bootstrap`,
-each with a foreign key to your own account table. The one column the schema macro adds is yours to
-create, on your own table, in your own migration:
+each with a foreign key to your own account table — and the unique index on your identifier column,
+because account lookup is `Repo.get_by/3`, which raises on a second match rather than signing anybody
+in. The column itself is yours to add, on your own table:
 
 ```elixir
 add :username, :string, null: false
-create unique_index(:users, [:username])
 ```
 
-Name the column and the index after whatever you passed to `identifier:`. If your index carries a
-name Ecto would not derive — many teams name theirs by a house convention — say so, or a duplicate
-arrives as an `Ecto.ConstraintError` instead of a message on a form:
+If you would rather maintain that index yourself — a partial one, an expression, `citext`, or a
+composite with a tenant column — say so and name it, and this library will leave it alone:
 
 ```elixir
 # in your migration
@@ -135,9 +134,9 @@ Configure anything that does not match the defaults:
 
 ```elixir
 config :ithibati,
-  users_table: "accounts",     # default "users" — read when a migration runs
-  users_key_type: :id,         # default :binary_id — compiled into the schemas
-  table_prefix: "auth"         # default "ithibati" — compiled into the schemas
+  user_schema: MyApp.Accounts.User,   # required — the module that uses Ithibati.Schema.User
+  users_key_type: :id,                # default :binary_id — compiled into the schemas
+  table_prefix: "auth"                # default "ithibati" — compiled into the schemas
 ```
 
 The last two are read when this library is compiled, so changing them recompiles it; Elixir refuses
