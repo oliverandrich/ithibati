@@ -28,13 +28,14 @@ the grant into one transaction with the library's half.
 
 ## Design
 
-Five decisions shape it, and [`docs/design.md`](docs/design.md) carries each one with its reasoning:
+Six decisions shape it, and [`docs/design.md`](docs/design.md) carries each one with its reasoning:
 
 1. [The name](docs/design.md#1-the-name)
 2. [The application owns the `users` table](docs/design.md#2-the-application-owns-the-users-table)
 3. [`Ithibati.Identity` may not name another context](docs/design.md#3-ithibatiidentity-may-not-name-another-context)
 4. [A grant is `Ecto.Multi` composition, not an event](docs/design.md#4-a-grant-is-ectomulti-composition-not-an-event)
 5. [Non-browser clients ride on the token, not on OAuth2](docs/design.md#5-non-browser-clients-the-token-is-the-boundary-not-oauth2)
+6. [No authenticator name data ships with it](docs/design.md#6-no-authenticator-name-data-ships-with-this-library)
 
 ## The account schema
 

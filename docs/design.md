@@ -190,3 +190,31 @@ What follows from that, and what does not:
   one. An extension opening a normal page once, and receiving a token, sidesteps the origin
   question entirely. Native passkeys, with their associated-domain files, are worth it for an app
   and are opt-in.
+
+## 6. No authenticator name data ships with this library
+
+A passkey could be labelled with the product it lives in — "1Password", "YubiKey 5 Series" — by
+mapping the AAGUID an authenticator reports to a name. This library does not do that, and does not
+ship, download or bundle any such list.
+
+The reason is not taste. The list every implementation uses is
+`passkeydeveloper/passkey-authenticator-aaguids`, which **declares no licence**: asked three times
+between 2023 and 2025 to add one, the maintainer closed the last two as *not planned* — "there are
+no current plans to add a license as it will be going away shortly" — and answered the direct
+question about embedding with "it is dynamic and is not intended to be embedded anywhere". The
+repository's own README says its contents will one day be replaced by an empty object. The
+authoritative alternative, FIDO's Metadata Service, carries usage terms embedded in every BLOB that
+have to be agreed to.
+
+So: no licence, against the author's stated intent, and a source that is going away. Under German
+law the database right in §87a UrhG applies to a curated collection like this independently of any
+creative height, which is exactly the case it exists for.
+
+The consequence reaches further than the data. Requesting `direct` attestation is what makes an
+authenticator disclose its AAGUID at all; without the label there is nothing to do with it, so
+registration asks for `attestation: "none"`. That is the better default anyway — `direct` can carry
+a certificate identifying the authenticator model, and some platforms ask the person to consent to
+sending it. Asking for something and then not policing it is worse than not asking.
+
+A label still exists: whatever the browser reported, or "Passkey". An application that wants product
+names can map them itself, having read the terms of whichever list it chooses.
