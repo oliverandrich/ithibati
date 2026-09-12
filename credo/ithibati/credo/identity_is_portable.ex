@@ -39,6 +39,11 @@ defmodule Ithibati.Credo.IdentityIsPortable do
 
   # Matched in the AST rather than against a filename. A path has to be kept equal to where the
   # module actually is, by hand and by a test; `defmodule` cannot drift from the module it declares.
+  #
+  # A prefix, not one name: the portable half is `Ithibati.Identity.Passkeys`,
+  # `Ithibati.Identity.Tokens` and whatever joins them, and a list of exact names would leave the
+  # next one unguarded until somebody remembered this file — which is the failure that is silent and
+  # points the wrong way. `Ithibati.Identity` itself is covered in case it ever exists again.
   @guarded [:Ithibati, :Identity]
 
   @impl true
@@ -65,7 +70,9 @@ defmodule Ithibati.Credo.IdentityIsPortable do
     |> Enum.reverse()
   end
 
-  defp declares_guarded?({:defmodule, _meta, [{:__aliases__, _, @guarded} | _rest]}), do: true
+  defp declares_guarded?({:defmodule, _meta, [{:__aliases__, _, segments} | _rest]}),
+    do: List.starts_with?(segments, @guarded)
+
   defp declares_guarded?({:__block__, _meta, nodes}), do: Enum.any?(nodes, &declares_guarded?/1)
   defp declares_guarded?(_node), do: false
 
@@ -80,7 +87,12 @@ defmodule Ithibati.Credo.IdentityIsPortable do
   # own node with no prefix, so the clause above cannot see it. No such clause is needed for the
   # optional dependencies — a bare `Phoenix` node is refused on its own, where a bare `Ithibati` one
   # is not.
-  defp collect({{:., _dot, [{:__aliases__, _, [:Ithibati]}, :{}]}, meta, parts}, acc, im, guarded?) do
+  defp collect(
+         {{:., _dot, [{:__aliases__, _, [:Ithibati]}, :{}]}, meta, parts},
+         acc,
+         im,
+         guarded?
+       ) do
     parts
     |> Enum.flat_map(&refused_part(&1, guarded?))
     |> Enum.reduce(acc, &[issue_for(im, meta[:line], &1) | &2])
@@ -97,10 +109,15 @@ defmodule Ithibati.Credo.IdentityIsPortable do
 
   # `Elixir.Phoenix.PubSub` is the same reference written out; the compiler strips the prefix and so
   # does this.
-  defp refuse([:Elixir | rest], guarded?), do: refuse(rest, guarded?)
+  defp refuse([:"Elixir" | rest], guarded?), do: refuse(rest, guarded?)
 
   defp refuse([root | _rest] = segments, _guarded?) when root in @optional_deps,
     do: {:optional_dep, segments |> Enum.take(2) |> Name.full()}
+
+  # A clause rather than an entry on the list above, which matches the second segment alone and would
+  # have admitted every `Ithibati.Schema.*` there will ever be. `Ithibati.Schema.User` is this
+  # library's own contract with the account, and the ceremony asks it what belongs in a credential.
+  defp refuse([:Ithibati, :Schema, :User], true), do: nil
 
   defp refuse([:Ithibati, sibling | _rest], true) when sibling not in @allowed,
     do: {:not_allowed, Name.full([:Ithibati, sibling])}

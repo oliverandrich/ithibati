@@ -1,11 +1,11 @@
-defmodule Ithibati.Identity do
+defmodule Ithibati.Identity.Tokens do
   @moduledoc """
-  Who someone is and how they prove it.
+  Revocable credentials: what an account is issued once it has proved who it is.
 
-  So far that is the revocable token a cookie or a bearer header carries. What `generate_token/2`
-  returns is URL-safe text and the row holds only its sha256 — decision 5 in `docs/design.md` says
-  why, and that decision is also why every function here takes the context the token belongs to,
-  with `"session"` as a one-argument convenience beside it.
+  What `generate_token/2` returns is URL-safe text and the row holds only its sha256, so a database
+  dump is not a set of live sessions. Every function takes the context the token belongs to, with
+  `"session"` as a one-argument convenience beside it — a device token for an extension or a native
+  app is then the same record with a different word in it. Decision 5 in `docs/design.md` says why.
   """
 
   import Ecto.Query
@@ -27,6 +27,12 @@ defmodule Ithibati.Identity do
   # `DateTime.shift/2`'s, not ours.
   @units [:second, :minute, :hour, :day, :week]
 
+  ## The WebAuthn ceremony
+
+  # WebAuthn Level 2, §5.1.3: a relying party must reject a credential id longer than 1023 bytes.
+  # `Wax` does not — the length prefix is 16 bits, so an authenticator may claim up to 65535 — and
+  # what arrives here is the browser's, which makes the size somebody else's choice.
+
   @doc """
   Mints a token for the account in this context and returns it as URL-safe text.
 
@@ -36,7 +42,7 @@ defmodule Ithibati.Identity do
     %{id: user_id} = Config.account!(account)
     known_context!(context)
 
-    token = @bytes |> :crypto.strong_rand_bytes() |> Base.url_encode64(padding: false)
+    token = @bytes |> :crypto.strong_rand_bytes() |> url64()
 
     Config.repo().insert!(
       UserToken.changeset(%UserToken{}, %{
@@ -149,6 +155,10 @@ defmodule Ithibati.Identity do
           "config :ithibati, token_validity: #{inspect(context)} => #{inspect(other)} — " <>
             "expected {count, unit} with a positive count and a unit in #{inspect(@units)}"
   end
+
+  # Unpadded, because a token travels in headers, cookies and URLs, and `=` is punctuation in
+  # all three.
+  defp url64(value), do: Base.url_encode64(value, padding: false)
 
   defp digest(token), do: :crypto.hash(:sha256, token)
 end

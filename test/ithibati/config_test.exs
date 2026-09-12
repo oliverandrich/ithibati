@@ -62,15 +62,18 @@ defmodule Ithibati.ConfigTest do
     # those comparisons move together, and a CI leg whose environment variable never arrived would
     # pass while testing the default a second time.
     test "is the type the environment asked for" do
-      case System.get_env("ITHIBATI_USERS_KEY_TYPE") do
-        "id" ->
-          assert Config.users_key_type() == :id
-          assert TestKey.postgres_type() == "bigint"
+      # Compared against a value read at *runtime* rather than written into each branch: the
+      # configured type is a compile-time constant, so a literal on the right makes one branch
+      # statically false, and Elixir says so — in a test file, where nothing turns that into an
+      # error.
+      expected =
+        case System.get_env("ITHIBATI_USERS_KEY_TYPE") do
+          "id" -> :id
+          unset when unset in [nil, "", "binary_id"] -> :binary_id
+        end
 
-        default when default in [nil, "", "binary_id"] ->
-          assert Config.users_key_type() == :binary_id
-          assert TestKey.postgres_type() == "uuid"
-      end
+      assert Config.users_key_type() == expected
+      assert TestKey.postgres_type() == %{binary_id: "uuid", id: "bigint"}[expected]
     end
   end
 

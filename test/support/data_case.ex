@@ -20,6 +20,7 @@ defmodule Ithibati.DataCase do
       alias Ithibati.GuestUser
       alias Ithibati.MemberUser
       alias Ithibati.NamedUser
+      alias Ithibati.TestCredentials
       alias Ithibati.TestRepo
       alias Ithibati.TestUser
     end
@@ -54,6 +55,26 @@ defmodule Ithibati.DataCase do
       |> Ithibati.TestRepo.insert()
 
     user
+  end
+
+  @doc """
+  A credential row belonging to `user`.
+
+  Its key material is random bytes and verifies nothing, which is all a test about *rows* needs —
+  one that counts credentials, or checks which are excluded from a registration.
+  `Ithibati.TestCredentials.credential/0` is the real pair, and it costs a P-256 key generation;
+  reach for it only where a signature or an attestation is actually checked.
+  """
+  def key_fixture(user, attrs \\ %{}) do
+    defaults = %{
+      user_id: user.id,
+      key_id: :crypto.strong_rand_bytes(16),
+      public_key: :erlang.term_to_binary(%{stand_in: :crypto.strong_rand_bytes(32)})
+    }
+
+    Ithibati.TestRepo.insert!(
+      Ithibati.UserKey.changeset(%Ithibati.UserKey{}, Map.merge(defaults, attrs))
+    )
   end
 
   setup tags do

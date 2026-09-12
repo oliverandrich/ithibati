@@ -7,8 +7,20 @@ defmodule Ithibati.Credo.IdentityIsPortableTest do
 
   alias Ithibati.Credo.IdentityIsPortable
 
-  defp check(source, filename \\ "lib/ithibati/identity.ex") do
+  defp check(source, filename \\ "lib/ithibati/identity/tokens.ex") do
     source |> to_source_file(filename) |> run_check(IdentityIsPortable)
+  end
+
+  # The guard is a prefix, so a module added beside the others is covered without anyone editing the
+  # check — which is the direction that matters, because forgetting leaves code *unguarded*.
+  test "a module nested under the guarded namespace is guarded too" do
+    """
+    defmodule Ithibati.Identity.Passkeys do
+      alias Ithibati.Sites
+    end
+    """
+    |> check("lib/ithibati/identity/passkeys.ex")
+    |> assert_issue(&assert(&1.trigger == "Ithibati.Sites"))
   end
 
   describe "the allow-list, which is the guarded module's alone" do

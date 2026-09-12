@@ -1,13 +1,13 @@
-defmodule Ithibati.IdentityValidityTest do
+defmodule Ithibati.Identity.TokensValidityTest do
   @moduledoc """
   How long a token lives, and what this library says when the setting that decides it is wrong.
 
-  Not async: it moves the application environment `Ithibati.Identity` reads. The happy paths that
+  Not async: it moves the application environment `Ithibati.Identity.Tokens` reads. The happy paths that
   need no such move live in `Ithibati.IdentityTokenTest`.
   """
   use Ithibati.DataCase, async: false
 
-  alias Ithibati.Identity
+  alias Ithibati.Identity.Tokens
 
   setup do
     configured = Application.fetch_env(:ithibati, :token_validity)
@@ -25,10 +25,10 @@ defmodule Ithibati.IdentityValidityTest do
   test "session has a validity even when the application configures none", %{user: user} do
     Application.delete_env(:ithibati, :token_validity)
 
-    token = Identity.generate_session_token(user)
+    token = Tokens.generate_session_token(user)
 
-    assert Identity.get_user_by_session_token(token)
-    refute backdated(token, days(61)) |> Identity.get_user_by_session_token()
+    assert Tokens.get_user_by_session_token(token)
+    refute backdated(token, days(61)) |> Tokens.get_user_by_session_token()
   end
 
   # Merged rather than replaced: an application that adds a context for its extension must not have
@@ -36,16 +36,16 @@ defmodule Ithibati.IdentityValidityTest do
   test "a configured context is added to session, not swapped for it", %{user: user} do
     Application.put_env(:ithibati, :token_validity, %{"device" => {90, :day}})
 
-    assert Identity.generate_token(user, "device")
-    assert Identity.generate_session_token(user)
+    assert Tokens.generate_token(user, "device")
+    assert Tokens.generate_session_token(user)
   end
 
   test "an application may override session too", %{user: user} do
     Application.put_env(:ithibati, :token_validity, %{"session" => {1, :second}})
 
-    token = Identity.generate_session_token(user)
+    token = Tokens.generate_session_token(user)
 
-    refute backdated(token, 5) |> Identity.get_user_by_session_token()
+    refute backdated(token, 5) |> Tokens.get_user_by_session_token()
   end
 
   describe "a setting this library will not run on" do
@@ -69,7 +69,7 @@ defmodule Ithibati.IdentityValidityTest do
         Application.put_env(:ithibati, :token_validity, unquote(Macro.escape(value)))
 
         assert_raise ArgumentError, unquote(Macro.escape(pattern)), fn ->
-          Identity.generate_session_token(user)
+          Tokens.generate_session_token(user)
         end
       end
     end
@@ -81,13 +81,13 @@ defmodule Ithibati.IdentityValidityTest do
     } do
       Application.put_env(:ithibati, :token_validity, %{"device" => {3, :month}})
 
-      assert_raise ArgumentError, ~r/:month/, fn -> Identity.generate_session_token(user) end
+      assert_raise ArgumentError, ~r/:month/, fn -> Tokens.generate_session_token(user) end
     end
   end
 
   test "a context nobody configured says which key would configure it", %{user: user} do
     assert_raise ArgumentError, ~r/no validity is configured for that context/, fn ->
-      Identity.generate_token(user, "no-such-context")
+      Tokens.generate_token(user, "no-such-context")
     end
   end
 

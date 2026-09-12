@@ -11,7 +11,7 @@ defmodule Ithibati.Config do
   consuming application's modules compile after the dependencies they use.
 
   Settings that are a rule rather than a value live with the rule: `config :ithibati,
-  token_validity:` is read by `Ithibati.Identity`, which is also what decides that a validity is a
+  token_validity:` is read by `Ithibati.Identity.Tokens`, which is also what decides that a validity is a
   count and a unit.
   """
 

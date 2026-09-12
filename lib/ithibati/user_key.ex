@@ -34,11 +34,30 @@ defmodule Ithibati.UserKey do
     user_key
     |> cast(attrs, [:key_id, :public_key, :label, :last_used_at, :user_id])
     |> validate_required([:key_id, :public_key, :user_id])
-    |> update_change(:label, &cut/1)
+    |> put_label()
     |> unique_constraint(:key_id)
     |> foreign_key_constraint(:user_id)
   end
 
-  defp cut(nil), do: nil
-  defp cut(label), do: label |> String.slice(0, @label_max) |> String.trim_trailing()
+  # Every write path goes through here, which is why the fallback lives here rather than at the one
+  # caller that happens to assemble a credential: a person who leaves the nickname box alone sends a
+  # blank string, not an absent one, and a nameless row in the passkey list is the case a fallback
+  # exists for. There is deliberately no third source for the name — see decision 6.
+  @fallback "Passkey"
+
+  # `put_change/3` rather than `update_change/3`, which only fires for a field the changeset already
+  # regards as changed — and casting `nil` over `nil` is not a change, so the row that needs the
+  # fallback most is the one `update_change/3` skips.
+  defp put_label(changeset) do
+    put_change(changeset, :label, cut(get_field(changeset, :label)))
+  end
+
+  defp cut(nil), do: @fallback
+
+  defp cut(label) do
+    case label |> String.slice(0, @label_max) |> String.trim() do
+      "" -> @fallback
+      trimmed -> trimmed
+    end
+  end
 end

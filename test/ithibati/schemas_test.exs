@@ -51,6 +51,38 @@ defmodule Ithibati.SchemasTest do
     assert %RecoveryCode{used_at: ^spent_at} = TestRepo.get!(RecoveryCode, code.id)
   end
 
+  # Every write path goes through the changeset, which is why the fallback lives there: a person who
+  # leaves the nickname box alone sends a blank string, not an absent one.
+  test "a passkey with no name gets one", %{user: user} do
+    for label <- [nil, "", "   "] do
+      {:ok, key} =
+        %UserKey{}
+        |> UserKey.changeset(%{
+          key_id: :crypto.strong_rand_bytes(16),
+          public_key: <<1>>,
+          label: label,
+          user_id: user.id
+        })
+        |> TestRepo.insert()
+
+      assert key.label == "Passkey"
+    end
+  end
+
+  test "and one that has a name keeps it", %{user: user} do
+    {:ok, key} =
+      %UserKey{}
+      |> UserKey.changeset(%{
+        key_id: :crypto.strong_rand_bytes(16),
+        public_key: <<1>>,
+        label: "  Oliver's phone  ",
+        user_id: user.id
+      })
+      |> TestRepo.insert()
+
+    assert key.label == "Oliver's phone"
+  end
+
   test "a token round-trips and carries its context", %{user: user} do
     {:ok, token} =
       %UserToken{}

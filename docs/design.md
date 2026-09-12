@@ -121,14 +121,19 @@ moved:
   not compile without it. Following decision 3, notification should become the consumer's step, the
   way the content and media calls already did.
 
-## 3. `Ithibati.Identity` may not name another context
+## 3. `Ithibati.Identity.*` may not name another context
 
 The portable half is portable only for as long as nothing reaches out of it. In the reference
 implementation that was true by accident once and stopped being true twice: deleting an account
 reached into the content context to rewrite the author's posts, and removing an avatar reached into
-the media context to drop a file. Both became the caller's step, and a Credo check — an AST walk
-over the one guarded file, allow-listing rather than forbidding — is what keeps a third from
-appearing.
+the media context to drop a file. Both became the caller's step, and a Credo check — an AST walk,
+allow-listing rather than forbidding — is what keeps a third from appearing.
+
+It guards the `Ithibati.Identity` **namespace**, not one file: the behaviour lives in
+`Ithibati.Identity.Passkeys`, `Ithibati.Identity.Tokens` and whatever joins them, and a check that
+listed module names would leave the next one unguarded until somebody remembered to add it. A
+prefix covers it by construction, which is the direction that matters — forgetting an allow-list
+entry is loud, forgetting to guard a module is silent.
 
 That check comes across with the code, and it comes across *first*: a rule nothing enforces is a
 rule that quietly stops being true.
@@ -140,7 +145,7 @@ application's own record of what the account may do are all created at once. Tha
 transaction or it is a bug: an account that exists with no membership is a person who can log in and
 see nothing, and an account that half-failed is worse.
 
-So the library hands out composable `Ecto.Multi` fragments — `Ithibati.Identity.with_key_and_codes/3`
+So the library hands out composable `Ecto.Multi` fragments — `with_key_and_codes/3`
 in the reference implementation — and the application composes its own steps into the same
 transaction before running it. Publish/subscribe events are for *notification* after the fact, never
 for carrying a step of the grant. An event can be missed; a transaction cannot be half-applied.
@@ -172,10 +177,10 @@ code being moved here — verified against the reference implementation, not ass
   the extension, and one relying-party id serves all of them. The application decides which origins
   it accepts; the library is told, per challenge.
 
-  Two things follow that are easy to miss. `wax_` reads `config :wax_, origin:`/`rp_id:` as its own
-  defaults, so this property rests on the library always passing both explicitly — worth a test that
-  sets those keys to a wrong value and proves the per-call value wins, and worth deleting the keys
-  from the reference implementation rather than carrying them along. And the relying party has a
+  Two things follow that are easy to miss. `wax_` fills any option it was not given from
+  `config :wax_`, so this property rests on the library passing both explicitly — which a test now
+  pins by setting those keys to a wrong value and proving the per-call value wins. The same applies
+  to every other option the library's behaviour depends on; see decision 7. And the relying party has a
   *third* field: `rp_name`, the name a passkey dialog shows. That one is genuinely the application's
   identity, so it is either a config key or a fourth argument — but it must be chosen, not
   inherited.
@@ -230,3 +235,42 @@ sending it. Asking for something and then not policing it is worse than not aski
 
 A label still exists: whatever the browser reported, or "Passkey". An application that wants product
 names can map them itself, having read the terms of whichever list it chooses.
+
+## 7. The core builds what the browser reads, and which WebAuthn choices are whose
+
+`registration_options/3` returns the browser's `PublicKeyCredentialCreationOptions` — camelCase
+keys, unpadded base64url, the works — from the portable half, not from the optional web half.
+
+That looks like a layering mistake and is not. The web half is optional by design (decision 3's
+boundary is `lib/ithibati/web/`), so a consumer who wires its own controller still needs these
+options, and what they would most likely get wrong is exactly what lives here: unpadded base64url
+rather than standard, the legacy `requireResidentKey` spelling beside the modern one, and asking
+for the `credProps` extension at all. What the web half owns is the transport — routes, JSON
+serialisation, the hook that calls `navigator.credentials`. The shape of the dictionary is a
+protocol detail, and protocol details are what this library is for.
+
+**A registration must produce a discoverable credential.** Sign-in names no credential (decision 5
+explains why), so a credential the authenticator keeps to itself would be invisible there, and the
+person would find out at their next visit, where the platform says "no passkey available" and
+nothing explains it. The library therefore asks for `residentKey: "required"` *and*
+`requireResidentKey: true` — one wish in two spellings, because a client implementing only
+WebAuthn L1 ignores the first — asks for `credProps`, and refuses a registration whose client
+answers that it stored something else. This is a constraint a consuming application inherits: there
+is no option to turn it off, because a sign-in that names no credential cannot work without it.
+
+**Everything else the library's behaviour depends on is passed to `wax_` per call**, never left to
+`config :wax_`: the relying party, the attestation conveyance, the attestation types trusted, how
+long the ceremony may take, and whether the user must be verified. An option not passed is one a
+consumer can change from a distance without knowing what it disagrees with — a
+`trusted_attestation_types` without `:none` refuses every registration this library can produce.
+
+**Two of those are the application's to decide, and are options rather than constants:** whether the
+authenticator must verify who is holding it, and how long a challenge stays acceptable. Both have
+defaults (`"preferred"` and sixty seconds) and both are read back off the challenge when the
+browser's options are built, so the two sides cannot disagree — a disagreement there is silent and
+looks like a broken authenticator.
+
+**The algorithms offered are ES256 and RS256.** Ed25519 is absent deliberately rather than
+forgotten: no authenticator in circulation offers it and neither of these two, and a list a consumer
+can extend is a published option with no caller yet. If one appears, it becomes an option like the
+two above.
