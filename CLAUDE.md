@@ -50,7 +50,7 @@ Each of these is the enforceable form of a decision; the reasoning is behind the
   that belongs in the tracker and the commit message.
 - Write out technical terms; do not invent pictures for them. *Foreign key*, *write path*,
   *constraint*, *boundary* — not doors, shelves or seams.
-- **Bean IDs (`ithibati-xxxx`) never appear in `lib/`, `test/`, `priv/` or `README.md`** — only in
+- **Bean IDs (`ithibati-xxxx`) never appear in `lib/`, `test/`, `docs/`, `priv/` or `README.md`** — only in
   the beans themselves and in this file, which both live with the tracker. The tracker may not
   outlive the repository, and a dead ID looks authoritative and sends the next reader nowhere. This
   matters more here than in an application: these files ship to strangers. Write the *why* out and
