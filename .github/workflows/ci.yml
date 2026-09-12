@@ -14,8 +14,44 @@ permissions:
 
 jobs:
   check:
-    name: check
+    name: ${{ matrix.name }}
     runs-on: ubuntu-latest
+
+    strategy:
+      # One red leg must not hide the others: which of them fail is the whole answer.
+      fail-fast: false
+      matrix:
+        include:
+          # The pinned pair, which is also what a laptop gets from mise.toml.
+          - name: check
+          # The floor of the `elixir` requirement in mix.exs. `MISE_ELIXIR_VERSION` overrides the
+          # pin without editing mise.toml, which stays the single source for a local checkout.
+          - name: floor (elixir 1.17)
+            elixir: "1.17"
+            erlang: "27"
+            # A narrower task, named in mise.toml with its reason: the full gate judges style
+            # against the toolchain the tree was written with, and this leg's question is
+            # compatibility.
+            gate: build-and-test
+          # The claim that `users_key_type: :id` is supported. Why it needs a build of its own:
+          # config/config.exs.
+          - name: integer account keys
+            users_key_type: id
+          # The claim that a consumer without Phoenix gets a core that compiles. `mix deps.get`
+          # fetches optional dependencies for this project's own build, so every other leg compiles
+          # with them present.
+          - name: without optional deps
+            without_optional: "1"
+
+    env:
+      MISE_ELIXIR_VERSION: ${{ matrix.elixir }}
+      MISE_ERLANG_VERSION: ${{ matrix.erlang }}
+      ITHIBATI_USERS_KEY_TYPE: ${{ matrix.users_key_type }}
+      ITHIBATI_WITHOUT_OPTIONAL: ${{ matrix.without_optional }}
+      # Through the environment rather than straight into `run:`, which is where a workflow
+      # expression becomes code. `matrix` is written in this file and not attacker-controlled, so
+      # the risk here is theoretical — the habit is not.
+      GATE: ${{ matrix.gate || 'check' }}
 
     services:
       postgres:
@@ -42,25 +78,44 @@ jobs:
           persist-credentials: false
 
       - uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4.3.0
+        with:
+          # Pinned like everything else here, and for a specific reason: three of the four legs
+          # leave MISE_ELIXIR_VERSION empty and rely on mise reading that as "no override". A mise
+          # release that changed its mind would break those three at once, and it would look like
+          # a toolchain outage rather than a version bump.
+          version: 2026.9.5
+          # Its own tool cache keys on the config files, not on the MISE_*_VERSION overrides, so
+          # without this all four legs compute the same key and whichever runs first decides which
+          # toolchain is cached for all of them. Keyed on the toolchain rather than on the leg,
+          # because three of the four install the same one and renaming a leg should not throw its
+          # cache away.
+          cache_key_prefix: mise-${{ matrix.elixir || 'pinned' }}-${{ matrix.erlang || 'pinned' }}
 
-      # A cold Elixir compile is otherwise the whole job. Both the key and the fallback carry the
-      # mise.toml hash, because _build is only reusable under the Erlang and Elixir that produced it.
+      # A cold Elixir compile is otherwise the whole job. The key carries the leg as well as the
+      # mise.toml hash: _build is only reusable under the Erlang and Elixir that produced it, and a
+      # leg that compiled under a different `users_key_type` does not merely rebuild — Elixir
+      # refuses to boot at all, because that setting is read with `compile_env`.
       - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
             deps
             _build
-          key: ${{ runner.os }}-mix-${{ hashFiles('mise.toml') }}-${{ hashFiles('mix.lock') }}
-          restore-keys: ${{ runner.os }}-mix-${{ hashFiles('mise.toml') }}-
+          key: ${{ runner.os }}-mix-${{ matrix.name }}-${{ hashFiles('mise.toml') }}-${{ hashFiles('mix.lock') }}
+          restore-keys: ${{ runner.os }}-mix-${{ matrix.name }}-${{ hashFiles('mise.toml') }}-
 
       - name: Fetch dependencies
         run: |
           mix local.hex --force
           mix local.rebar --force
           mix deps.get
+          # `mix deps.get` does not prune, so on the leg that drops the optional dependencies they
+          # and everything they brought stay behind in mix.lock — where `deps.unlock --check-unused`
+          # inside the gate finds them and fails the leg for a reason that is not the leg's point.
+          # This checkout is disposable; the committed lock is untouched.
+          if [ -n "$ITHIBATI_WITHOUT_OPTIONAL" ]; then mix deps.unlock --unused; fi
 
       - name: Run the gate
-        run: mise run check
+        run: mise run "$GATE"
 
   zizmor:
     name: zizmor

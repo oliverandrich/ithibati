@@ -8,7 +8,7 @@ defmodule Ithibati.MemberUser do
   use Ecto.Schema
   use Ithibati.Schema.User, identifier: :username, format: ~r/^[a-z0-9][a-z0-9_-]{2,31}$/
 
-  @primary_key {:id, :binary_id, autogenerate: true}
+  @primary_key Ithibati.TestKey.primary_key()
 
   schema "members" do
     ithibati_account()

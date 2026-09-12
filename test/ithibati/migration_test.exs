@@ -12,6 +12,7 @@ defmodule Ithibati.MigrationTest do
 
   alias Ecto.Adapters.SQL.Sandbox
   alias Ithibati.RecoveryCode
+  alias Ithibati.TestKey
   alias Ithibati.TestRepo
   alias Ithibati.UserKey
   alias Ithibati.UserToken
@@ -22,17 +23,17 @@ defmodule Ithibati.MigrationTest do
   defmodule Probe do
     use Ecto.Migration
 
-    # Some variants are raw SQL, because their shape is not expressible through `create table/2` —
-    # and they qualify themselves with the migrator's prefix, because raw SQL does not get it the
-    # way `table/2` does. Unqualified, they reach the suite's own `users` table in the default
-    # schema instead.
+    # Two variants are raw SQL, because `INCLUDE` columns and a domain type are not expressible
+    # through `create table/2` — and they qualify themselves with the migrator's prefix, because raw
+    # SQL does not get it the way `table/2` does. Unqualified, they reach the suite's own `users`
+    # table in the default schema instead.
     #
     # The account table is the consumer's, so the probe brings its own before asking for the rest —
     # and, when the configured schema says it creates the unique index itself, that too. It is
     # playing the application's part, including the part where an application forgets: setting
     # `:test_app_skips_index` is how a test shows what happens then.
     def up do
-      create_users(Application.get_env(:ithibati, :test_account_table, :binary_id))
+      create_users(Application.get_env(:ithibati, :test_account_table, :configured))
 
       schema = Ithibati.Config.user_schema()
 
@@ -54,15 +55,20 @@ defmodule Ithibati.MigrationTest do
 
     # The key type the library's schemas were compiled with is not movable at runtime, so what a
     # disagreement test moves is the other side: the account table this probe plays the part of.
-    defp create_users(:binary_id) do
+    defp create_users(:configured) do
       create table(:users, primary_key: false) do
-        add :id, :binary_id, primary_key: true
+        add :id, TestKey.column_type(), primary_key: true
         add :email, :string
       end
     end
 
-    defp create_users(:bigserial) do
-      create table(:users) do
+    # The *other* type this library supports, rather than something no consumer would ever write:
+    # a `bigserial` account table under a `binary_id` configuration is the mistake people make, and
+    # it is the one that goes unnoticed if the library's list of acceptable Postgres types ever
+    # gains an entry it should not have.
+    defp create_users(:wrong_type) do
+      create table(:users, primary_key: false) do
+        add :id, TestKey.other_column_type(), primary_key: true
         add :email, :string
       end
     end
@@ -70,7 +76,7 @@ defmodule Ithibati.MigrationTest do
     defp create_users(:composite) do
       create table(:users, primary_key: false) do
         add :tenant, :string, primary_key: true
-        add :id, :binary_id, primary_key: true
+        add :id, TestKey.column_type(), primary_key: true
         add :email, :string
       end
     end
@@ -79,14 +85,14 @@ defmodule Ithibati.MigrationTest do
     # whole vector would not recognise this as covering `id` alone.
     defp create_users(:include) do
       execute(
-        "CREATE TABLE #{prefix()}.users (id uuid, email text, PRIMARY KEY (id) INCLUDE (email))"
+        "CREATE TABLE #{prefix()}.users (id #{TestKey.postgres_type()}, email text, PRIMARY KEY (id) INCLUDE (email))"
       )
     end
 
     # A domain is a type of its own by name; what a foreign key compares against is what it is built
     # on. It is created inside the probe's schema so that dropping that schema takes it along.
     defp create_users(:domain) do
-      execute("CREATE DOMAIN #{prefix()}.account_id AS uuid")
+      execute("CREATE DOMAIN #{prefix()}.account_id AS #{TestKey.postgres_type()}")
 
       execute(
         "CREATE TABLE #{prefix()}.users (id #{prefix()}.account_id PRIMARY KEY, email text)"
@@ -96,29 +102,23 @@ defmodule Ithibati.MigrationTest do
     # Legal, and what the refusal for a bare composite key advises: Postgres lets a foreign key
     # point at any column with a unique index on it, primary key or not.
     defp create_users(:composite_unique) do
-      execute("""
-      CREATE TABLE #{prefix()}.users (
-        tenant text, id uuid, email text, PRIMARY KEY (tenant, id), UNIQUE (id)
-      )
-      """)
+      create_users(:composite)
+      create unique_index(:users, [:id])
     end
 
     # A unique index the table does have, on a column nobody references. Without it, a check that
     # merely asks "has this table any single-column unique index" looks exactly like one that asks
     # about the right column.
     defp create_users(:unique_elsewhere) do
-      execute("""
-      CREATE TABLE #{prefix()}.users (
-        tenant text, id uuid, email text, PRIMARY KEY (tenant, id), UNIQUE (email)
-      )
-      """)
+      create_users(:composite)
+      create unique_index(:users, [:email])
     end
 
     # A single-column primary key of the right type that the foreign key still cannot point at,
     # because it is not the column the foreign key names.
     defp create_users(:renamed_key) do
       create table(:users, primary_key: false) do
-        add :uid, :binary_id, primary_key: true
+        add :uid, TestKey.column_type(), primary_key: true
         add :email, :string
       end
     end
@@ -217,18 +217,18 @@ defmodule Ithibati.MigrationTest do
   test "the foreign key takes the account table's key type" do
     :ok = migrate(:up)
 
-    assert column_type(UserToken, "user_id") == "uuid"
+    assert column_type(UserToken, "user_id") == TestKey.postgres_type()
   end
 
   describe "an account table this library cannot point a foreign key at" do
     # The error this replaces comes from inside `references/2` and names two Postgres columns,
     # neither this library nor the setting that caused it.
-    test "an integer column under a binary_id configuration is refused" do
-      as_account_table(:bigserial)
+    test "a column of a type the foreign key cannot compare against is refused" do
+      as_account_table(:wrong_type)
 
-      assert_raise ArgumentError, ~r/users_key_type: :binary_id.*users\.id is bigint/s, fn ->
-        migrate(:up)
-      end
+      assert_raise ArgumentError,
+                   ~r/users_key_type:.*users\.id is #{TestKey.other_postgres_type()}/s,
+                   fn -> migrate(:up) end
 
       assert missing() == tables()
     end

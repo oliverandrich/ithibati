@@ -7,7 +7,7 @@ defmodule Ithibati.NamedIndexUser do
   use Ecto.Schema
   use Ithibati.Schema.User, identifier: :email, constraint_name: :users_email_house
 
-  @primary_key {:id, :binary_id, autogenerate: true}
+  @primary_key Ithibati.TestKey.primary_key()
 
   schema "users" do
     ithibati_account()

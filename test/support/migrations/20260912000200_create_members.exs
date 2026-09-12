@@ -5,7 +5,7 @@ defmodule Ithibati.TestRepo.Migrations.CreateMembers do
   # at it: what it exercises is the schema macro's one required choice.
   def change do
     create table(:members, primary_key: false) do
-      add :id, :binary_id, primary_key: true
+      add :id, Ithibati.TestKey.column_type(), primary_key: true
       add :username, :string, null: false
 
       timestamps(type: :utc_datetime_usec)

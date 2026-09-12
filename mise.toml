@@ -11,6 +11,13 @@ description = "Everything that has to be green before a change is done"
 # Named so that CI can run the task instead of a second copy of what it contains.
 run = ["zizmor .github/", "mix precommit"]
 
+# What a CI leg runs when its question is only "does this build and behave here". Not `check`:
+# that one's formatter and Credo judge style against the toolchain the tree was written with, so a
+# formatter change between two Elixir releases would fail a compatibility leg for a style reason.
+[tasks.build-and-test]
+description = "Compile without warnings and run the tests"
+run = "mix build_and_test"
+
 # Deliberately not part of `check`; it runs on a schedule instead. Why, in
 # .github/workflows/audit.yml.
 [tasks.audit]

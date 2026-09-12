@@ -7,6 +7,7 @@ defmodule Ithibati.ConfigTest do
   use ExUnit.Case, async: false
 
   alias Ithibati.Config
+  alias Ithibati.TestKey
 
   setup do
     configured =
@@ -51,6 +52,25 @@ defmodule Ithibati.ConfigTest do
 
     test "set correctly, it answers the module" do
       assert Config.user_schema() == Ithibati.TestUser
+    end
+  end
+
+  describe "users_key_type/0" do
+    # The one place the account key type is written out rather than derived. Everything else — the
+    # fixtures' primary keys, the tables the test migrations build, the column types the migration
+    # assertions expect — comes from this value, so without a literal here both sides of each of
+    # those comparisons move together, and a CI leg whose environment variable never arrived would
+    # pass while testing the default a second time.
+    test "is the type the environment asked for" do
+      case System.get_env("ITHIBATI_USERS_KEY_TYPE") do
+        "id" ->
+          assert Config.users_key_type() == :id
+          assert TestKey.postgres_type() == "bigint"
+
+        default when default in [nil, "", "binary_id"] ->
+          assert Config.users_key_type() == :binary_id
+          assert TestKey.postgres_type() == "uuid"
+      end
     end
   end
 

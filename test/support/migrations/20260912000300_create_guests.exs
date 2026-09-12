@@ -6,7 +6,7 @@ defmodule Ithibati.TestRepo.Migrations.CreateGuests do
   # `constraint_name:` option is exercised against a real index rather than only accepted.
   def change do
     create table(:guests, primary_key: false) do
-      add :id, :binary_id, primary_key: true
+      add :id, Ithibati.TestKey.column_type(), primary_key: true
       add :handle, :string, null: false
 
       timestamps(type: :utc_datetime_usec)

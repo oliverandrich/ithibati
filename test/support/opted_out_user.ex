@@ -8,7 +8,7 @@ defmodule Ithibati.OptedOutUser do
   use Ecto.Schema
   use Ithibati.Schema.User, identifier: :email, unique_index: false
 
-  @primary_key {:id, :binary_id, autogenerate: true}
+  @primary_key Ithibati.TestKey.primary_key()
 
   schema "users" do
     ithibati_account()

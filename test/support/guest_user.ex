@@ -7,7 +7,7 @@ defmodule Ithibati.GuestUser do
   use Ecto.Schema
   use Ithibati.Schema.User, identifier: :handle, constraint_name: :guests_handle_uniq
 
-  @primary_key {:id, :binary_id, autogenerate: true}
+  @primary_key Ithibati.TestKey.primary_key()
 
   schema "guests" do
     ithibati_account()

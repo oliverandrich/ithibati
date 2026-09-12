@@ -6,7 +6,7 @@ defmodule Ithibati.TestRepo.Migrations.CreateUsers do
   # roles, avatars, profiles — is deliberately absent.
   def change do
     create table(:users, primary_key: false) do
-      add :id, :binary_id, primary_key: true
+      add :id, Ithibati.TestKey.column_type(), primary_key: true
       add :email, :string, null: false
       add :nickname, :string
 

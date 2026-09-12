@@ -26,6 +26,13 @@ Ithibati will answer only the first:
 Your application keeps its own `users` table, its own roles and its own invitations, and composes
 the grant into one transaction with the library's half.
 
+## What it runs on
+
+**Elixir 1.17 or newer**, and **Postgres**. Postgres is not a default but a requirement: the
+migration reads the account table's own catalogue entries to check what it is about to point a
+foreign key at, and no other adapter answers those questions. CI builds both ends of the Elixir
+range and both account-key types.
+
 ## Design
 
 Six decisions shape it, and [`docs/design.md`](docs/design.md) carries each one with its reasoning:

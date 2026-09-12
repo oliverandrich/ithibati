@@ -11,7 +11,7 @@ defmodule Ithibati.TestUser do
 
   import Ecto.Changeset
 
-  @primary_key {:id, :binary_id, autogenerate: true}
+  @primary_key Ithibati.TestKey.primary_key()
 
   schema "users" do
     ithibati_account()
@@ -39,7 +39,7 @@ defmodule Ithibati.NamedUser do
 
   use User, identifier: :email, format: User.email_format()
 
-  @primary_key {:id, :binary_id, autogenerate: true}
+  @primary_key Ithibati.TestKey.primary_key()
 
   schema "users" do
     ithibati_account()

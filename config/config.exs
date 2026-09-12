@@ -13,9 +13,24 @@ if config_env() == :test do
     end
   end
 
+  # The account key type is compiled into the schemas, so one compilation exercises exactly one of
+  # them and the other is reachable only by building again. A CI leg sets this; a laptop gets the
+  # default, which is also the default a consumer gets.
+  #
+  # An unknown value raises rather than falling back: a typo in the matrix would otherwise turn the
+  # leg that exists to exercise integer keys into an exact copy of the default one — green, and
+  # saying nothing at all.
+  key_type =
+    case env.("ITHIBATI_USERS_KEY_TYPE", "binary_id") do
+      "binary_id" -> :binary_id
+      "id" -> :id
+      other -> raise "ITHIBATI_USERS_KEY_TYPE must be binary_id or id, got: #{inspect(other)}"
+    end
+
   config :ithibati,
     ecto_repos: [Ithibati.TestRepo],
     user_schema: Ithibati.TestUser,
+    users_key_type: key_type,
     repo: Ithibati.TestRepo,
     # Two contexts beyond the built-in "session", so the token tests can prove that validity is
     # resolved per context and that the unit is read — without moving application environment,
@@ -29,7 +44,12 @@ if config_env() == :test do
     password: System.get_env("PGPASSWORD", "postgres"),
     hostname: env.("PGHOST", "localhost"),
     port: String.to_integer(env.("PGPORT", "5432")),
-    database: "ithibati_test#{System.get_env("MIX_TEST_PARTITION")}",
+    # The key type is part of the name for the same reason it is part of CI's cache key: the two
+    # builds want different column types, and a run that finds a database already there treats it as
+    # ready. Switching the type without dropping the database would otherwise fail as cast errors
+    # that look like a bug in this library.
+    database:
+      "ithibati_test#{System.get_env("MIX_TEST_PARTITION")}#{if key_type == :id, do: "_int"}",
     pool: Ecto.Adapters.SQL.Sandbox,
     # A floor, not just a multiple of the core count: the suite drives concurrent writes to prove a
     # unique index decides between them, and on a machine with fewer cores those racers would queue
