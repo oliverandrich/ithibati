@@ -33,14 +33,37 @@ So: the application declares the schema and owns the table. The macro contribute
 library reads, the changeset pieces that validate them, and the constraint names it relies on. The
 library is told which module that is, and which repo to use, through configuration.
 
-The three tables that *are* the library's — `user_keys`, `recovery_codes`, `user_tokens` — carry a
-foreign key to whichever table the macro was used in. That table name is therefore configuration
+The three tables that *are* the library's — named below — carry a foreign key to whichever table
+the macro was used in. That table name is therefore configuration
 too, resolved once when the migrations are generated, and so is the **type** of that key: the
 reference implementation is `binary_id` throughout, and a consumer with `bigserial` accounts would
 otherwise be handed a migration that does not fit.
 
-Four things this decision does *not* yet settle, and each of them will otherwise be settled by
-accident while the code is being moved:
+Four questions followed from this decision. Two are settled, and the answers belong here rather
+than in the code that implements them.
+
+**The tables this library owns are `ithibati_keys`, `ithibati_recovery_codes` and
+`ithibati_tokens`** — three, not the five the reference implementation's accounts context manages.
+Links are profile and belong to the consumer. A handle reservation exists so an old
+`@handle@domain` cannot come to name somebody else, which is federation, and also the consumer's,
+even though it is reached from the account changeset. The prefix is configurable and prefixed by
+default for a reason an application does not have: `phx.gen.auth` generates `users_tokens` in the
+same database, one character from `user_tokens`, and `recovery_codes` is a name anybody might have
+taken.
+
+**The migration is code, not a file.** `Ithibati.Migration.up/1` and `down/1`, called from an
+ordinary migration the consumer writes in their own `priv/repo/migrations`. A static template
+cannot be parametrised by the three things this decision makes configuration, and a generator task
+that fills its blanks is a second mechanism doing the same job. It is versioned the way `oban`
+versions its own: a table added in a later release reaches a consumer as a *second* migration
+calling the same module, saying which version it starts from. What has already been applied is
+recorded where Ecto records it, in the consuming application's own `schema_migrations`; this library
+keeps no second copy of that. A consequence worth stating: `priv/` never has to exist in this repository, which
+removes a standing hazard, because anything placed there is published and the test suite's own
+migrations must not be.
+
+Two questions remain open, and each of them will otherwise be settled by accident while the code is
+being moved:
 
 - **Which columns the macro contributes, by name.** "Exactly one is the library's business" is the
   shape of the answer, not the answer. `avatar_path` is written by the code being moved, and
@@ -48,22 +71,10 @@ accident while the code is being moved:
   about. The proposal: the *check* stays (whether this is the first account is a question about
   identity), and *granting* the role becomes a step the consumer composes in, which is what
   decision 4 provides for anyway.
-- **Whether `user_links` and `handle_reservations` come along.** The paragraph above names three
-  tables; the file being moved manages five. Links are profile and almost certainly the consumer's.
-  A handle reservation exists so an old `@handle@domain` cannot come to name somebody else, which
-  is a federation concern and probably the consumer's too — but it is reached from the account
-  changeset, so saying so is not enough.
 - **How the library announces a change.** The code being moved broadcasts over `Phoenix.PubSub`
   with a hardcoded server name, while Phoenix here is an optional dependency — so the core would
   not compile without it. Following decision 3, notification should become the consumer's step, the
   way the content and media calls already did.
-- **What form the library's own migration takes.** A static file under `priv/` cannot be
-  parametrised, and the two things named above — the table's name and its key type — are exactly
-  what it would have to be parametrised by; a template plus a generator task is a second mechanism
-  doing the same job. The proposal is the shape `oban` uses: a module in `lib/` with `up/0` and
-  `down/0` taking those two as options, invoked from a migration the consumer writes in their own
-  `priv/repo/migrations`. It also means `priv/` never has to exist here, which removes a standing
-  hazard — anything placed there is published, and the test suite's own migrations must not be.
 
 ## 3. `Ithibati.Identity` may not name another context
 
