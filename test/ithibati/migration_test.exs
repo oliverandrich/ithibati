@@ -22,15 +22,17 @@ defmodule Ithibati.MigrationTest do
   defmodule Probe do
     use Ecto.Migration
 
+    # Some variants are raw SQL, because their shape is not expressible through `create table/2` —
+    # and they qualify themselves with the migrator's prefix, because raw SQL does not get it the
+    # way `table/2` does. Unqualified, they reach the suite's own `users` table in the default
+    # schema instead.
+    #
     # The account table is the consumer's, so the probe brings its own before asking for the rest —
     # and, when the configured schema says it creates the unique index itself, that too. It is
     # playing the application's part, including the part where an application forgets: setting
     # `:test_app_skips_index` is how a test shows what happens then.
     def up do
-      create table(:users, primary_key: false) do
-        add :id, :binary_id, primary_key: true
-        add :email, :string
-      end
+      create_users(Application.get_env(:ithibati, :test_account_table, :binary_id))
 
       schema = Ithibati.Config.user_schema()
 
@@ -49,6 +51,79 @@ defmodule Ithibati.MigrationTest do
       Ithibati.Migration.down(version: 1)
       drop table(:users)
     end
+
+    # The key type the library's schemas were compiled with is not movable at runtime, so what a
+    # disagreement test moves is the other side: the account table this probe plays the part of.
+    defp create_users(:binary_id) do
+      create table(:users, primary_key: false) do
+        add :id, :binary_id, primary_key: true
+        add :email, :string
+      end
+    end
+
+    defp create_users(:bigserial) do
+      create table(:users) do
+        add :email, :string
+      end
+    end
+
+    defp create_users(:composite) do
+      create table(:users, primary_key: false) do
+        add :tenant, :string, primary_key: true
+        add :id, :binary_id, primary_key: true
+        add :email, :string
+      end
+    end
+
+    # `INCLUDE` columns sit in `indkey` beside the key ones, so an index check that counted the
+    # whole vector would not recognise this as covering `id` alone.
+    defp create_users(:include) do
+      execute(
+        "CREATE TABLE #{prefix()}.users (id uuid, email text, PRIMARY KEY (id) INCLUDE (email))"
+      )
+    end
+
+    # A domain is a type of its own by name; what a foreign key compares against is what it is built
+    # on. It is created inside the probe's schema so that dropping that schema takes it along.
+    defp create_users(:domain) do
+      execute("CREATE DOMAIN #{prefix()}.account_id AS uuid")
+
+      execute(
+        "CREATE TABLE #{prefix()}.users (id #{prefix()}.account_id PRIMARY KEY, email text)"
+      )
+    end
+
+    # Legal, and what the refusal for a bare composite key advises: Postgres lets a foreign key
+    # point at any column with a unique index on it, primary key or not.
+    defp create_users(:composite_unique) do
+      execute("""
+      CREATE TABLE #{prefix()}.users (
+        tenant text, id uuid, email text, PRIMARY KEY (tenant, id), UNIQUE (id)
+      )
+      """)
+    end
+
+    # A unique index the table does have, on a column nobody references. Without it, a check that
+    # merely asks "has this table any single-column unique index" looks exactly like one that asks
+    # about the right column.
+    defp create_users(:unique_elsewhere) do
+      execute("""
+      CREATE TABLE #{prefix()}.users (
+        tenant text, id uuid, email text, PRIMARY KEY (tenant, id), UNIQUE (email)
+      )
+      """)
+    end
+
+    # A single-column primary key of the right type that the foreign key still cannot point at,
+    # because it is not the column the foreign key names.
+    defp create_users(:renamed_key) do
+      create table(:users, primary_key: false) do
+        add :uid, :binary_id, primary_key: true
+        add :email, :string
+      end
+    end
+
+    defp create_users(:none), do: :ok
   end
 
   # The sandbox is switched off for this module rather than checked out: `Ecto.Migrator` does its
@@ -69,6 +144,9 @@ defmodule Ithibati.MigrationTest do
     on_exit(&reset_schema/0)
   end
 
+  # The probe creates `users` and calls `up/1` in one migration, which is a shape a consumer is
+  # allowed to write — so this reaches the key-type check through a queue that has to be flushed
+  # before the account table is there to ask about at all.
   test "up builds a table for every schema, under the migrator's prefix" do
     assert missing() == tables()
 
@@ -142,6 +220,76 @@ defmodule Ithibati.MigrationTest do
     assert column_type(UserToken, "user_id") == "uuid"
   end
 
+  describe "an account table this library cannot point a foreign key at" do
+    # The error this replaces comes from inside `references/2` and names two Postgres columns,
+    # neither this library nor the setting that caused it.
+    test "an integer column under a binary_id configuration is refused" do
+      as_account_table(:bigserial)
+
+      assert_raise ArgumentError, ~r/users_key_type: :binary_id.*users\.id is bigint/s, fn ->
+        migrate(:up)
+      end
+
+      assert missing() == tables()
+    end
+
+    # Not "the primary key is composite": what Postgres wants is a unique index on the column being
+    # referenced, and saying so is what makes the advice in the message actionable.
+    test "a column with no unique index of its own is refused" do
+      as_account_table(:composite)
+
+      assert_raise ArgumentError, ~r/users\.id carries no unique index/, fn -> migrate(:up) end
+
+      assert missing() == tables()
+    end
+
+    test "and a unique index on some other column is not a substitute" do
+      as_account_table(:unique_elsewhere)
+
+      assert_raise ArgumentError, ~r/users\.id carries no unique index/, fn -> migrate(:up) end
+    end
+
+    test "a table without the column the foreign key names is refused" do
+      as_account_table(:renamed_key)
+
+      assert_raise ArgumentError, ~r/users has no column id/, fn -> migrate(:up) end
+
+      assert missing() == tables()
+    end
+
+    test "no account table at all is refused before anything is built" do
+      as_account_table(:none)
+
+      # Qualified with the migrator's prefix: an unqualified name sends the reader looking in
+      # `public`, which is the one schema the table is certainly not in.
+      assert_raise ArgumentError, ~r/there is no table probe\.users/, fn -> migrate(:up) end
+
+      assert missing() == tables()
+    end
+  end
+
+  describe "an account table the check must not refuse" do
+    test "a single-column primary key with INCLUDE columns beside it" do
+      as_account_table(:include)
+
+      assert :ok = migrate(:up)
+    end
+
+    test "a primary key whose type is a domain over one this library can reference" do
+      as_account_table(:domain)
+
+      assert :ok = migrate(:up)
+    end
+
+    # The arrangement the refusal above tells a consumer to make. Refusing it as well would be
+    # advice the library does not accept.
+    test "a composite primary key with a unique index on the referenced column beside it" do
+      as_account_table(:composite_unique)
+
+      assert :ok = migrate(:up)
+    end
+  end
+
   defp migrate(:up), do: Ecto.Migrator.up(TestRepo, @version, Probe, prefix: @schema, log: false)
 
   defp migrate(:down),
@@ -171,9 +319,13 @@ defmodule Ithibati.MigrationTest do
     type
   end
 
-  defp as_application_index(kind) do
-    Application.put_env(:ithibati, :test_app_index, kind)
-    on_exit(fn -> Application.delete_env(:ithibati, :test_app_index) end)
+  defp as_account_table(shape), do: as_env(:test_account_table, shape)
+
+  defp as_application_index(kind), do: as_env(:test_app_index, kind)
+
+  defp as_env(key, value) do
+    Application.put_env(:ithibati, key, value)
+    on_exit(fn -> Application.delete_env(:ithibati, key) end)
   end
 
   defp as_account_schema(module) do

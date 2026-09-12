@@ -153,7 +153,11 @@ raises rather than inheriting a number nobody chose. The units are `:second`, `:
 `:day` and `:week` — `:month` and `:year` are missing because neither has a fixed length.
 
 The last two settings are read when this library is compiled, so changing them recompiles it; Elixir
-refuses to boot against a value it was not built for rather than looking for a table nobody meant. The
+refuses to boot against a value it was not built for rather than looking for a table nobody meant.
+`users_key_type` is checked against your accounts table as well: before the migration builds
+anything, the column its foreign keys point at has to exist, have the type you configured, and carry
+a unique index — which is what Postgres requires of any referenced column, so a composite primary
+key with a unique index beside it is fine. A disagreement is refused rather than half-applied. The
 migration reads the table names and the foreign-key type back out of those schemas, so it cannot
 build something they will not go on to read.
 

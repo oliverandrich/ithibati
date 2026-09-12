@@ -37,7 +37,10 @@ The three tables that *are* the library's — named below — carry a foreign ke
 the macro was used in. That table name is therefore configuration
 too, resolved once when the migrations are generated, and so is the **type** of that key: the
 reference implementation is `binary_id` throughout, and a consumer with `bigserial` accounts would
-otherwise be handed a migration that does not fit.
+otherwise be handed a migration that does not fit. Configuration and reality can still disagree —
+nothing stops an application from naming a type its own accounts table does not have — so the
+migration verifies the configuration against the database before it builds anything, and refuses
+rather than leaving half a schema behind.
 
 Four questions followed from this decision. Three are settled, and the answers belong here rather
 than in the code that implements them.
