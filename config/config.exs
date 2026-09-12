@@ -24,7 +24,11 @@ if config_env() == :test do
     port: String.to_integer(env.("PGPORT", "5432")),
     database: "ithibati_test#{System.get_env("MIX_TEST_PARTITION")}",
     pool: Ecto.Adapters.SQL.Sandbox,
-    pool_size: System.schedulers_online() * 2,
+    # A floor, not just a multiple of the core count: the suite drives concurrent writes to prove a
+    # unique index decides between them, and on a machine with fewer cores those racers would queue
+    # instead of racing. `Ithibati.BootstrapTest` asserts the pool is big enough rather than passing
+    # quietly as a sequence — which is how CI found this.
+    pool_size: max(System.schedulers_online() * 2, 12),
     # Read by `mix ecto.*` alone, which resolves it against the source tree; the suite passes its
     # path explicitly instead. Without this key `mix ecto.gen.migration` would create a `priv/`
     # directory, and `priv/` is what gets published to consumers.
