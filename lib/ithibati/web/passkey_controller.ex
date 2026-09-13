@@ -1,4 +1,5 @@
-if Code.ensure_loaded?(Phoenix.Controller) do
+# The sentinel for the web half; `Ithibati.Web.Handler` says why it is this one.
+if Code.ensure_loaded?(Phoenix.Component) do
   defmodule Ithibati.Web.PasskeyController do
     @moduledoc """
     The two ceremonies, four actions, as JSON.

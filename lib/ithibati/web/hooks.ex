@@ -1,8 +1,4 @@
-# Guarded rather than kept off `elixirc_paths`, which is read in `project/0` — and a dependency's
-# `project/0` can see nothing about the project being built: `Code.ensure_loaded?` is false there
-# even where the module exists, and `deps_path()`/`build_path()` name directories that do not. Here
-# the check runs when the module compiles, by which point a consumer's dependencies are loaded, so
-# an application that took this library without Phoenix simply does not get this module.
+# The sentinel for the web half; `Ithibati.Web.Handler` says why it is this one.
 if Code.ensure_loaded?(Phoenix.Component) do
   defmodule Ithibati.Web.Hooks do
     @moduledoc """

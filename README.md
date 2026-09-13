@@ -39,6 +39,16 @@ the invitation token is a bearer secret, and delivering it to the right person i
 [Decision 10](docs/design.md#10-open-registration-and-invitation-only-and-neither-proves-an-address)
 is the whole of the reasoning, including what a later release might add.
 
+## An application you can run
+
+Everything below is also written out as something that compiles and runs, in
+[`examples/with_liveview`](https://github.com/oliverandrich/ithibati/tree/main/examples/with_liveview)
+— which is where to look when a paragraph here and your editor disagree. CI compiles it, formats
+it, builds its assets and runs its tests, so it cannot quietly stop working.
+
+A link rather than a directory: the examples are not in the published package, so this one only
+resolves on GitHub.
+
 ## What it runs on
 
 **Elixir 1.17 or newer**, and **Postgres**. Postgres is not a default but a requirement: the
@@ -51,17 +61,27 @@ range and both account-key types.
 Four endpoints drive the two ceremonies, wired in one call:
 
 ```elixir
+pipeline :ceremony do
+  # Not `["html"]`. These endpoints answer JSON, and a `:browser` pipeline would refuse the hook's
+  # request with a 406 before the controller is reached.
+  plug :accepts, ["json"]
+  plug :fetch_session
+  plug :protect_from_forgery
+end
+
 scope "/auth" do
-  pipe_through :browser
+  pipe_through :ceremony
   ithibati_routes handler: MyApp.Auth, rp_name: "MyApp"
 end
 ```
 
-The pipeline is not decoration: the challenge waits in the session between the two round-trips, so
-something has to have fetched one. `:browser` also brings CSRF protection, which the hook below
-answers with the `x-csrf-token` header. The relying party comes by default from your endpoint's
-configured `:url` rather than from the connection — behind a proxy that terminates TLS those disagree, and the
-browser signs what it saw.
+Its own pipeline rather than your `:browser` one, and every plug in it is load-bearing. The
+challenge waits in the session between the two round-trips, so something has to have fetched one.
+`protect_from_forgery` is what the hook answers with the `x-csrf-token` header — a JSON body is not
+exempt from it. And the format list is `json`, which is what these endpoints actually speak.
+
+The relying party comes by default from your endpoint's configured `:url` rather than from the
+connection — behind a proxy that terminates TLS those disagree, and the browser signs what it saw.
 
 `:rp_name` is the name a passkey dialog shows. Two more options belong to a mount rather than to
 this library — `:user_verification`, whether the authenticator must confirm who is holding it, and
@@ -73,10 +93,10 @@ a credential verifies, and what is issued after an assertion. A session cookie i
 bearer token for an extension or a native client is another, and picking one for you would rule the
 other out.
 
-`relying_party/2` is optional. A browser served from your own
-URL wants the default — the endpoint's configured `:url`, which is what the browser saw rather than
-what your node accepted. The default is handed to it rather than replaced by it, so the usual shape adds rather than
-substitutes — the same passkey has to keep working in the browser:
+`relying_party/2` is optional. A browser served from your own URL wants the default — the
+endpoint's configured `:url`, which is what the browser saw rather than what your node accepted.
+The default is handed to it rather than replaced, so the usual shape adds rather than substitutes:
+the same passkey has to keep working in the browser.
 
 ```elixir
 def relying_party(_conn, {rp_id, origin}), do: {rp_id, [origin | @extension_origins]}

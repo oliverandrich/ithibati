@@ -1,6 +1,17 @@
-# Guarded for the same reason as its neighbours: a consumer who took this library without Phoenix
-# must still get a core that compiles, and `Plug.Conn` is not there to be named.
-if Code.ensure_loaded?(Plug.Conn) do
+# `Phoenix.Component` is the sentinel for the whole web half, and every module under
+# `lib/ithibati/web/` uses this same one. It lives in `phoenix_live_view`, which is the narrowest of
+# the three optional dependencies — so if it is there, `phoenix` and `plug` are too, and the web
+# half can be taken or left as one piece rather than in parts.
+#
+# It is one piece on purpose. Splitting it finer, so that a consumer could have Phoenix without
+# LiveView, cost a nested guard, a second example, and a class of mistake this library cannot see:
+# a private function used only from the LiveView half compiles away to dead code in that build and
+# warns in somebody else's, never in ours.
+#
+# The guard has to be here rather than in `elixirc_paths`, which `project/0` reads — and a
+# dependency's `project/0` can see nothing about the project being built. This check runs when the
+# module compiles, by which point a consumer's dependencies are loaded.
+if Code.ensure_loaded?(Phoenix.Component) do
   defmodule Ithibati.Web.Handler do
     @moduledoc """
     What an application decides, in the places the ceremony has to ask it.
@@ -40,6 +51,8 @@ if Code.ensure_loaded?(Plug.Conn) do
     exists is not something this library can tell, and decision 3 in `docs/design.md` is why it does
     not try.
 
+    On answering, see `c:authenticate/2` — `%{redirect: path}` means the same thing here.
+
     `subject` is what `c:registration_subject/2` approved, carried here from the challenge rather
     than re-read from `params`: the browser sends the whole body again, so an application that
     trusted `params` would have validated an invitation for one identifier and enrolled a credential
@@ -54,6 +67,10 @@ if Code.ensure_loaded?(Plug.Conn) do
     Nothing has been issued. A session token behind a cookie, a long-lived token behind a bearer
     header, or a redirect to a second factor are all answers this library deliberately does not
     pick — see decision 5 in `docs/design.md`.
+
+    Answer in JSON, and `%{redirect: path}` is the one key the shipped hook acts on: it follows it
+    with a full page load, which a sign-in needs anyway because renewing the session takes the CSRF
+    token with it. Anything else in the body reaches the LiveView as `ithibati:done`.
     """
     @callback authenticate(Plug.Conn.t(), account :: struct()) ::
                 {:ok, Plug.Conn.t()} | {:error, term()}

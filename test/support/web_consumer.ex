@@ -1,6 +1,6 @@
 # Guarded like the modules it exercises: `test/support` is on `elixirc_paths(:test)`, so without
 # this the build that proves the core compiles without Phoenix would fail here instead.
-if Code.ensure_loaded?(Phoenix.Router) do
+if Code.ensure_loaded?(Phoenix.Component) do
   defmodule Ithibati.TestHandler do
     @moduledoc false
     @behaviour Ithibati.Web.Handler
@@ -82,10 +82,21 @@ if Code.ensure_loaded?(Phoenix.Router) do
     use Phoenix.Router
     import Ithibati.Web.Router
 
-    # What a consumer's own router looks like, session plug and all, rather than a bare scope: the
-    # endpoints call `put_session/3`, which raises unless something fetched the session first, and a
-    # test that installs one by hand cannot notice that the documented wiring never did.
-    pipeline :browser do
+    # The pipeline the README asks for, by the same name, because a fixture that wired these routes
+    # differently would be this library's own counter-example. `accepts ["json"]` is the half that
+    # matters: a `:browser` pipeline refuses the hook's request with a 406 before the controller is
+    # reached. `fetch_session` is the other — the endpoints call `put_session/3`, which raises
+    # unless something fetched one, and a test that installs a session by hand cannot notice that
+    # the documented wiring never did.
+    pipeline :ceremony do
+      plug(:accepts, ["json"])
+      plug(:fetch_session)
+    end
+
+    # What the gate's own routes need, which is a session and nothing of the ceremony's. Named
+    # apart from `:ceremony` so that neither pipeline's comment has to explain the other's routes.
+    pipeline :session do
+      plug(:accepts, ["json"])
       plug(:fetch_session)
     end
 
@@ -105,33 +116,33 @@ if Code.ensure_loaded?(Phoenix.Router) do
     end
 
     scope "/session" do
-      pipe_through(:browser)
+      pipe_through(:session)
       get("/out", Ithibati.TestPageController, :sign_out)
       get("/:id", Ithibati.TestPageController, :sign_in)
     end
 
     scope "/open" do
-      pipe_through([:browser, :maybe_account])
+      pipe_through([:session, :maybe_account])
       get("/", Ithibati.TestPageController, :show)
     end
 
     scope "/closed" do
-      pipe_through([:browser, :must_account])
+      pipe_through([:session, :must_account])
       get("/", Ithibati.TestPageController, :show)
     end
 
     scope "/api" do
-      pipe_through([:browser, :must_account_api])
+      pipe_through([:session, :must_account_api])
       get("/", Ithibati.TestPageController, :show)
     end
 
     scope "/auth" do
-      pipe_through(:browser)
+      pipe_through(:ceremony)
       ithibati_routes(handler: Ithibati.TestHandler, rp_name: "Ithibati Test")
     end
 
     scope "/extension" do
-      pipe_through(:browser)
+      pipe_through(:ceremony)
       ithibati_routes(handler: Ithibati.TestExtensionHandler, rp_name: "Ithibati Extension")
     end
 
@@ -139,7 +150,7 @@ if Code.ensure_loaded?(Phoenix.Router) do
     # a default that happens to match — two mounts answering to different rules is the reason they
     # are recorded on the routes instead of in application configuration.
     scope "/strict" do
-      pipe_through(:browser)
+      pipe_through(:ceremony)
 
       ithibati_routes(
         handler: Ithibati.TestHandler,

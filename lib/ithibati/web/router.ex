@@ -1,4 +1,5 @@
-if Code.ensure_loaded?(Phoenix.Router) do
+# The sentinel for the web half; `Ithibati.Web.Handler` says why it is this one.
+if Code.ensure_loaded?(Phoenix.Component) do
   defmodule Ithibati.Web.Router do
     @moduledoc """
     The four routes the passkey ceremonies need, wired in one call.

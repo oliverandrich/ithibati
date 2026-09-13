@@ -32,6 +32,16 @@ Each of these is the enforceable form of a decision; the reasoning is behind the
 - **The application owns the `users` table.** The library contributes a schema macro, the fields it
   reads and the changeset pieces that validate them. It never assumes a column the macro did not put
   there. ([decision 2](docs/design.md#2-the-application-owns-the-users-table))
+- **The web half is taken or left as one piece, and LiveView is part of it.** `phoenix`,
+  `phoenix_live_view` and `plug` are optional together: every module under `lib/ithibati/web/` is
+  guarded by the one sentinel `Code.ensure_loaded?(Phoenix.Component)`, and that guard belongs in
+  the module rather than in `elixirc_paths`, which `project/0` reads and which can see nothing
+  about the project being built. Do not split it finer. A consumer with Phoenix and without
+  LiveView was supported once and cost a nested guard, a second example application, and a class of
+  mistake this repository cannot see — a private function used only from the LiveView half is dead
+  code in *our* build and a warning in somebody else's. Anyone authenticating people in Phoenix
+  today is using LiveView; a backend for a native client or an extension is a 0.2.0 question and
+  may not want this library's web half at all.
 - **The relying-party id and the origin are per-call parameters**, never library configuration.
   Consolidating them into a config key looks like tidying up and rules out every non-browser client.
   Note that `wax_` itself reads `config :wax_, origin:`/`rp_id:` as defaults, so this rule rests on

@@ -1,4 +1,4 @@
-if Code.ensure_loaded?(Phoenix.Router) do
+if Code.ensure_loaded?(Phoenix.Component) do
   defmodule Ithibati.Web.RouterTest do
     @moduledoc """
     The paths the macro generates are API from the first release: changing one costs a major

@@ -69,10 +69,14 @@ export async function authenticate(options) {
 // controller can set a session cookie. So a LiveView says when to start — it has the identity
 // fields and has already validated them — and everything after that is `fetch`.
 async function post(url, body) {
+  // Just JSON, deliberately. Adding `*/*` would make a `:browser` pipeline negotiate silently to
+  // HTML and hand this code error pages it cannot read; refusing outright gives a 406 that names
+  // the mistake. The README asks for a pipeline that accepts `json` for exactly this reason, and a
+  // 406 is how that instruction was found to be missing in the first place.
   const headers = {"content-type": "application/json", accept: "application/json"}
 
-  // The routes sit behind a `:browser` pipeline, which protects everything that is not a GET and
-  // reads the token from this header or from a `_csrf_token` field — a JSON body is not exempt.
+  // `protect_from_forgery` guards everything that is not a GET and reads the token from this
+  // header or from a `_csrf_token` field — a JSON body is not exempt from it.
   const token = document.querySelector("meta[name='csrf-token']")?.content
   if (token) headers["x-csrf-token"] = token
 
@@ -146,8 +150,13 @@ export const PasskeyCeremony = {
     throw error
   },
 
+  // A refusal this library produced names itself in the body. Anything else — a pipeline that
+  // rejected the request before the controller, a proxy, a crash — has no body to name, and
+  // reporting "unknown" there tells nobody anything: the status is the only thing that does.
   failed(error, status) {
-    this.pushEvent("ithibati:failed", {error: error || "unknown", status: status || null})
+    const reason = error || (status ? `http_${status}` : "unknown")
+
+    this.pushEvent("ithibati:failed", {error: reason, status: status || null})
   }
 }
 

@@ -1,4 +1,4 @@
-if Code.ensure_loaded?(Phoenix.Controller) do
+if Code.ensure_loaded?(Phoenix.Component) do
   defmodule Ithibati.Web.PasskeyControllerTest do
     @moduledoc """
     The property the challenge-deletion rule exists for: an assertion works once.

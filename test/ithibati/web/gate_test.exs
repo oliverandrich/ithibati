@@ -1,4 +1,4 @@
-if Code.ensure_loaded?(Phoenix.Controller) do
+if Code.ensure_loaded?(Phoenix.Component) do
   defmodule Ithibati.Web.GateTest do
     @moduledoc """
     The rule this file exists for: a gate that lists its known modes and lets anything else through

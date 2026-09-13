@@ -1,4 +1,5 @@
-if Code.ensure_loaded?(Phoenix.Controller) do
+# The sentinel for the web half; `Ithibati.Web.Handler` says why it is this one.
+if Code.ensure_loaded?(Phoenix.Component) do
   defmodule Ithibati.Web.Gate do
     @moduledoc """
     Who is signed in, on a connection and in a LiveView, from one place.
@@ -88,41 +89,45 @@ if Code.ensure_loaded?(Phoenix.Controller) do
       end
     end
 
-    # LiveView is its own optional dependency: a consumer with Phoenix and no LiveView still wants
-    # the plug above, and `Phoenix.Component` is not there to be named.
-    if Code.ensure_loaded?(Phoenix.Component) do
-      @doc """
-      The same two modes for LiveView.
+    @doc """
+    The same two modes for LiveView.
 
-      `:require_account` takes `:to` here and has no default: a LiveView that halts with nowhere to
-      send a person is a dead end, and the path belongs to the application.
-      """
-      def on_mount(mode, _params, session, socket) do
-        {mode, opts} = mode!(mode)
-        # Before the branch, not inside it: asked for only on the anonymous path, a missing `:to`
-        # would mount perfectly for everyone who is signed in and raise at the first stranger — a
-        # 500 exactly where a redirect was meant, and only in front of the person it was meant for.
-        to = if mode == :require_account, do: to!(opts)
+    `:require_account` takes `:to` here and has no default: a LiveView that halts with nowhere to
+    send a person is a dead end, and the path belongs to the application.
+    """
+    def on_mount(mode, _params, session, socket) do
+      {mode, opts} = mode!(mode)
+      # Before the branch, not inside it: asked for only on the anonymous path, a missing `:to`
+      # would mount perfectly for everyone who is signed in and raise at the first stranger — a
+      # 500 exactly where a redirect was meant, and only in front of the person it was meant for.
+      to = if mode == :require_account, do: to!(opts)
 
-        # `assign_new` rather than `assign`, and it earns both halves: on the first, disconnected
-        # render LiveView seeds it from `conn.assigns`, so the plug's lookup is not repeated, and a
-        # LiveView nested under one that already answered inherits instead of asking again.
-        socket =
-          Phoenix.Component.assign_new(socket, :current_account, fn ->
-            Tokens.get_user_by_session_token(session[@session])
-          end)
+      # `assign_new` rather than `assign`, and it earns both halves: on the first, disconnected
+      # render LiveView seeds it from `conn.assigns`, so the plug's lookup is not repeated, and a
+      # LiveView nested under one that already answered inherits instead of asking again.
+      socket =
+        Phoenix.Component.assign_new(socket, :current_account, fn ->
+          Tokens.get_user_by_session_token(session[@session])
+        end)
 
-        case {mode, socket.assigns.current_account} do
-          {:current_account, _account} ->
-            {:cont, socket}
+      case {mode, socket.assigns.current_account} do
+        {:current_account, _account} ->
+          {:cont, socket}
 
-          {:require_account, nil} ->
-            {:halt, Phoenix.LiveView.redirect(socket, to: to)}
+        {:require_account, nil} ->
+          {:halt, Phoenix.LiveView.redirect(socket, to: to)}
 
-          {:require_account, _account} ->
-            {:cont, socket}
-        end
+        {:require_account, _account} ->
+          {:cont, socket}
       end
+    end
+
+    defp to!(opts) do
+      Keyword.get(opts, :to) ||
+        raise ArgumentError,
+              "on_mount {Ithibati.Web.Gate, {:require_account, to: \"/sign-in\"}} — a LiveView " <>
+                "that halts with nowhere to send a person is a dead end, and this library does " <>
+                "not own your paths."
     end
 
     # Raised rather than returned, and raised from `init/1` so a router says so at compile time:
@@ -149,14 +154,6 @@ if Code.ensure_loaded?(Phoenix.Controller) do
       raise ArgumentError,
             "#{inspect(other)} is not a mode this gate has; it has " <>
               "#{Enum.map_join(@modes, " and ", &inspect/1)}"
-    end
-
-    defp to!(opts) do
-      Keyword.get(opts, :to) ||
-        raise ArgumentError,
-              "on_mount {Ithibati.Web.Gate, {:require_account, to: \"/sign-in\"}} — a LiveView " <>
-                "that halts with nowhere to send a person is a dead end, and this library does " <>
-                "not own your paths."
     end
 
     defp refuse(conn, opts) do
