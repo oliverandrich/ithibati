@@ -192,7 +192,11 @@ defmodule Ithibati.Schema.Invitation do
     column = schema.__ithibati__(:identifier)
     taken? = Config.repo().exists?(from a in schema, where: field(a, ^column) == ^identifier)
 
-    if taken?, do: add_error(changeset, field, "already has an account"), else: changeset
+    # `validation:` so that an application can tell this apart from a format error without
+    # string-comparing the sentence, which is this library's wording and meant to be replaced.
+    if taken?,
+      do: add_error(changeset, field, "already has an account", validation: :unclaimed),
+      else: changeset
   end
 
   # Nothing minted for a changeset that cannot be inserted: a `phx-change` form would otherwise put a

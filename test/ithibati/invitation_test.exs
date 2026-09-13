@@ -124,6 +124,20 @@ defmodule Ithibati.Schema.InvitationTest do
 
       assert %{email: ["already has an account"]} = errors_on(changeset)
     end
+
+    # The sentence above is this library's wording and an application is expected to replace it, so
+    # there has to be something to match on that is not the sentence. Without it a consumer telling
+    # "already has an account" apart from a format error has to string-compare English that this
+    # library may reword.
+    test "and says so in a way that does not require reading the English" do
+      user_fixture(%{email: "taken@example.test"})
+
+      changeset =
+        TestInvitation.changeset(%TestInvitation{}, %{email: "taken@example.test", role: :author})
+
+      assert {"already has an account", opts} = changeset.errors[:email]
+      assert opts[:validation] == :unclaimed
+    end
   end
 
   describe "what it refuses at compile time" do
