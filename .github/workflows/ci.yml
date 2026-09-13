@@ -149,12 +149,21 @@ jobs:
           # derives it from the module, so a rename fails there first and loudly.
           grep -q "Ithibati.Web.Hooks.PasskeyCeremony" "$manifest"
 
-  # The example is documentation that either compiles or does not, and it is what the browser tests
-  # will drive. It takes the library by path, so it is also the only place that compiles the library
-  # the way a consumer does.
+  # The examples are documentation that either compiles or does not, and they are what the browser
+  # tests will drive. They take the library by path, so this is also the only place that compiles
+  # the library the way a consumer does.
   example:
-    name: example
+    name: example (${{ matrix.example }})
     runs-on: ubuntu-latest
+
+    strategy:
+      # One red example must not hide the other: they are the same application either side of one
+      # decision, and which of them fails is most of the answer.
+      fail-fast: false
+      matrix:
+        example:
+          - open_registration
+          - invitation_only
 
     services:
       postgres:
@@ -188,10 +197,10 @@ jobs:
       - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
-            examples/with_liveview/deps
-            examples/with_liveview/_build
-          key: ${{ runner.os }}-example-${{ hashFiles('examples/with_liveview/mix.lock') }}
-          restore-keys: ${{ runner.os }}-example-
+            examples/${{ matrix.example }}/deps
+            examples/${{ matrix.example }}/_build
+          key: ${{ runner.os }}-example-${{ matrix.example }}-${{ hashFiles(format('examples/{0}/mix.lock', matrix.example)) }}
+          restore-keys: ${{ runner.os }}-example-${{ matrix.example }}-
 
       # `mix precommit` rather than a second copy of it, the way mise.toml puts it for this
       # repository: following the example's own alias locally then means following the gate. It
@@ -199,12 +208,15 @@ jobs:
       # land, and cannot see the bare `import … from "ithibati"` resolving or a ceremony route
       # answering, which are the two things this example exists to demonstrate.
       - name: Run the example's gate
-        working-directory: examples/with_liveview
+        working-directory: examples/${{ matrix.example }}
         run: |
           mix local.hex --force
           mix local.rebar --force
           mix deps.get
-          mix assets.setup
+          # In the environment the gate runs in, not the default `dev`: `assets.setup` goes through
+          # `app.config`, which compiles, so leaving it in `dev` builds the example, the library and
+          # every dependency once in each environment. The binaries land in `_build/` either way.
+          MIX_ENV=test mix assets.setup
           mix precommit
 
       # What the root matrix cannot see: `lib/` compiled *as a dependency*, where `Mix.env()` is
@@ -212,8 +224,13 @@ jobs:
       # and both halves were measured — a consumer's `mix compile` does not apply
       # `--warnings-as-errors` to its dependencies, and `mix deps.compile` does not accept the
       # switch at all, printing the warning and exiting 0 either way.
+      #
+      # Once, not per example: both take the same library at the same path with the same optional
+      # dependencies present, so the second run would compile the same source into the same
+      # warnings and only cost a minute.
       - name: Check the library compiled into the example without warnings
-        working-directory: examples/with_liveview
+        if: matrix.example == 'open_registration'
+        working-directory: examples/${{ matrix.example }}
         run: |
           rm -rf _build/dev/lib/ithibati
           out=$(mix deps.compile ithibati --force 2>&1)

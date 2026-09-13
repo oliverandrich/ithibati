@@ -39,15 +39,25 @@ the invitation token is a bearer secret, and delivering it to the right person i
 [Decision 10](docs/design.md#10-open-registration-and-invitation-only-and-neither-proves-an-address)
 is the whole of the reasoning, including what a later release might add.
 
-## An application you can run
+## Two applications you can run
 
-Everything below is also written out as something that compiles and runs, in
-[`examples/with_liveview`](https://github.com/oliverandrich/ithibati/tree/main/examples/with_liveview)
-— which is where to look when a paragraph here and your editor disagree. CI compiles it, formats
-it, builds its assets and runs its tests, so it cannot quietly stop working.
+Everything below is also written out as something that compiles and runs — which is where to look
+when a paragraph here and your editor disagree. There are two, one for each way of letting people
+in. The decision itself is a single function in each; the invitation machinery behind it — a
+table, a schema, an acceptance page — exists only in the second:
 
-A link rather than a directory: the examples are not in the published package, so this one only
-resolves on GitHub.
+- [`examples/open_registration`](https://github.com/oliverandrich/ithibati/tree/main/examples/open_registration)
+  — anybody who reaches the page picks a username and makes a passkey.
+- [`examples/invitation_only`](https://github.com/oliverandrich/ithibati/tree/main/examples/invitation_only)
+  — the first account claims the instance, and everybody after it arrives on a link somebody
+  signed in wrote.
+
+Both use usernames, because a username is the identifier that needs nothing sent to it; the
+[identifier section](#the-identifier-is-yours-to-choose) is where email belongs in this document. CI compiles both,
+formats them, builds their assets and runs their tests, so neither can quietly stop working.
+
+Links rather than directories: the examples are not in the published package, so these only resolve
+on GitHub.
 
 ## What it runs on
 
@@ -266,17 +276,22 @@ defmodule MyApp.Accounts.User do
 end
 ```
 
+Two patterns come with the library, and both are offered rather than imposed:
+`Identifier.email_format/0` and `Identifier.username_format/0`. The second is Mastodon's rule for a
+local account — letters, digits and underscores, at most thirty characters — borrowed rather than
+invented, because what it leaves out is the point: dots and hyphens let `alice.smith` stand beside
+`alicesmith`, and anything outside ASCII lets a Cyrillic `а` stand beside a Latin `a`.
+
 ### The identifier is yours to choose
 
 There is no default. Pass the field an account is known by, and a pattern if you want one:
 
 ```elixir
-use User, identifier: :username, format: ~r/^[a-z0-9][a-z0-9_-]{2,31}$/
+use User, identifier: :username, format: Identifier.username_format()
 use User, identifier: :handle
 ```
 
-`format:` is optional, and `Ithibati.Schema.Identifier.email_format/0` offers a pattern for
-addresses rather than imposing one.
+`format:` is optional, and a pattern of your own is as welcome as either of the two above.
 `constraint_name:` and `unique_index:` concern the index on that column — see the migration below.
 Values written through `identifier_changeset/2` are trimmed and lowercased, so a plain unique index refuses `AdaLovelace`
 beside `adalovelace` with no functional index for you to remember — a write that bypasses the

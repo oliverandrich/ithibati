@@ -30,6 +30,9 @@ ithibati-*.tar
 /.beans/
 /.beans.yml
 
+# Snapshots and console logs the Playwright MCP server writes while a page is driven.
+/.playwright-mcp/
+
 # A per-checkout toolchain override. CI writes one per matrix leg; a local experiment with
 # another Elixir belongs here too, and never in the tracked pin.
 mise.local.toml

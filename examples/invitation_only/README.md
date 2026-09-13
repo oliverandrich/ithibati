@@ -1,0 +1,63 @@
+# Ithibati, invitation only
+
+Nobody registers here without an invitation — except the first person, who has nobody to invite
+them. Both answers live in one function, `registration_subject/2` in `lib/ithibati_invites/auth.ex`,
+where [`examples/open_registration`](../open_registration) simply answers `{:ok, username}`.
+
+Read the two side by side. The account schema, the users migration, the ceremony routes, the hook
+and the gate are the same in both; what this one adds is the machinery that decision needs — an
+`invitations` table and its schema, and a page for accepting one.
+
+## Running it
+
+Needs Postgres. Credentials are the generated defaults in `config/dev.exs`.
+
+```
+mix setup
+mix phx.server
+```
+
+Then open <http://localhost:4000> (the open-registration example uses the same port, so run one at
+a time, or give this one `PORT=4001`):
+
+1. The instance is unclaimed, so it offers a form. Pick a username and prove it with a passkey —
+   that account claims the instance and the form never appears again.
+2. Go inside, invite somebody, and copy the link. It is shown once: the row holds the token's
+   sha256, so nothing can show it to you again.
+3. Open the link (a private window is easiest). It names the username the invitation was addressed
+   to and does not offer to change it.
+
+No hardware needed if you would rather not: Chrome DevTools has a virtual authenticator under
+*More tools → WebAuthn*. `mix ecto.reset` starts over.
+
+## What to read, in this order
+
+| | |
+|---|---|
+| `lib/ithibati_invites/auth.ex` | The hinge. Two shapes of one transaction: the first account claims the instance, an invited one is spent as it is accepted. |
+| `lib/ithibati_invites/accounts/invitation.ex` | The invitations table is yours. Ithibati adds the invitee's identifier, the token digest, an expiry and an acceptance timestamp; what an invitation *grants* would go here. |
+| `lib/ithibati_invites_web/live/inside_live.ex` | Writing one. The token exists in memory for exactly as long as this page renders. |
+| `lib/ithibati_invites_web/live/invite_live.ex` | Accepting one, and why there is no field to change the name. |
+| `priv/repo/migrations/` | Yours first — both tables — then `Ithibati.Migration.up(version: 1)`, pinned. |
+
+## Three things worth noticing
+
+**A spent or expired invitation is answered exactly like one nobody holds.** `Invitations.fetch/1`
+returns `nil` for all three, so the page cannot tell a used link from an invented one, and neither
+can somebody guessing.
+
+**The acceptance is one transaction.** `Invitations.accept/2` marks the invitation spent inside the
+same transaction that creates the account and its passkey, so two requests arriving together cannot
+both succeed — the database decides, not a check beforehand.
+
+**The invitee cannot rename themselves.** `accept/2` refuses an acceptance whose account carries an
+identifier the invitation was not addressed to. That is why `invite_live.ex` shows the name rather
+than offering a field: a field would only produce a refusal further down, and until somebody noticed
+it would look like a form that hands an invitation to whoever fills it in.
+
+## Two lines a real application does not need
+
+`config/config.exs` adds `--alias:ithibati=…` to esbuild, and `assets/package.json` exists at all.
+Both are artefacts of living inside the library: a path dependency has no `deps/ithibati` for the
+bare specifier to resolve against, and Node's module resolution would otherwise walk up into the
+library's own `package.json`. Take Ithibati from Hex and neither is needed.

@@ -1,0 +1,18 @@
+<Layouts.app flash={%{}}>
+  <.header>
+    Your recovery codes
+    <:subtitle>
+      Twelve, each good for one sign-in, and this is the only time they are shown.
+    </:subtitle>
+  </.header>
+
+  <div class="alert alert-warning mt-6">
+    <span>What the database holds is their digests. Put these somewhere safe now.</span>
+  </div>
+
+  <ul class="mt-6 grid grid-cols-2 gap-2 font-mono text-sm">
+    <li :for={code <- @codes} class="rounded bg-base-200 px-3 py-2">{code}</li>
+  </ul>
+
+  <p class="mt-6"><.link navigate={~p"/"} class="link">Done</.link></p>
+</Layouts.app>
