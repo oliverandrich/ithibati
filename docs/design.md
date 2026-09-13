@@ -145,9 +145,16 @@ application's own record of what the account may do are all created at once. Tha
 transaction or it is a bug: an account that exists with no membership is a person who can log in and
 see nothing, and an account that half-failed is worse.
 
-So the library hands out composable `Ecto.Multi` fragments — `with_key_and_codes/3`
-in the reference implementation — and the application composes its own steps into the same
-transaction before running it. Publish/subscribe events are for *notification* after the fact, never
+So the library hands out composable `Ecto.Multi` fragments —
+`Ithibati.Identity.Grant.with_key_and_codes/3` — and the application composes its own steps into
+the same transaction before running it.
+
+A fragment lives in a module named after the *occasion*, not after the rows it writes: the passkey
+and the recovery codes belong to `Passkeys` and `RecoveryCodes`, and `Grant` is the composition of
+their two halves and nothing else. The step names it adds — `:passkey` and `:recovery_codes` — and
+the step it reads the account from are part of the contract, because an application matches on them;
+which step holds the account is an option, so a consumer's own naming does not have to bend to
+this library's. Publish/subscribe events are for *notification* after the fact, never
 for carrying a step of the grant. An event can be missed; a transaction cannot be half-applied.
 
 ## 5. Non-browser clients: the token is the boundary, not OAuth2

@@ -329,6 +329,33 @@ defmodule Ithibati.Identity.Passkeys do
     end
   end
 
+  @doc false
+  # The one place a credential row is shaped. `Ithibati.Identity.Grant` writes the first passkey of
+  # an invited account and would otherwise restate this field list, which is how the grant path ends
+  # up storing something subtly different from the registration path.
+  #
+  # `key_attrs` is rebuilt rather than merged into: a caller whose map carries a string `"user_id"`
+  # would otherwise get an atom one beside it, and which of the two Ecto reads is a detail of
+  # `Ecto.Changeset`'s parameter handling. The account is the caller's to name, not the map's.
+  def credential_changeset(key_attrs, account) do
+    %{key_id: key_id, public_key: public_key} = attrs = normalise(key_attrs)
+
+    UserKey.changeset(%UserKey{}, %{
+      key_id: key_id,
+      public_key: public_key,
+      label: attrs[:label],
+      user_id: Config.account!(account).id
+    })
+  end
+
+  defp normalise(%{key_id: _key_id, public_key: _public_key} = key_attrs), do: key_attrs
+
+  defp normalise(other) do
+    raise ArgumentError,
+          "key_attrs: expected what `key_attrs/2` returns — a map with :key_id and :public_key — " <>
+            "got #{inspect(other)}"
+  end
+
   # An authenticator that sets no attested-credential-data flag leaves this `nil`, and `Wax` does
   # not refuse it — the registration simply carries no credential. Matched rather than assumed:
   # the input is the browser's, and reading a field off `nil` would raise outside the rescue above,

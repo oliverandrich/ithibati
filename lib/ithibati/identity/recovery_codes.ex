@@ -45,7 +45,7 @@ defmodule Ithibati.Identity.RecoveryCodes do
         # rows its snapshot can see, so two regenerations at once leave two live batches — measured,
         # twenty rounds in twenty.
         lock!(account.id)
-        replace(account, count(opts))
+        replace(account, opts)
       end)
 
     codes
@@ -73,9 +73,10 @@ defmodule Ithibati.Identity.RecoveryCodes do
     repo = Config.repo()
 
     repo.transaction(fn ->
-      # The account is locked before the code is spent, so every path through this module takes that
-      # row first. Taken in the other order, a redemption and a regeneration on one account can each
-      # end up holding what the other needs.
+      # The account is locked before the code is spent. Taken in the other order, a redemption and a
+      # regeneration on one account can each end up holding what the other needs. (`issue!/3` is
+      # the exception and says so: it is called from inside a caller's own transaction, which has
+      # already established the account.)
       with account when account != nil <- lock_owner(digest),
            {:ok, _spent} <- spend(digest) do
         {account, refill(account, opts)}
@@ -113,33 +114,37 @@ defmodule Ithibati.Identity.RecoveryCodes do
   # twenty left the account holding nothing at all.
   defp refill(account, opts) do
     if Keyword.get(opts, :refill, true) and remaining(account) == 0,
-      do: replace(account, count(opts))
+      do: replace(account, opts)
   end
 
-  # One statement rather than twelve: measured at 0.29 ms against 1.10 ms, and eleven round trips
-  # that a database on another host charges a full network round for. `insert_all/2` fills the
-  # primary key and skips the changeset — which has nothing to do here, since both fields are built
-  # in this function and the account row is already locked.
-  defp replace(account, count) do
+  @doc false
+  # Public for `Ithibati.Identity.Grant`, which writes through the transaction's own repo. It takes
+  # no lock: the caller is provisioning an account nobody else has a handle on yet.
+  #
+  # One statement rather than one per code: measured at 0.29 ms against 1.10 ms, and the round trips
+  # a database on another host charges a full network round for. `insert_all/2` fills the primary
+  # key and skips the changeset, which has nothing to do here — both fields are built in this
+  # function.
+  def issue!(repo, account, opts \\ []) do
+    account = Config.account!(account)
     now = DateTime.utc_now()
-    codes = for _ <- 1..count, do: code()
 
-    Config.repo().delete_all(from r in RecoveryCode, where: r.user_id == ^account.id)
+    # `1..0` counts *down*, so without the step a count of zero issues two codes nobody was shown.
+    codes = for _ <- 1..count(opts)//1, do: code()
 
-    Config.repo().insert_all(
+    repo.delete_all(from r in RecoveryCode, where: r.user_id == ^account.id)
+
+    repo.insert_all(
       RecoveryCode,
       Enum.map(codes, fn code ->
-        %{
-          user_id: account.id,
-          code_hash: Secrets.digest(code),
-          inserted_at: now,
-          updated_at: now
-        }
+        %{user_id: account.id, code_hash: Secrets.digest(code), inserted_at: now, updated_at: now}
       end)
     )
 
     codes
   end
+
+  defp replace(account, opts), do: issue!(Config.repo(), account, opts)
 
   # One statement for the owner and the lock: the digest rides a sub-`SELECT`, which Postgres does
   # not lock rows through — so the code row stays free while the account row is taken, which is the
@@ -164,7 +169,12 @@ defmodule Ithibati.Identity.RecoveryCodes do
     from r in RecoveryCode, where: r.user_id == ^account.id and is_nil(r.used_at)
   end
 
-  defp count(opts), do: Keyword.get(opts, :count, @count)
+  defp count(opts) do
+    case Keyword.get(opts, :count, @count) do
+      count when is_integer(count) and count >= 0 -> count
+      other -> raise ArgumentError, "count: must be a non-negative integer, got #{inspect(other)}"
+    end
+  end
 
   defp code,
     do:

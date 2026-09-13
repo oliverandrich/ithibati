@@ -47,14 +47,19 @@ defmodule Ithibati.DataCase do
   address.
   """
   def user_fixture(attrs \\ %{}) do
-    address = Map.get(attrs, :email, "someone-#{System.unique_integer([:positive])}@example.test")
-
-    {:ok, user} =
-      %Ithibati.TestUser{}
-      |> Ithibati.TestUser.changeset(Map.put(attrs, :email, address))
-      |> Ithibati.TestRepo.insert()
+    {:ok, user} = attrs |> user_changeset() |> Ithibati.TestRepo.insert()
 
     user
+  end
+
+  @doc """
+  The same account as a changeset, for a test that wants to put it in an `Ecto.Multi` rather than in
+  the database.
+  """
+  def user_changeset(attrs \\ %{}) do
+    address = Map.get(attrs, :email, "someone-#{System.unique_integer([:positive])}@example.test")
+
+    Ithibati.TestUser.changeset(%Ithibati.TestUser{}, Map.put(attrs, :email, address))
   end
 
   @doc """

@@ -11,8 +11,11 @@ defmodule Ithibati.Config do
   consuming application's modules compile after the dependencies they use.
 
   Settings that are a rule rather than a value live with the rule: `config :ithibati,
-  token_validity:` is read by `Ithibati.Identity.Tokens`, which is also what decides that a validity is a
-  count and a unit.
+  token_validity:` is read by `Ithibati.Identity.Tokens`, which is also what decides that a validity
+  is a count and a unit.
+
+  `account!/1` is here for the same reason in reverse: what counts as an account is a *setting* —
+  `user_schema` — so the guard that refuses everything else belongs beside the setting it reads.
   """
 
   # Not `:prefix`: in Ecto that already means the Postgres schema, which is a separate thing this
@@ -114,15 +117,28 @@ defmodule Ithibati.Config do
   accepted as account 1, and with `:binary_id` the foreign key catches it only afterwards and in the
   database's words.
   """
+  def account!(account)
+
   def account!(%schema{} = account) do
     configured = user_schema()
 
-    schema == configured ||
-      raise(
-        ArgumentError,
-        "Ithibati: expected a #{inspect(configured)}, got a #{inspect(schema)}"
-      )
+    schema == configured || refuse(account)
 
     account
+  end
+
+  # `nil` is what an application step that ends in `{:ok, repo.one(query)}` hands over when the query
+  # found nothing, and it is the case that will actually happen. Without this it reaches a
+  # `%schema{}` clause and fails as a `FunctionClauseError` naming neither this library nor the
+  # value.
+  def account!(other), do: refuse(other)
+
+  # A struct is named, not inspected: an account carries the identifier, and an exception message is
+  # a place it should not turn up.
+  defp refuse(%module{}), do: refuse_with("a #{inspect(module)}")
+  defp refuse(other), do: refuse_with(inspect(other))
+
+  defp refuse_with(description) do
+    raise ArgumentError, "Ithibati: expected a #{inspect(user_schema())}, got #{description}"
   end
 end
