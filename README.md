@@ -59,8 +59,8 @@ end
 
 The pipeline is not decoration: the challenge waits in the session between the two round-trips, so
 something has to have fetched one. `:browser` also brings CSRF protection, which the hook below
-answers with the `x-csrf-token` header. The relying party comes from your endpoint's configured
-`:url` rather than from the connection — behind a proxy that terminates TLS those disagree, and the
+answers with the `x-csrf-token` header. The relying party comes by default from your endpoint's
+configured `:url` rather than from the connection — behind a proxy that terminates TLS those disagree, and the
 browser signs what it saw.
 
 `:rp_name` is the name a passkey dialog shows. Two more options belong to a mount rather than to
@@ -72,6 +72,30 @@ deliberately does not make are yours: who may start a registration, what an acco
 a credential verifies, and what is issued after an assertion. A session cookie is one answer; a
 bearer token for an extension or a native client is another, and picking one for you would rule the
 other out.
+
+`relying_party/2` is optional. A browser served from your own
+URL wants the default — the endpoint's configured `:url`, which is what the browser saw rather than
+what your node accepted. The default is handed to it rather than replaced by it, so the usual shape adds rather than
+substitutes — the same passkey has to keep working in the browser:
+
+```elixir
+def relying_party(_conn, {rp_id, origin}), do: {rp_id, [origin | @extension_origins]}
+```
+
+Implement it when the client's origin is not your URL: a native app's assertion
+arrives with the origin of an associated domain, an extension's with the origin of the extension,
+and one relying-party id serves all of them. Which of those you accept is your decision, so you are
+asked rather than configured.
+
+The origin may be a list, and for an extension it usually is: the same extension has a different
+stable origin in each browser — `chrome-extension://<id>` and `moz-extension://<hash>` — and an
+assertion carries whichever one it was made at.
+
+**Return values chosen from a fixed set.** Reading the `origin` request header and handing it back
+makes the check compare the client's claim against itself, so it matches whatever arrives: a
+credential registered for your site could then be asserted from any page its holder visits. Nothing
+fails when you get this wrong — not in production, not in your tests — because the origin always
+"matches".
 
 What the library does hold is the ceremony itself — and one property that is easy to lose: a
 challenge is single-use, so it is spent the first time a verification is attempted, whether that

@@ -49,13 +49,17 @@ defmodule Ithibati.Identity.Passkeys do
   ceremony may take, and which attestation types are trusted — the last of which refuses every
   registration if it does not list `:none`.
 
+  `origin` may be a list, and for a client that is not a browser page it usually is: an extension
+  has a different stable origin in each browser, and an assertion carries whichever one it was made
+  at. Every entry is accepted; none of them is preferred.
+
   `:user_verification` is the one choice here that is an application's rather than this library's:
   whether the authenticator must confirm who is holding it. It defaults to `"preferred"`, and
   `registration_options/3` reads it back off the challenge so the browser can never be asked for
   something the server will refuse. `:seconds` is how long the challenge stays acceptable.
   """
   def registration_challenge(rp_id, origin, opts \\ [])
-      when is_binary(rp_id) and is_binary(origin) do
+      when is_binary(rp_id) and (is_binary(origin) or (is_list(origin) and origin != [])) do
     Wax.new_registration_challenge(
       rp_id: rp_id,
       origin: origin,
@@ -355,7 +359,7 @@ defmodule Ithibati.Identity.Passkeys do
   when it is not passed, and it accepts an assertion made without the person being present.
   """
   def authentication_challenge(rp_id, origin, opts \\ [])
-      when is_binary(rp_id) and is_binary(origin) do
+      when is_binary(rp_id) and (is_binary(origin) or (is_list(origin) and origin != [])) do
     if Config.repo().exists?(UserKey) do
       {:ok,
        Wax.new_authentication_challenge(

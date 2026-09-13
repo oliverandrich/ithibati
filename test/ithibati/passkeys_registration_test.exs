@@ -22,6 +22,19 @@ defmodule Ithibati.Identity.PasskeysRegistrationTest do
       assert challenge.origin == @origin
     end
 
+    test "takes several origins, because one client has a different one in each browser" do
+      origins = [@origin, "chrome-extension://mabekielmoibbmlepeohhncklpnjmcpk"]
+
+      assert Passkeys.registration_challenge(@rp_id, origins).origin == origins
+    end
+
+    # An empty list is a relying party that accepts nothing. `Wax` takes it without complaint and
+    # the ceremony then fails at verification with an origin mismatch, which reads as a broken
+    # authenticator rather than as a call that was wrong.
+    test "but not none at all" do
+      assert_raise FunctionClauseError, fn -> Passkeys.registration_challenge(@rp_id, []) end
+    end
+
     # `Wax.Challenge.new/1` merges `Application.get_all_env(:wax_)` over what it is passed, so a
     # consumer who configures the library it depends on would otherwise silently decide the relying
     # party for every call — which is the one thing decision 5 says must stay per-call.

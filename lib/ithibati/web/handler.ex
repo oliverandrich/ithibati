@@ -57,5 +57,41 @@ if Code.ensure_loaded?(Plug.Conn) do
     """
     @callback authenticate(Plug.Conn.t(), account :: struct()) ::
                 {:ok, Plug.Conn.t()} | {:error, term()}
+
+    @doc """
+    Which relying party this request belongs to, as `{rp_id, origin}`.
+
+    Optional. The default is handed to it rather than replaced by it: `default` is the endpoint's
+    configured `:url`, which is what the browser saw rather than what this node accepted — behind a
+    proxy terminating TLS those disagree and every ceremony fails on an origin mismatch. An
+    implementation that dropped it would have to re-derive exactly that, which is the derivation
+    people get wrong.
+
+    So the usual shape is to add rather than replace:
+
+        def relying_party(_conn, {rp_id, origin}), do: {rp_id, [origin | @extension_origins]}
+
+    The same passkey has to keep working in the browser, after all. Implement it for a client whose
+    origin is not that URL. `docs/design.md` names two: a native
+    app's assertion arrives with the origin of an associated domain, an extension's with the origin
+    of the extension, and one relying-party id serves all of them. Which origins an application
+    accepts is the application's decision, which is why this is asked rather than configured.
+
+    The origin may be a list, and for an extension it usually is: the same extension has a
+    different stable origin in each browser — `chrome-extension://<id>` and
+    `moz-extension://<hash>` — and an assertion carries the one it was made at.
+
+    > #### Never from the request {: .warning}
+    >
+    > Return values chosen from a fixed set. Reading the `origin` request header and handing it back
+    > makes the check compare the client's claim against itself, so it matches whatever arrives: a
+    > credential registered for the real site can then be asserted from any page its holder visits,
+    > and WebAuthn's whole anti-phishing property is gone. Nothing fails, in production or in a
+    > consumer's tests, because the origin always "matches".
+    """
+    @callback relying_party(Plug.Conn.t(), default :: {String.t(), String.t()}) ::
+                {rp_id :: String.t(), origin :: String.t() | [String.t(), ...]}
+
+    @optional_callbacks relying_party: 2
   end
 end

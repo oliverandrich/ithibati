@@ -32,7 +32,7 @@ if Code.ensure_loaded?(Phoenix.Controller) do
           challenge = Passkeys.registration_challenge(rp_id, origin, ceremony)
 
           conn
-          |> put_session(@registration, {challenge, subject})
+          |> keep(@registration, {challenge, subject})
           |> json(Passkeys.registration_options(challenge, subject, rp_name: rp_name))
 
         {:error, reason} ->
@@ -43,7 +43,7 @@ if Code.ensure_loaded?(Phoenix.Controller) do
     def registration(conn, params) do
       {conn, held} = spend(conn, @registration)
 
-      with {:ok, {challenge, subject}} <- taken(held),
+      with {:ok, {challenge, subject}} <- taken(held, settings(conn)),
            {:ok, key_attrs} <- Passkeys.verify_registration(params["credential"], challenge),
            {:ok, conn} <- handler(conn).register(conn, key_attrs, subject, params) do
         answered(conn, "registered")
@@ -58,7 +58,7 @@ if Code.ensure_loaded?(Phoenix.Controller) do
       case Passkeys.authentication_challenge(rp_id, origin, settings(conn).ceremony) do
         {:ok, challenge} ->
           conn
-          |> put_session(@authentication, challenge)
+          |> keep(@authentication, challenge)
           |> json(Passkeys.authentication_options(challenge))
 
         {:error, reason} ->
@@ -69,7 +69,7 @@ if Code.ensure_loaded?(Phoenix.Controller) do
     def authentication(conn, params) do
       {conn, held} = spend(conn, @authentication)
 
-      with {:ok, challenge} <- taken(held),
+      with {:ok, challenge} <- taken(held, settings(conn)),
            {:ok, account} <- Passkeys.verify_authentication(params["credential"], challenge),
            {:ok, conn} <- handler(conn).authenticate(conn, account) do
         answered(conn, "authenticated")
@@ -84,8 +84,20 @@ if Code.ensure_loaded?(Phoenix.Controller) do
     # what this library puts there for others.
     defp spend(conn, key), do: {delete_session(conn, key), get_session(conn, key)}
 
-    defp taken(nil), do: {:error, :no_challenge}
-    defp taken(held), do: {:ok, held}
+    # The mount travels with the challenge rather than in the name of the slot it sits in. Two
+    # mounts may answer to different relying parties and different handlers, and sharing one slot
+    # without this let a challenge minted under one be spent at the other's verify route: the
+    # assertion validates against its own challenge, so nothing refuses it, and the wrong handler
+    # decides what it is worth — on the registration side carrying a subject one mount approved into
+    # another mount's `register/4`, past the only place an instance can say "not you".
+    #
+    # Compared rather than hashed into the key, so there is no collision to reason about, the
+    # session still holds two slots however many mounts an application has, and a challenge offered
+    # to the wrong mount is spent there all the same.
+    defp keep(conn, key, held), do: put_session(conn, key, {settings(conn), held})
+
+    defp taken({settings, held}, settings), do: {:ok, held}
+    defp taken(_held, _settings), do: {:error, :no_challenge}
 
     defp settings(conn), do: conn.private.ithibati
     defp handler(conn), do: settings(conn).handler
@@ -100,15 +112,25 @@ if Code.ensure_loaded?(Phoenix.Controller) do
     defp answered(%{state: :sent} = conn, _status), do: conn
     defp answered(conn, status), do: json(conn, %{status: status})
 
-    # From the endpoint's configured URL, not from `conn.scheme`/`conn.port`, which describe the
+    # The handler's answer when it has one — an extension and a native app post to these same
+    # routes and their origins are not the server's, and which of them an application accepts is
+    # the application's decision.
+    #
+    # Otherwise the endpoint's configured URL, not `conn.scheme`/`conn.port`, which describe the
     # connection this node accepted: behind a proxy that terminates TLS those say `http` while the
     # browser signed `https`, and every ceremony would fail on an origin mismatch in production and
     # nowhere else. The configured URL is also what settles `www.example.com` against
     # `example.com`, which an authenticator treats as two unrelated relying parties.
     defp relying_party(conn) do
+      handler = handler(conn)
       url = endpoint_module(conn).struct_url()
+      default = {url.host, URI.to_string(url)}
 
-      {url.host, URI.to_string(url)}
+      if Code.ensure_loaded?(handler) and function_exported?(handler, :relying_party, 2) do
+        handler.relying_party(conn, default)
+      else
+        default
+      end
     end
 
     # Never `to_string/1` on the reason: `Wax` answers with exception structs, and `String.Chars`

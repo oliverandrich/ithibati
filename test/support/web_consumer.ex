@@ -20,6 +20,33 @@ if Code.ensure_loaded?(Phoenix.Router) do
     def authenticate(conn, account), do: {:ok, Plug.Conn.assign(conn, :account, account)}
   end
 
+  # A consumer that serves a client whose origin is not the server's own — an extension, a native
+  # app's associated domain. The relying-party id stays the server's; only the origin differs.
+  defmodule Ithibati.TestExtensionHandler do
+    @moduledoc false
+    @behaviour Ithibati.Web.Handler
+
+    @impl true
+    def registration_subject(_conn, _params), do: {:ok, "someone@example.com"}
+
+    @impl true
+    def register(conn, _key_attrs, _subject, _params), do: {:ok, conn}
+
+    @impl true
+    def authenticate(conn, account), do: {:ok, Plug.Conn.assign(conn, :account, account)}
+
+    # The relying-party id stays the server's domain — an extension may name any domain in its
+    # `host_permissions`, so it does not become its own relying party. The origins are a list
+    # because the same extension has a different stable one in each browser.
+    @extensions [
+      "chrome-extension://mabekielmoibbmlepeohhncklpnjmcpk",
+      "moz-extension://ngpncaopklanhjklijieoihgbhbgknjjdklmlpagjoaobbpmknfgmhgghbadgoai"
+    ]
+
+    @impl true
+    def relying_party(_conn, {rp_id, origin}), do: {rp_id, [origin | @extensions]}
+  end
+
   defmodule Ithibati.TestPageController do
     @moduledoc false
     use Phoenix.Controller, formats: [:json]
@@ -101,6 +128,11 @@ if Code.ensure_loaded?(Phoenix.Router) do
     scope "/auth" do
       pipe_through(:browser)
       ithibati_routes(handler: Ithibati.TestHandler, rp_name: "Ithibati Test")
+    end
+
+    scope "/extension" do
+      pipe_through(:browser)
+      ithibati_routes(handler: Ithibati.TestExtensionHandler, rp_name: "Ithibati Extension")
     end
 
     # A second mount, so the ceremony options can be shown to come from the macro rather than from

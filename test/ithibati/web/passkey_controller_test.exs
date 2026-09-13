@@ -24,6 +24,22 @@ if Code.ensure_loaded?(Phoenix.Controller) do
       post(conn, path, params)
     end
 
+    # The mount travels with the challenge, so reading it back means unwrapping that first. What
+    # pins the separation is not this — it is the test that carries a challenge across mounts.
+    defp challenge(conn, key) do
+      {_settings, held} = Plug.Conn.get_session(conn, key)
+
+      held
+    end
+
+    defp origins(mount) do
+      mount
+      |> Kernel.<>("/authentication/challenge")
+      |> request(%{})
+      |> challenge(:ithibati_authentication_challenge)
+      |> Map.fetch!(:origin)
+    end
+
     # Only the sign-in half needs one: `authentication_challenge/3` answers `:no_credentials` with
     # no key on file at all, and a registration builds its own credential inside the test.
     defp a_key_on_file(_ctx) do
@@ -44,7 +60,7 @@ if Code.ensure_loaded?(Phoenix.Controller) do
         started = request("/auth/authentication/challenge", %{})
         assert started.status == 200
 
-        challenge = Plug.Conn.get_session(started, :ithibati_authentication_challenge)
+        challenge = challenge(started, :ithibati_authentication_challenge)
         assert challenge, "the challenge has to survive between the two round-trips"
 
         assertion = TestCredentials.assertion(ctx.credential, challenge)
@@ -62,7 +78,7 @@ if Code.ensure_loaded?(Phoenix.Controller) do
       # challenge left behind by a failure is a challenge an attacker may keep guessing against.
       test "a failed verification spends the challenge too" do
         started = request("/auth/authentication/challenge", %{})
-        challenge = Plug.Conn.get_session(started, :ithibati_authentication_challenge)
+        challenge = challenge(started, :ithibati_authentication_challenge)
 
         stranger = TestCredentials.assertion(TestCredentials.credential(), challenge)
 
@@ -81,10 +97,41 @@ if Code.ensure_loaded?(Phoenix.Controller) do
       # configured as `https://example.test`, so only one of the two can be the answer.
       test "the relying party comes from the endpoint's configured URL, not from the connection" do
         started = request("/auth/authentication/challenge", %{})
-        challenge = Plug.Conn.get_session(started, :ithibati_authentication_challenge)
+        challenge = challenge(started, :ithibati_authentication_challenge)
 
         assert challenge.rp_id == "example.test"
         assert challenge.origin == "https://example.test"
+      end
+
+      # Decision 5 names two clients whose origin is not the server's own URL: a native app's
+      # associated domain, and an extension's. They post to these same four routes, so the endpoint
+      # derivation has to be a default rather than the only answer.
+      test "a handler that says so decides the relying party, and may name several origins" do
+        started = request("/extension/authentication/challenge", %{})
+        held = challenge(started, :ithibati_authentication_challenge)
+
+        # The id is deliberately the endpoint's host, because that is what it should be: an
+        # extension names the server's domain rather than becoming its own relying party. So the
+        # origins are what discriminate — and the endpoint's own is still among them, because the
+        # same passkey has to keep working in the browser.
+        assert held.rp_id == "example.test"
+        assert "https://example.test" in held.origin
+        assert Enum.any?(held.origin, &String.starts_with?(&1, "chrome-extension://"))
+        assert Enum.any?(held.origin, &String.starts_with?(&1, "moz-extension://"))
+      end
+
+      # Every one of them, not whichever happens to be last: an implementation that honoured only
+      # the head of the list would pass a test that picked one.
+      test "an assertion made at any origin on that list verifies", ctx do
+        for origin <- origins("/extension") do
+          started = request("/extension/authentication/challenge", %{})
+          held = challenge(started, :ithibati_authentication_challenge)
+
+          assertion = TestCredentials.assertion(ctx.credential, held, origin: origin)
+          signed_in = request("/extension/authentication", %{"credential" => assertion}, started)
+
+          assert signed_in.status == 200, "an assertion made at #{origin} was refused"
+        end
       end
 
       # Both of these were unreachable through the web half at first, and the handler's return value
@@ -95,11 +142,27 @@ if Code.ensure_loaded?(Phoenix.Controller) do
         relaxed = request("/auth/authentication/challenge", %{})
         strict = request("/strict/authentication/challenge", %{})
 
-        assert Plug.Conn.get_session(relaxed, :ithibati_authentication_challenge).user_verification ==
+        assert challenge(relaxed, :ithibati_authentication_challenge).user_verification ==
                  "preferred"
 
-        assert Plug.Conn.get_session(strict, :ithibati_authentication_challenge).user_verification ==
+        assert challenge(strict, :ithibati_authentication_challenge).user_verification ==
                  "required"
+      end
+
+      # Two mounts may answer to different relying parties and different handlers. With one slot for
+      # the whole application a challenge minted here could be verified there: the assertion validates
+      # against its own challenge, so nothing refuses it, and the other mount's handler decides what
+      # it is worth — a browser session where a scoped token was meant.
+      test "a challenge minted at one mount cannot be spent at another", ctx do
+        started = request("/extension/authentication/challenge", %{})
+        held = challenge(started, :ithibati_authentication_challenge)
+
+        assertion = TestCredentials.assertion(ctx.credential, held, origin: hd(held.origin))
+
+        crossed = request("/auth/authentication", %{"credential" => assertion}, started)
+
+        assert crossed.status == 422
+        assert Jason.decode!(crossed.resp_body) == %{"error" => "no_challenge"}
       end
 
       # The authentication endpoint has no handler gate — it cannot, sign-in names nobody. So if both
@@ -111,7 +174,7 @@ if Code.ensure_loaded?(Phoenix.Controller) do
         started = request("/auth/authentication/challenge", %{})
         assert started.status == 200
 
-        challenge = Plug.Conn.get_session(started, :ithibati_authentication_challenge)
+        challenge = challenge(started, :ithibati_authentication_challenge)
         attestation = TestCredentials.attestation(TestCredentials.credential(), challenge)
 
         smuggled = request("/auth/registration", %{"credential" => attestation}, started)
@@ -122,7 +185,7 @@ if Code.ensure_loaded?(Phoenix.Controller) do
 
       test "a body with no credential at all still spends the challenge" do
         started = request("/auth/authentication/challenge", %{})
-        assert Plug.Conn.get_session(started, :ithibati_authentication_challenge)
+        assert challenge(started, :ithibati_authentication_challenge)
 
         refused = request("/auth/authentication", %{}, started)
         assert refused.status == 422
@@ -136,7 +199,7 @@ if Code.ensure_loaded?(Phoenix.Controller) do
           request("/auth/registration/challenge", %{"identifier" => "someone@example.com"})
 
         assert started.status == 200
-        assert Plug.Conn.get_session(started, :ithibati_registration_challenge)
+        assert challenge(started, :ithibati_registration_challenge)
         assert %{"rp" => %{"name" => "Ithibati Test"}} = Jason.decode!(started.resp_body)
       end
 
@@ -152,7 +215,7 @@ if Code.ensure_loaded?(Phoenix.Controller) do
         started =
           request("/auth/registration/challenge", %{"identifier" => "someone@example.com"})
 
-        {challenge, _subject} = Plug.Conn.get_session(started, :ithibati_registration_challenge)
+        {challenge, _subject} = challenge(started, :ithibati_registration_challenge)
 
         attestation = TestCredentials.attestation(TestCredentials.credential(), challenge)
 
@@ -170,7 +233,7 @@ if Code.ensure_loaded?(Phoenix.Controller) do
         started =
           request("/auth/registration/challenge", %{"identifier" => "invited@example.com"})
 
-        {challenge, _} = Plug.Conn.get_session(started, :ithibati_registration_challenge)
+        {challenge, _} = challenge(started, :ithibati_registration_challenge)
         attestation = TestCredentials.attestation(TestCredentials.credential(), challenge)
 
         registered =
@@ -184,11 +247,27 @@ if Code.ensure_loaded?(Phoenix.Controller) do
         assert registered.assigns.subject == "invited@example.com"
       end
 
+      # The other half of the widened guard. Both challenge functions take the list, and only the
+      # sign-in one was driven with one — a registration from an extension would have died on a
+      # `FunctionClauseError` with nothing pointing at the origin.
+      test "a registration works against a mount that names several origins" do
+        started = request("/extension/registration/challenge", %{})
+        {held, _subject} = challenge(started, :ithibati_registration_challenge)
+        firefox = List.last(held.origin)
+
+        attestation =
+          TestCredentials.attestation(TestCredentials.credential(), held, origin: firefox)
+
+        registered = request("/extension/registration", %{"credential" => attestation}, started)
+
+        assert registered.status == 200
+      end
+
       test "a replayed registration is refused" do
         started =
           request("/auth/registration/challenge", %{"identifier" => "someone@example.com"})
 
-        {challenge, _subject} = Plug.Conn.get_session(started, :ithibati_registration_challenge)
+        {challenge, _subject} = challenge(started, :ithibati_registration_challenge)
         attestation = TestCredentials.attestation(TestCredentials.credential(), challenge)
 
         first = request("/auth/registration", %{"credential" => attestation}, started)

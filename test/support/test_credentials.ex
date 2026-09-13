@@ -49,7 +49,7 @@ defmodule Ithibati.TestCredentials do
   overrides the flag byte, `attested: false` sends authenticator data with no attested credential
   data in it — a registration carrying no credential at all, which `Wax` accepts — and
   `:discoverable` sets what the client reported under `credProps`, `nil` meaning it reported
-  nothing.
+  nothing. `:origin` picks which of a challenge's acceptable origins this browser was at.
   """
   def attestation(credential, challenge, opts \\ []) do
     object =
@@ -64,7 +64,7 @@ defmodule Ithibati.TestCredentials do
       "type" => "public-key",
       "response" => %{
         "attestationObject" => url64(object),
-        "clientDataJSON" => url64(client_data("webauthn.create", challenge))
+        "clientDataJSON" => url64(client_data("webauthn.create", challenge, opts))
       },
       "clientExtensionResults" => extension_results(opts)
     }
@@ -83,10 +83,11 @@ defmodule Ithibati.TestCredentials do
 
   The authenticator data is the same builder a registration uses with the attested credential data
   left out, which is what an assertion carries. `:flags` overrides the flag byte, for the test that
-  asks what happens when the person was not there.
+  asks what happens when the person was not there, and `:origin` picks which of a challenge's
+  acceptable origins this browser was at.
   """
   def assertion(credential, challenge, opts \\ []) do
-    client_data = client_data("webauthn.get", challenge)
+    client_data = client_data("webauthn.get", challenge, opts)
     auth_data = authenticator_data(credential, challenge, Keyword.put(opts, :attested, false))
 
     signature =
@@ -109,12 +110,19 @@ defmodule Ithibati.TestCredentials do
     }
   end
 
-  @doc "The client data a browser sends for a ceremony of this type against this challenge."
-  def client_data(type, challenge) do
+  @doc """
+  The client data a browser would send, with `:origin` overridable.
+
+  A challenge may name several acceptable origins — one extension has a different stable one in
+  each browser — but a browser sends exactly the one it is running on, so a test of that has to be
+  able to say which. Omitting it against such a challenge takes the first rather than emitting the
+  list, which is a shape no browser sends and which would pass a test for the wrong reason.
+  """
+  def client_data(type, challenge, opts \\ []) do
     Jason.encode!(%{
       type: type,
       challenge: Base.url_encode64(challenge.bytes, padding: false),
-      origin: challenge.origin
+      origin: opts |> Keyword.get(:origin, challenge.origin) |> List.wrap() |> List.first()
     })
   end
 
