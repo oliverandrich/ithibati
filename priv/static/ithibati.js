@@ -65,21 +65,95 @@ export async function authenticate(options) {
   return serialise(await navigator.credentials.get({publicKey: decodeRequestOptions(options)}))
 }
 
-// Keyed by the name the colocated manifest uses, which LiveView builds as `<module>.<hook name>`.
-// A shorter key here would mean `phx-hook` had to say something different depending on which route
-// a consumer took, and the one that did not match would fail by doing nothing at all.
+// The transport is the controller, not the LiveView channel, and that is not a detail: only a
+// controller can set a session cookie. So a LiveView says when to start — it has the identity
+// fields and has already validated them — and everything after that is `fetch`.
+async function post(url, body) {
+  const headers = {"content-type": "application/json", accept: "application/json"}
+
+  // The routes sit behind a `:browser` pipeline, which protects everything that is not a GET and
+  // reads the token from this header or from a `_csrf_token` field — a JSON body is not exempt.
+  const token = document.querySelector("meta[name='csrf-token']")?.content
+  if (token) headers["x-csrf-token"] = token
+
+  const response = await fetch(url, {
+    method: "POST",
+    headers,
+    // The cookie the sign-in is about to set is the whole point of this request.
+    credentials: "same-origin",
+    body: JSON.stringify(body)
+  })
+
+  // A proxy's error page, a redirect to a sign-in, a 500: parsing those throws a SyntaxError that
+  // is indistinguishable from a cancelled ceremony by the time it is caught.
+  const parsed = await response.json().catch(() => ({}))
+
+  return {ok: response.ok, status: response.status, body: parsed}
+}
+
+// One place that says which ceremony is which. The alternative is a two-valued discriminator
+// spelled out at each of three sites, two of them ternaries, which fail by quietly taking the
+// other branch.
+const CEREMONIES = {
+  registration: {start: register},
+  authentication: {start: authenticate}
+}
+
 export const PasskeyCeremony = {
   mounted() {
-    this.handleEvent("ithibati:register", async ({options, reply}) => {
-      this.pushEvent(reply, await register(options))
-    })
+    this.handleEvent("ithibati:register", (identity) => this.run("registration", identity))
+    this.handleEvent("ithibati:authenticate", () => this.run("authentication", {}))
+  },
 
-    this.handleEvent("ithibati:authenticate", async ({options, reply}) => {
-      this.pushEvent(reply, await authenticate(options))
-    })
+  async run(ceremony, identity) {
+    try {
+      const challengeUrl = this.requiredUrl(`${ceremony}-challenge-url`)
+      const verifyUrl = this.requiredUrl(`${ceremony}-url`)
+
+      const started = await post(challengeUrl, identity)
+      if (!started.ok) return this.failed(started.body.error, started.status)
+
+      const credential = await CEREMONIES[ceremony].start(started.body)
+
+      const finished = await post(verifyUrl, {...identity, credential})
+      if (!finished.ok) return this.failed(finished.body.error, finished.status)
+
+      // A handler that answered with somewhere to go is obeyed; anything else is the page's to
+      // decide, so it goes back to the LiveView rather than being acted on here.
+      if (finished.body.redirect) {
+        window.location.href = finished.body.redirect
+      } else {
+        this.pushEvent("ithibati:done", finished.body)
+      }
+    } catch (error) {
+      // A cancelled or failed ceremony is a `DOMException`, which the server never hears about —
+      // the person closed the dialog. A missing URL is the one reported by name, because it is a
+      // wiring mistake and looks exactly like a cancelled ceremony otherwise.
+      if (error.name === "IthibatiMissingUrl") return this.failed(error.message)
+
+      this.failed(error.name === "NotAllowedError" ? "ceremony_cancelled" : "ceremony_failed")
+    }
+  },
+
+  // Read by the attribute's own spelling rather than through `dataset`, so the name the error
+  // reports and the name that was looked up cannot come apart.
+  requiredUrl(attribute) {
+    const value = this.el.getAttribute(`data-${attribute}`)
+    if (value) return value
+
+    const error = new Error(`missing_data_${attribute.replace(/-/g, "_")}`)
+    error.name = "IthibatiMissingUrl"
+    throw error
+  },
+
+  failed(error, status) {
+    this.pushEvent("ithibati:failed", {error: error || "unknown", status: status || null})
   }
 }
 
+// Keyed by the name the colocated manifest uses, which LiveView builds as `<module>.<hook name>`.
+// A shorter key here would mean `phx-hook` had to say something different depending on which route
+// a consumer took, and the one that did not match would fail by doing nothing at all.
 export const hooks = {"Ithibati.Web.Hooks.PasskeyCeremony": PasskeyCeremony}
 
 export default hooks

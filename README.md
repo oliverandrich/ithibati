@@ -46,18 +46,69 @@ migration reads the account table's own catalogue entries to check what it is ab
 foreign key at, and no other adapter answers those questions. CI builds both ends of the Elixir
 range and both account-key types.
 
+## The routes
+
+Four endpoints drive the two ceremonies, wired in one call:
+
+```elixir
+scope "/auth" do
+  pipe_through :browser
+  ithibati_routes handler: MyApp.Auth, rp_name: "MyApp"
+end
+```
+
+The pipeline is not decoration: the challenge waits in the session between the two round-trips, so
+something has to have fetched one. `:browser` also brings CSRF protection, which the hook below
+answers with the `x-csrf-token` header. The relying party comes from your endpoint's configured
+`:url` rather than from the connection — behind a proxy that terminates TLS those disagree, and the
+browser signs what it saw.
+
+`:rp_name` is the name a passkey dialog shows. Two more options belong to a mount rather than to
+this library — `:user_verification`, whether the authenticator must confirm who is holding it, and
+`:seconds`, how long a challenge stays acceptable — and default to `"preferred"` and sixty.
+
+`MyApp.Auth` implements `Ithibati.Web.Handler`, which is where the decisions this library
+deliberately does not make are yours: who may start a registration, what an account is made of once
+a credential verifies, and what is issued after an assertion. A session cookie is one answer; a
+bearer token for an extension or a native client is another, and picking one for you would rule the
+other out.
+
+What the library does hold is the ceremony itself — and one property that is easy to lose: a
+challenge is single-use, so it is spent the first time a verification is attempted, whether that
+attempt succeeded or not.
+
 ## The JavaScript
 
 The passkey ceremonies need a little client code: the browser's API wants buffers where this
 library sends unpadded base64url, and it hands back a credential that has to be serialised the way
 the verifications expect. That lives in `priv/static/ithibati.js`.
 
-There are two ways to reach it, they differ in one string, and both register the same hook name, so
-a template written for one works under the other:
+There are two ways to reach it, they differ in one string, and both register the same hook name.
+
+The hook talks to the endpoints `ithibati_routes/1` generated, and it reads their paths off the
+element, because you chose the scope they are mounted under:
 
 ```heex
-<div id="sign-in" phx-hook="Ithibati.Web.Hooks.PasskeyCeremony"></div>
+<div
+  id="sign-in"
+  phx-hook="Ithibati.Web.Hooks.PasskeyCeremony"
+  data-registration-challenge-url={~p"/auth/registration/challenge"}
+  data-registration-url={~p"/auth/registration"}
+  data-authentication-challenge-url={~p"/auth/authentication/challenge"}
+  data-authentication-url={~p"/auth/authentication"}
+></div>
 ```
+
+Set the pair for each ceremony that element starts; a missing one is reported as
+`missing_data_registration_url` rather than as a ceremony that failed.
+
+Push `ithibati:register` or `ithibati:authenticate` from your LiveView to start a ceremony — that is
+where the identity fields are and where they have been validated. The hook pushes back
+`ithibati:done` with whatever your handler answered, or `ithibati:failed` with a reason. The one
+answer it acts on itself is `%{redirect: …}`: a handler that sends somewhere — the page that shows
+the recovery codes, say — is obeyed rather than reported. Everything
+in between is a `fetch` to the endpoints rather than a LiveView event, because the sign-in ends in a
+session cookie and only a controller can set one.
 
 **From the package**, which always works. The specifier is bare because this library ships a
 `package.json`, the same way `phoenix` and `phoenix_live_view` do, and a Phoenix 1.8 application

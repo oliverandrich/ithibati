@@ -34,4 +34,10 @@ end
 Ecto.Migrator.run(repo, migrations, :up, all: true, log: false)
 Ecto.Adapters.SQL.Sandbox.mode(repo, :manual)
 
+# Started here rather than in a `setup_all`: the endpoint's supervisor is registered under the
+# module name, so a second `async: true` module doing the same would collide — as a flake, in
+# whichever module happened to lose the race. It serves nothing (`server: false`); the ceremony
+# tests want it only for the configured URL its relying party comes from.
+if Code.ensure_loaded?(Ithibati.TestEndpoint), do: {:ok, _} = Ithibati.TestEndpoint.start_link()
+
 ExUnit.start()

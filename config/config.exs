@@ -63,5 +63,13 @@ if config_env() == :test do
     # directory, and `priv/` is what gets published to consumers.
     priv: "test/support"
 
+  # Only what `Phoenix.Endpoint` refuses to start without, plus the URL the ceremony reads its
+  # relying party from — the one the browser sees, which behind a proxy is not the one this node
+  # accepted.
+  config :ithibati, Ithibati.TestEndpoint,
+    url: [host: "example.test", scheme: "https", port: 443],
+    secret_key_base: String.duplicate("a", 64),
+    server: false
+
   config :logger, level: :warning
 end
