@@ -21,6 +21,7 @@ defmodule Ithibati.Identity.Invitations do
 
   alias Ecto.Multi
   alias Ithibati.Config
+  alias Ithibati.Identity.Concurrency
   alias Ithibati.Identity.Secrets
 
   @doc """
@@ -130,13 +131,11 @@ defmodule Ithibati.Identity.Invitations do
         select: i
       )
       # Read off the struct rather than written out: the table is the application's, so what its
-      # primary key is called is the application's to decide, the way the account table's is.
+      # primary key is called is the application's to decide.
       |> where(^Ecto.primary_key!(invitation))
 
-    case repo.update_all(query, set: [accepted_at: now]) do
-      {1, [accepted]} -> {:ok, accepted}
-      {0, _} -> {:error, :invalid_invitation}
-    end
+    repo.update_all(query, set: [accepted_at: now])
+    |> Concurrency.one_affected(:invalid_invitation)
   end
 
   defp expired_query do

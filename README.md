@@ -185,6 +185,27 @@ nothing. Configure no `invitation_schema` and none of this is reachable —
 [decision 9](docs/design.md#9-invitations-are-the-applications-table-and-this-librarys-invariants)
 carries the reasoning for all of it.
 
+## The passkeys an account has
+
+`Ithibati.Identity.Passkeys` lists, renames and revokes them:
+
+```elixir
+Passkeys.list_keys(account)                       # oldest first, stable order
+Passkeys.rename_key(account, id, "My work laptop")
+Passkeys.delete_key(account, id)
+```
+
+All three are scoped to the account: `list_keys/1` answers only its own, and the two that take an
+id answer `{:error, :not_found}` for one belonging to somebody else rather than reaching their row.
+A rename cannot move a key to another account.
+
+**The last passkey is not deleted by default** — `{:error, :last_key}`. Recovery codes still reach
+the account, so that is not a lockout on its own; it is the step that makes one possible, and
+afterwards one sheet of one-time codes is the whole way in. Pass `last: :allow` if your application
+has a recovery route of its own. The refusal holds when two passkeys are deleted at the same
+moment, which takes more than a count: see
+[decision 8](docs/design.md#8-the-second-credential-set-refills-itself).
+
 ## The migration
 
 The tables this library owns are created by a migration you write and it fills in:

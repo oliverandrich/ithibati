@@ -49,15 +49,23 @@ defmodule Ithibati.UserKey do
   # regards as changed — and casting `nil` over `nil` is not a change, so the row that needs the
   # fallback most is the one `update_change/3` skips.
   defp put_label(changeset) do
-    put_change(changeset, :label, cut(get_field(changeset, :label)))
+    put_change(changeset, :label, label(get_field(changeset, :label)))
   end
 
-  defp cut(nil), do: @fallback
-
-  defp cut(label) do
+  @doc false
+  # Public because a rename writes through `update_all`, which never builds a changeset — and the
+  # cut and the fallback have to be the same rule on both paths or a list shows two kinds of row.
+  #
+  # Anything that is not a string gets the fallback rather than raising, which is what the enrolment
+  # path does too: there `cast/3` refuses the value, `get_field/2` then answers `nil`, and the
+  # fallback applies. A rename has no cast in front of it, and a form posting `name[]=x` hands over
+  # a list.
+  def label(label) when is_binary(label) do
     case label |> String.slice(0, @label_max) |> String.trim() do
       "" -> @fallback
       trimmed -> trimmed
     end
   end
+
+  def label(_not_a_name), do: @fallback
 end

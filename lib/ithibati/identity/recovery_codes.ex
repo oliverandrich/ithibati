@@ -11,6 +11,7 @@ defmodule Ithibati.Identity.RecoveryCodes do
   import Ecto.Query
 
   alias Ithibati.Config
+  alias Ithibati.Identity.Concurrency
   alias Ithibati.Identity.Secrets
   alias Ithibati.RecoveryCode
 
@@ -44,7 +45,7 @@ defmodule Ithibati.Identity.RecoveryCodes do
         # Behind the same lock as a redemption, and for a reason of its own: a `DELETE` can only take
         # rows its snapshot can see, so two regenerations at once leave two live batches — measured,
         # twenty rounds in twenty.
-        lock!(account.id)
+        Concurrency.lock_account!(account.id)
         replace(account, opts)
       end)
 
@@ -102,10 +103,8 @@ defmodule Ithibati.Identity.RecoveryCodes do
     query =
       from(r in RecoveryCode, where: r.code_hash == ^digest and is_nil(r.used_at), select: r)
 
-    case Config.repo().update_all(query, set: [used_at: DateTime.utc_now()]) do
-      {1, [code]} -> {:ok, code}
-      {0, _} -> {:error, :invalid}
-    end
+    Config.repo().update_all(query, set: [used_at: DateTime.utc_now()])
+    |> Concurrency.one_affected(:invalid)
   end
 
   # Counted behind the account's lock, and this is what the lock is for: two callers spending two
@@ -154,15 +153,8 @@ defmodule Ithibati.Identity.RecoveryCodes do
 
     Config.user_schema()
     |> where([account], account.id in subquery(owner))
-    |> lock("FOR NO KEY UPDATE")
+    |> Concurrency.lock_rows()
     |> Config.repo().one()
-  end
-
-  defp lock!(user_id) do
-    Config.user_schema()
-    |> where([account], account.id == ^user_id)
-    |> lock("FOR NO KEY UPDATE")
-    |> Config.repo().one!()
   end
 
   defp unused(account) do

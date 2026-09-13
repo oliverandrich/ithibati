@@ -1,7 +1,8 @@
 defmodule Ithibati.Identity.Passkeys do
   @moduledoc """
-  The WebAuthn ceremony, both halves: enrolling a browser's credential as an account's passkey, and
-  proving possession of one afterwards.
+  The WebAuthn ceremony, both halves — enrolling a browser's credential as an account's passkey and
+  proving possession of one afterwards — and what an account can do with the credentials it has
+  afterwards: list them, rename one, revoke one.
 
   Each half is a challenge, the options the browser reads, and a verification — which answers the
   credential to store on registration, and the account that holds it on authentication. Never a
@@ -15,6 +16,7 @@ defmodule Ithibati.Identity.Passkeys do
   import Ecto.Query
 
   alias Ithibati.Config
+  alias Ithibati.Identity.Concurrency
   alias Ithibati.Identity.Secrets
   alias Ithibati.Schema.Identifier
   alias Ithibati.Schema.User
@@ -180,6 +182,160 @@ defmodule Ithibati.Identity.Passkeys do
   end
 
   @doc """
+  The credentials this account has, oldest first.
+
+  Full rows, because what a person is shown is the label and when it was last used. The ordering
+  carries a tiebreaker on purpose: Postgres gives equal sort keys no defined order, so two rows that
+  ever do share an `inserted_at` could come back either way round, and a list whose order moves
+  between renders is one nobody can click in.
+  """
+  def list_keys(account) do
+    account = Config.account!(account)
+
+    Config.repo().all(
+      from k in UserKey,
+        where: k.user_id == ^account.id,
+        order_by: [asc: k.inserted_at, asc: k.id]
+    )
+  end
+
+  @doc """
+  Gives one of this account's passkeys the name a person chose.
+
+  The name goes through the same cut and the same fallback as an enrolment's, so a list cannot end
+  up showing two kinds of row. `{:error, :not_found}` covers a key that does not exist and one that
+  belongs to somebody else, which are the same answer to the person asking — and so is an id that
+  is not one at all, because it arrives from a route a person can type into.
+
+  The account rides the `WHERE` of the update and `user_id` is not among the columns written, so a
+  rename cannot move a key to another account — that is a property of the statement rather than of a
+  validation a later edit could drop.
+  """
+  def rename_key(account, id, name) do
+    account = Config.account!(account)
+
+    with {:ok, id} <- key_id(id) do
+      account
+      |> own_key(id)
+      |> select([key], key)
+      |> Config.repo().update_all(
+        set: [label: UserKey.label(name), updated_at: DateTime.utc_now()]
+      )
+      |> Concurrency.one_affected(:not_found)
+    end
+  end
+
+  @doc """
+  Revokes one of this account's passkeys — by default, unless it is the only one.
+
+  `{:error, :last_key}` is not a lockout on its own: recovery codes still reach the account, which is
+  what decision 8 makes them for. It is the step that makes one possible — afterwards a single sheet
+  of one-time codes is the whole way in, and the person deleting a passkey is rarely the person who
+  will go looking for that sheet. On a single-account instance it also empties the sign-in page,
+  because `authentication_challenge/3` answers `{:error, :no_credentials}` when nowhere a passkey
+  stands.
+
+  By decision 7's test that makes it a preference rather than an invariant — a consumer with a
+  recovery route of its own breaks nothing this library guarantees — so it is an option, `last:`,
+  and the argument above is the argument for its *default*. `last: :allow` deletes the only passkey
+  and answers `{:error, :not_found}` for the causes that remain.
+
+  `{:error, :not_found}` covers a key that does not exist, one that belongs to somebody else, and an
+  id that is not one. It is told apart from `:last_key` because hearing "that is your last one"
+  about a key that was never theirs sends somebody hunting for a device they do not have.
+  """
+  def delete_key(account, id, opts \\ []) do
+    account = Config.account!(account)
+    last = last!(opts)
+
+    with {:ok, id} <- key_id(id) do
+      repo = Config.repo()
+
+      # The refusal is the transaction's *value*, not a `rollback/1` — unlike `RecoveryCodes.redeem/2`
+      # this path has written nothing when it refuses, so aborting a caller's enclosing transaction
+      # would be a side effect of saying no.
+      {:ok, outcome} = repo.transaction(fn -> revoke(repo, account, id, last) end)
+
+      outcome
+    end
+  end
+
+  defp last!(opts) do
+    case Keyword.get(opts, :last, :refuse) do
+      last when last in [:refuse, :allow] -> last
+      other -> raise ArgumentError, "last: must be :refuse or :allow, got #{inspect(other)}"
+    end
+  end
+
+  # Two statements, and that is the mechanism rather than a tidiness: one statement evaluates against
+  # one snapshot, so an `EXISTS` sitting beside the `FOR NO KEY UPDATE` would be computed from the
+  # stand before the wait and the lock would buy nothing. The delete has to be the second statement,
+  # taking a fresh snapshot after it.
+  defp revoke(repo, account, id, last) do
+    # The lock exists for the invariant, so it is taken only where there is one: with `last: :allow`
+    # there is no set a second deleter could empty, and nothing to queue on.
+    if last == :refuse, do: Concurrency.lock_account!(account.id)
+
+    case repo.delete_all(deletable_key(account, id, last)) do
+      {1, [key]} -> {:ok, key}
+      {0, _none} -> refusal(repo, account, id, last)
+    end
+  end
+
+  # The one place a key is named together with the account allowed to touch it. Written once because
+  # it is the authorization boundary of all three functions below, and a fourth reader that forgets
+  # a term would not crash — it would answer about somebody else's row.
+  defp own_key(account, id) do
+    from k in UserKey, as: :key, where: k.id == ^id and k.user_id == ^account.id
+  end
+
+  # `id` is a `binary_id`, and Ecto raises rather than matching nothing when what it is handed is not
+  # a UUID — so a hand-edited address would be a 500 where the documented answer is a refusal. Asked
+  # before the transaction opens, so nothing is locked on the way to saying no.
+  defp key_id(id) do
+    case Ecto.UUID.cast(id) do
+      {:ok, uuid} -> {:ok, uuid}
+      :error -> {:error, :not_found}
+    end
+  end
+
+  # "The owner has another one" rides the `WHERE` of the delete, so no count is read and then acted
+  # on. Why that needs the lock above as well — the two deletes aim at different rows and so wait on
+  # nothing — is `Ithibati.Identity.Concurrency.lock_rows/1`'s.
+  #
+  # `parent_as(:key)` rather than the account's id again: the outer `WHERE` has pinned the owner
+  # already, and reading it off that row keeps the two halves from disagreeing.
+  defp deletable_key(account, id, :allow), do: account |> own_key(id) |> select([key], key)
+
+  defp deletable_key(account, id, :refuse) do
+    account
+    |> own_key(id)
+    |> where(
+      [key],
+      exists(
+        from(other in UserKey,
+          where: other.user_id == parent_as(:key).user_id and other.id != parent_as(:key).id,
+          select: 1
+        )
+      )
+    )
+    |> select([key], key)
+  end
+
+  # A second statement, and on READ COMMITTED a second snapshot — sharing the transaction with the
+  # delete buys no agreement between the two. That is acceptable because of what is being decided:
+  # not whether to delete, which already happened, but which of two refusals to name. A key removed
+  # by some other route in between is reported as `:not_found`, which by then is the true answer.
+  # Nothing deleted has only one cause once the last one may go, so there is nothing to ask.
+  defp refusal(_repo, _account, _id, :allow), do: {:error, :not_found}
+
+  defp refusal(repo, account, id, :refuse) do
+    if repo.exists?(own_key(account, id)),
+      do: {:error, :last_key},
+      else: {:error, :not_found}
+  end
+
+  @doc """
   Mints an authentication challenge, or `{:error, :no_credentials}` on an instance that has no
   passkey at all.
 
@@ -312,6 +468,9 @@ defmodule Ithibati.Identity.Passkeys do
   # Postgres reads the joined row in the same round trip, so a sign-in costs two rather than three —
   # on a database that is not on this host, a whole network round trip per sign-in.
   #
+  # `updated_at` is deliberately left where it is, unlike a rename's: signing in is not a change to
+  # the credential, and moving it would make "when was this row last edited" mean two things.
+  #
   # No test in this suite can reach that revocation window; it needs a second writer committing
   # inside this one's transaction. The correctness comes from the shape of the statement rather than
   # from a green run.
@@ -324,10 +483,8 @@ defmodule Ithibati.Identity.Passkeys do
         select: account
       )
 
-    case Config.repo().update_all(query, set: [last_used_at: DateTime.utc_now()]) do
-      {1, [account]} -> {:ok, account}
-      {0, _} -> {:error, :unknown_credential}
-    end
+    Config.repo().update_all(query, set: [last_used_at: DateTime.utc_now()])
+    |> Concurrency.one_affected(:unknown_credential)
   end
 
   @doc false

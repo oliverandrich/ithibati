@@ -341,7 +341,10 @@ that spends the code, and the row comes back from the same statement, so a secon
 it unused. That the predicate alone is enough is specific to this case: both callers aim at the
 *same* row, so the second waits on its lock and re-evaluates against the committed version. Where a
 guard is over a *set* of rows — the last passkey, the last superadmin — two writers aiming at
-different rows wait on nothing, and the set needs something of its own to lock. Measured: with the
+different rows wait on nothing, and the set needs something of its own to lock. The last passkey is
+`Ithibati.Identity.Passkeys.delete_key/2`, and the lock it takes is
+`Ithibati.Identity.Concurrency.lock_account!/1`, which carries the mechanism; the last superadmin
+stays here as the illustration, because that case lives in a consuming application. Measured: with the
 read moved out of the update, eight callers spending one code all succeed.
 
 ## 9. Invitations are the application's table and this library's invariants
