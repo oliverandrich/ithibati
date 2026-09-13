@@ -35,7 +35,7 @@ range and both account-key types.
 
 ## Design
 
-Six decisions shape it, and [`docs/design.md`](docs/design.md) carries each one with its reasoning:
+These decisions shape it, and [`docs/design.md`](docs/design.md) carries each one with its reasoning:
 
 1. [The name](docs/design.md#1-the-name)
 2. [The application owns the `users` table](docs/design.md#2-the-application-owns-the-users-table)
@@ -43,6 +43,8 @@ Six decisions shape it, and [`docs/design.md`](docs/design.md) carries each one 
 4. [A grant is `Ecto.Multi` composition, not an event](docs/design.md#4-a-grant-is-ectomulti-composition-not-an-event)
 5. [Non-browser clients ride on the token, not on OAuth2](docs/design.md#5-non-browser-clients-the-token-is-the-boundary-not-oauth2)
 6. [No authenticator name data ships with it](docs/design.md#6-no-authenticator-name-data-ships-with-this-library)
+7. [The core builds what the browser reads](docs/design.md#7-the-core-builds-what-the-browser-reads-and-which-webauthn-choices-are-whose)
+8. [The second credential set refills itself](docs/design.md#8-the-second-credential-set-refills-itself)
 
 ## The account schema
 

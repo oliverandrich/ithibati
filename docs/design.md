@@ -303,3 +303,34 @@ the challenge the first time it verifies one, success or failure.
 forgotten: no authenticator in circulation offers it and neither of these two, and a list a consumer
 can extend is a published option with no caller yet. If one appears, it becomes an option like the
 two above.
+
+## 8. The second credential set refills itself
+
+A passkey-only account has one credential set, and a lost keychain is the end of it. Recovery codes
+are the second: twelve, shown once, each good for one sign-in, stored as sha256 like everything else
+here.
+
+**Spending the last one issues a fresh batch in the same transaction**, returned beside the account
+so the caller can show it. By decision 7's test this is a preference rather than an invariant — a
+consumer who turns it off breaks nothing this library guarantees — so it is an option, `refill:`,
+and the argument above is the argument for its *default*. The shape of the failure is what makes
+the default that way round: an account with no passkey and no codes left is locked out of a
+self-hosted instance permanently, and the only moment anybody is in a position to write down a new
+batch is the one where they have just used the last old one. How many codes a batch holds is the
+same kind of choice and the same kind of option, `count:`, defaulting to twelve.
+
+**What is *not* an option is the shape of the answer.** `redeem/2` returns three elements rather
+than a map with a `codes` key that is usually `nil`, because a caller matching the common case would
+then silently drop the batch in the one case the refill exists for — on a path their own tests will
+not reach until somebody has actually run out.
+
+**A spent code is marked, not deleted.** The row is what makes a second use refusable rather than
+merely unmatched, and how many are left is a question a holder gets asked.
+
+**Redemption is the write, never a read followed by one.** "Unused" rides the `WHERE` of the update
+that spends the code, and the row comes back from the same statement, so a second caller cannot find
+it unused. That the predicate alone is enough is specific to this case: both callers aim at the
+*same* row, so the second waits on its lock and re-evaluates against the committed version. Where a
+guard is over a *set* of rows — the last passkey, the last superadmin — two writers aiming at
+different rows wait on nothing, and the set needs something of its own to lock. Measured: with the
+read moved out of the update, eight callers spending one code all succeed.

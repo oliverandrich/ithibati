@@ -121,6 +121,9 @@ defmodule Ithibati.Migration do
       timestamps(type: :utc_datetime_usec)
     end
 
+    # `redeem/2` spends a code with a single statement and reads its answer from the row count, so a
+    # second row with the same digest would spend both and answer neither.
+    create unique_index(source(RecoveryCode), [:code_hash])
     create index(source(RecoveryCode), [:user_id])
 
     create table(source(UserToken), primary_key: false) do

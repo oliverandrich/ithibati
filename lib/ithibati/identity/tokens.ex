@@ -11,6 +11,7 @@ defmodule Ithibati.Identity.Tokens do
   import Ecto.Query
 
   alias Ithibati.Config
+  alias Ithibati.Identity.Secrets
   alias Ithibati.UserToken
 
   @session "session"
@@ -42,11 +43,11 @@ defmodule Ithibati.Identity.Tokens do
     %{id: user_id} = Config.account!(account)
     known_context!(context)
 
-    token = @bytes |> :crypto.strong_rand_bytes() |> url64()
+    token = @bytes |> :crypto.strong_rand_bytes() |> Secrets.url64()
 
     Config.repo().insert!(
       UserToken.changeset(%UserToken{}, %{
-        token_hash: digest(token),
+        token_hash: Secrets.digest(token),
         context: context,
         user_id: user_id
       })
@@ -71,7 +72,7 @@ defmodule Ithibati.Identity.Tokens do
       from(t in UserToken,
         join: u in ^Config.user_schema(),
         on: u.id == t.user_id,
-        where: t.token_hash == ^digest(token),
+        where: t.token_hash == ^Secrets.digest(token),
         where: t.context == ^context,
         where: t.inserted_at > ^cutoff,
         select: u
@@ -90,7 +91,7 @@ defmodule Ithibati.Identity.Tokens do
   def delete_token(nil, context) when is_binary(context), do: :ok
 
   def delete_token(token, context) when is_binary(token) and is_binary(context) do
-    from(t in UserToken, where: t.token_hash == ^digest(token) and t.context == ^context)
+    from(t in UserToken, where: t.token_hash == ^Secrets.digest(token) and t.context == ^context)
     |> Config.repo().delete_all()
 
     :ok
@@ -155,10 +156,4 @@ defmodule Ithibati.Identity.Tokens do
           "config :ithibati, token_validity: #{inspect(context)} => #{inspect(other)} — " <>
             "expected {count, unit} with a positive count and a unit in #{inspect(@units)}"
   end
-
-  # Unpadded, because a token travels in headers, cookies and URLs, and `=` is punctuation in
-  # all three.
-  defp url64(value), do: Base.url_encode64(value, padding: false)
-
-  defp digest(token), do: :crypto.hash(:sha256, token)
 end

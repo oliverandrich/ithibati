@@ -1,7 +1,7 @@
 # Ithibati — working rules
 
 Ithibati is an Elixir passkey-authentication library. **Read `docs/design.md` before changing
-anything structural** — it carries the five decisions this project is built on, with the reasoning,
+anything structural** — it carries the decisions this project is built on, with the reasoning,
 and a change that contradicts one of them is a change to that document first.
 
 ## The reference implementation

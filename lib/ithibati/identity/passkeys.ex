@@ -15,6 +15,7 @@ defmodule Ithibati.Identity.Passkeys do
   import Ecto.Query
 
   alias Ithibati.Config
+  alias Ithibati.Identity.Secrets
   alias Ithibati.Schema.User
   alias Ithibati.UserKey
 
@@ -93,9 +94,9 @@ defmodule Ithibati.Identity.Passkeys do
     %{name: name, display_name: display_name} = User.credential_user(subject)
 
     %{
-      challenge: url64(challenge.bytes),
+      challenge: Secrets.url64(challenge.bytes),
       rp: %{id: challenge.rp_id, name: rp_name},
-      user: %{id: url64(handle(subject)), name: name, displayName: display_name},
+      user: %{id: Secrets.url64(handle(subject)), name: name, displayName: display_name},
       pubKeyCredParams: [
         %{type: "public-key", alg: -7},
         %{type: "public-key", alg: -257}
@@ -116,7 +117,7 @@ defmodule Ithibati.Identity.Passkeys do
       },
       extensions: %{credProps: true},
       excludeCredentials:
-        Enum.map(existing_credentials(subject), &%{type: "public-key", id: url64(&1)}),
+        Enum.map(existing_credentials(subject), &%{type: "public-key", id: Secrets.url64(&1)}),
       attestation: challenge.attestation,
       timeout: challenge.timeout * 1000
     }
@@ -217,7 +218,7 @@ defmodule Ithibati.Identity.Passkeys do
   """
   def authentication_options(challenge) do
     %{
-      challenge: url64(challenge.bytes),
+      challenge: Secrets.url64(challenge.bytes),
       rpId: challenge.rp_id,
       allowCredentials: [],
       userVerification: challenge.user_verification,
@@ -374,7 +375,7 @@ defmodule Ithibati.Identity.Passkeys do
   # personally identifying — and it does not agree with the account id that the same person gets
   # afterwards. Nothing here resolves a credential by handle; sign-in goes by credential id.
   defp handle(%_{id: id}), do: to_string(id)
-  defp handle(identifier) when is_binary(identifier), do: :crypto.hash(:sha256, identifier)
+  defp handle(identifier) when is_binary(identifier), do: Secrets.digest(identifier)
 
   defp existing_credentials(%_{id: id}) do
     Config.repo().all(from k in UserKey, where: k.user_id == ^id, select: k.key_id)
@@ -407,6 +408,4 @@ defmodule Ithibati.Identity.Passkeys do
       other -> raise ArgumentError, "seconds: must be a positive integer, got #{inspect(other)}"
     end
   end
-
-  defp url64(value), do: Base.url_encode64(value, padding: false)
 end
