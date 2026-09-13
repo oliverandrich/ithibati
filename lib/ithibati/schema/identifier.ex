@@ -8,8 +8,8 @@ defmodule Ithibati.Schema.Identifier do
   invitation addressed to something an account could never be called is one nobody can accept. So
   the steps live here, once, rather than in whichever macro was written first.
 
-  Only `email_format/0` and `normalize/1` are meant to be called from an application; the rest is
-  what the two macros use to read their own options.
+  Only `email_format/0`, `username_format/0` and `normalize/1` are meant to be called from an
+  application; the rest is what the two macros use to read their own options.
   """
 
   import Ecto.Changeset
@@ -17,7 +17,10 @@ defmodule Ithibati.Schema.Identifier do
   # RFC 5321's maximum for an address, and the longest identifier this library expects to see.
   @max 254
 
-  @email_format ~r"^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$"
+  # `\A`/`\z` rather than `^`/`$`, which match around a newline rather than at the ends of the
+  # string: `"you@example.com\n"` is a value this is asked about, because an application may call
+  # this straight from its own `validate_format/3` with nothing trimmed first.
+  @email_format ~r"\A[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*\z"
 
   @doc """
   The pattern to use when the identifier is an email address — offered, not imposed.
@@ -27,6 +30,28 @@ defmodule Ithibati.Schema.Identifier do
   spaces in them would be a hazard. It accepts `you@localhost`; it refuses `"a b"@example.com`.
   """
   def email_format, do: @email_format
+
+  # Mastodon's rule for a *local* account, read out of `app/models/account.rb`: `[a-z0-9_]+`, at
+  # most thirty characters. Its looser `USERNAME_RE`, which allows dots and hyphens, is for
+  # addressing accounts on other servers, not for naming one's own.
+  @username_format ~r/\A[a-z0-9_]{1,30}\z/
+
+  @doc """
+  The pattern to use when the identifier is a username — offered, not imposed.
+
+  Borrowed rather than invented: it is what Mastodon allows a local account, which is a rule that
+  has survived a large number of people trying to impersonate each other. Letters, digits and
+  underscores only, at most thirty characters.
+
+  What it leaves out is the point. Dots and hyphens let `alice.smith` and `alice-smith` stand
+  beside `alicesmith`, and anything beyond ASCII lets a Cyrillic `а` stand beside a Latin `a` —
+  three ways to be told you are talking to someone you are not. A username is a credential here,
+  and the display name people actually read is a separate field this library knows nothing about.
+
+  No case folding is needed in the pattern: `normalize/1` has already lowercased the value, which
+  is also why `Alice` and `alice` cannot become two accounts.
+  """
+  def username_format, do: @username_format
 
   @doc "An identifier as it is stored: trimmed and lowercased, whatever it is called."
   def normalize(nil), do: nil
