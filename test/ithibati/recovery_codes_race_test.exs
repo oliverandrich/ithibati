@@ -6,48 +6,23 @@ defmodule Ithibati.Identity.RecoveryCodesRaceTest do
   What decides between callers who arrive together is that "unused" rides the `WHERE` of the update
   itself — and the only way to see that is to have them arrive together.
 
-  Not async and not sandboxed: a rollback per test would mean a single connection and no race to
-  lose. Same shape as `Ithibati.BootstrapTest`, and for the same reason.
+  Not async and not sandboxed, which `Ithibati.RaceCase` explains.
   """
-  use ExUnit.Case, async: false
+  use Ithibati.RaceCase
 
   import Ithibati.DataCase, only: [user_fixture: 1]
 
-  alias Ecto.Adapters.SQL.Sandbox
   alias Ithibati.Identity.RecoveryCodes
   alias Ithibati.RecoveryCode
-  alias Ithibati.TestRepo
   alias Ithibati.TestUser
 
   @racers 8
-
-  setup_all do
-    # Without enough connections the racers queue instead of racing, and the test still passes — as
-    # a sequence, which is the one thing this module exists to rule out.
-    pool = TestRepo.config()[:pool_size]
-
-    assert pool >= @racers,
-           "pool_size is #{pool}, so only that many of #{@racers} racers can be in flight at once"
-
-    Sandbox.mode(TestRepo, :auto)
-    on_exit(fn -> Sandbox.mode(TestRepo, :manual) end)
-  end
-
-  setup do
-    on_exit(&clear/0)
-  end
 
   test "of #{@racers} callers spending one code, exactly one signs in" do
     user = user_fixture(%{email: "racer@example.test"})
     [code | _rest] = RecoveryCodes.regenerate(user)
 
-    outcomes =
-      1..@racers
-      |> Task.async_stream(fn _ -> RecoveryCodes.redeem(code) end, max_concurrency: @racers)
-      |> Enum.map(fn
-        {:ok, outcome} -> outcome
-        {:exit, reason} -> flunk("a racer never finished: #{inspect(reason)}")
-      end)
+    outcomes = racing(1..@racers, fn _ -> RecoveryCodes.redeem(code) end)
 
     assert Enum.count(outcomes, &match?({:ok, _account, _codes}, &1)) == 1
     assert Enum.count(outcomes, &(&1 == {:error, :invalid})) == @racers - 1
@@ -65,9 +40,7 @@ defmodule Ithibati.Identity.RecoveryCodesRaceTest do
       for code <- spent, do: {:ok, _, _} = RecoveryCodes.redeem(code)
       assert RecoveryCodes.remaining(user) == 2
 
-      [last, second_last]
-      |> Task.async_stream(&RecoveryCodes.redeem/1, max_concurrency: 2)
-      |> Stream.run()
+      racing([last, second_last], &RecoveryCodes.redeem/1)
 
       left = RecoveryCodes.remaining(user)
 
@@ -79,9 +52,7 @@ defmodule Ithibati.Identity.RecoveryCodesRaceTest do
     for round <- 1..10 do
       user = user_fixture(%{email: "regen#{round}@example.test"})
 
-      1..2
-      |> Task.async_stream(fn _ -> RecoveryCodes.regenerate(user) end, max_concurrency: 2)
-      |> Stream.run()
+      racing(1..2, fn _ -> RecoveryCodes.regenerate(user) end)
 
       live = RecoveryCodes.remaining(user)
 

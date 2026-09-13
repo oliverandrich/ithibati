@@ -6,44 +6,21 @@ defmodule Ithibati.Identity.InvitationsRaceTest do
   What decides between callers who arrive together is that "not yet accepted" rides the `WHERE` of
   the update itself — and the only way to see that is to have them arrive together.
 
-  Not async and not sandboxed, for the same reason as `Ithibati.Identity.RecoveryCodesRaceTest`: a
-  rollback per test would mean a single connection and no race to lose.
+  Not async and not sandboxed, which `Ithibati.RaceCase` explains.
   """
-  use ExUnit.Case, async: false
+  use Ithibati.RaceCase
 
-  alias Ecto.Adapters.SQL.Sandbox
   alias Ecto.Multi
   alias Ithibati.Identity.Invitations
   alias Ithibati.TestInvitation
-  alias Ithibati.TestRepo
 
   @racers 8
-
-  setup_all do
-    pool = TestRepo.config()[:pool_size]
-
-    assert pool >= @racers,
-           "pool_size is #{pool}, so only that many of #{@racers} racers can be in flight at once"
-
-    Sandbox.mode(TestRepo, :auto)
-    on_exit(fn -> Sandbox.mode(TestRepo, :manual) end)
-  end
-
-  setup do
-    on_exit(&clear/0)
-  end
 
   test "of #{@racers} callers accepting one invitation, exactly one gets through" do
     for round <- 1..5 do
       invitation = invite("racer#{round}@example.test")
 
-      outcomes =
-        1..@racers
-        |> Task.async_stream(fn _ -> accept(invitation) end, max_concurrency: @racers)
-        |> Enum.map(fn
-          {:ok, outcome} -> outcome
-          {:exit, reason} -> flunk("a racer never finished: #{inspect(reason)}")
-        end)
+      outcomes = racing(1..@racers, fn _ -> accept(invitation) end)
 
       won = Enum.count(outcomes, &match?({:ok, _changes}, &1))
 

@@ -6,26 +6,14 @@ defmodule Ithibati.ConfigTest do
   """
   use ExUnit.Case, async: false
 
+  import Ithibati.DataCase, only: [delete_env: 2, put_env: 2]
+
   alias Ithibati.Config
   alias Ithibati.TestKey
 
-  setup do
-    configured =
-      Map.new([:user_schema, :repo, :invitation_schema], fn key ->
-        {key, Application.fetch_env(:ithibati, key)}
-      end)
-
-    on_exit(fn ->
-      Enum.each(configured, fn
-        {key, {:ok, value}} -> Application.put_env(:ithibati, key, value)
-        {key, :error} -> Application.delete_env(:ithibati, key)
-      end)
-    end)
-  end
-
   describe "user_schema/0" do
     test "unset, it says what to configure" do
-      Application.delete_env(:ithibati, :user_schema)
+      delete_env(:ithibati, :user_schema)
 
       assert_raise ArgumentError, ~r/config :ithibati, user_schema: MyApp.Accounts.User/, fn ->
         Config.user_schema()
@@ -35,7 +23,7 @@ defmodule Ithibati.ConfigTest do
     # Checked here rather than left to the caller: a module that is merely wrong otherwise fails
     # with `__ithibati__/1 is undefined`, which names neither this library nor the configuration.
     test "set to a module that is not an account schema, it says that" do
-      Application.put_env(:ithibati, :user_schema, Ithibati.TestRepo)
+      put_env(:ithibati, user_schema: Ithibati.TestRepo)
 
       assert_raise ArgumentError, ~r/does not `use Ithibati.Schema.User`/, fn ->
         Config.user_schema()
@@ -43,7 +31,7 @@ defmodule Ithibati.ConfigTest do
     end
 
     test "set to a module that does not exist at all, it says the same" do
-      Application.put_env(:ithibati, :user_schema, Ithibati.NoSuchModule)
+      put_env(:ithibati, user_schema: Ithibati.NoSuchModule)
 
       assert_raise ArgumentError, ~r/does not `use Ithibati.Schema.User`/, fn ->
         Config.user_schema()
@@ -59,13 +47,13 @@ defmodule Ithibati.ConfigTest do
     # The one setting of the three that is allowed to be absent: an application that invites nobody
     # configures nothing, and every path that would read it is one it never takes.
     test "unset, it answers nothing rather than raising" do
-      Application.delete_env(:ithibati, :invitation_schema)
+      delete_env(:ithibati, :invitation_schema)
 
       assert Config.invitation_schema() == nil
     end
 
     test "set to a module that is not an invitation schema, it says that" do
-      Application.put_env(:ithibati, :invitation_schema, Ithibati.TestUser)
+      put_env(:ithibati, invitation_schema: Ithibati.TestUser)
 
       assert_raise ArgumentError, ~r/does not `use Ithibati.Schema.Invitation`/, fn ->
         Config.invitation_schema()
@@ -75,7 +63,7 @@ defmodule Ithibati.ConfigTest do
     # An invitation addressed to something an account can never be named by is a pair that cannot
     # work, and the moment it is read is a better one to find out than the moment somebody accepts.
     test "set to one addressed by a field the account schema does not use, it says that" do
-      Application.put_env(:ithibati, :invitation_schema, Ithibati.MismatchedInvitation)
+      put_env(:ithibati, invitation_schema: Ithibati.MismatchedInvitation)
 
       assert_raise ArgumentError, ~r/invites by :username and .* is identified by :email/, fn ->
         Config.invitation_schema()
@@ -111,7 +99,7 @@ defmodule Ithibati.ConfigTest do
 
   describe "repo/0" do
     test "unset, it says what to configure" do
-      Application.delete_env(:ithibati, :repo)
+      delete_env(:ithibati, :repo)
 
       assert_raise ArgumentError, ~r/config :ithibati, repo: MyApp.Repo/, fn ->
         Config.repo()
@@ -121,13 +109,13 @@ defmodule Ithibati.ConfigTest do
     # Same reasoning as the schema above: otherwise the first query fails with
     # `__adapter__/0 is undefined`, which names neither this library nor the configuration.
     test "set to a module that is not a repo, it says that" do
-      Application.put_env(:ithibati, :repo, Ithibati.TestUser)
+      put_env(:ithibati, repo: Ithibati.TestUser)
 
       assert_raise ArgumentError, ~r/is not an Ecto repo/, fn -> Config.repo() end
     end
 
     test "set to a module that does not exist at all, it says the same" do
-      Application.put_env(:ithibati, :repo, Ithibati.NoSuchModule)
+      put_env(:ithibati, repo: Ithibati.NoSuchModule)
 
       assert_raise ArgumentError, ~r/is not an Ecto repo/, fn -> Config.repo() end
     end

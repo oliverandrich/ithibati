@@ -302,26 +302,4 @@ defmodule Ithibati.Schema.UserTest do
       schema.identifier_changeset(struct(schema), %{field => value})
     )
   end
-
-  # Each probe gets a name of its own: a module compiled twice warns about redefinition. `inside:` is
-  # what goes in the schema block — a module that uses the macro has to call `ithibati_account/0`
-  # there or fail to compile — and `after_schema:` is what follows it.
-  defp probe(name, body, opts \\ []) do
-    [{module, _bytecode} | _] =
-      Code.compile_string("""
-      defmodule Ithibati.Probe#{name} do
-        use Ecto.Schema
-        #{body}
-
-        @primary_key {:id, :binary_id, autogenerate: true}
-        schema "probes" do
-          #{opts[:inside]}
-        end
-
-        #{opts[:after_schema]}
-      end
-      """)
-
-    module
-  end
 end

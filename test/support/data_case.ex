@@ -93,22 +93,73 @@ defmodule Ithibati.DataCase do
   end
 
   @doc """
-  Moves `wax_`'s own application environment for the duration of a test, and puts it back.
+  Compiles a schema that uses one of this library's macros, so a test can watch it be refused.
 
-  Wax fills any challenge option it was not passed from there, so a test that proves this library
-  passes one explicitly has to set the other value. It is global state: a module using this is
-  `async: false`, and the restore is what keeps a leaked key out of every other module.
+  Each probe gets a name of its own: a module compiled twice warns about redefinition. `body` is what
+  goes above the schema block — the `use` line under test — `inside:` is what goes in it, and
+  `after_schema:` is what follows.
+
+  Written as source and compiled rather than spelled out as a `defmodule`, so that what a test varies
+  is an argument and the rest does not have to be read again.
   """
-  def put_wax_env(pairs) do
-    for {key, value} <- pairs do
-      previous = Application.fetch_env(:wax_, key)
-      Application.put_env(:wax_, key, value)
-      ExUnit.Callbacks.on_exit(fn -> restore_wax_env(key, previous) end)
-    end
+  def probe(name, body, opts \\ []) do
+    [{module, _bytecode} | _] =
+      Code.compile_string("""
+      defmodule Ithibati.Probe#{name} do
+        use Ecto.Schema
+        #{body}
+
+        @primary_key {:id, :binary_id, autogenerate: true}
+        schema "probes" do
+          #{opts[:inside]}
+        end
+
+        #{opts[:after_schema]}
+      end
+      """)
+
+    module
   end
 
-  defp restore_wax_env(key, {:ok, value}), do: Application.put_env(:wax_, key, value)
-  defp restore_wax_env(key, :error), do: Application.delete_env(:wax_, key)
+  @doc """
+  Moves application environment for the duration of a test, and puts it back.
+
+  Both `:ithibati`'s own settings and `:wax_`'s are global state: a module using this is
+  `async: false`, and the restore is what keeps a leaked key out of every other module. A key that
+  was not set before is **removed** again rather than set to `nil` — the two are different answers
+  to `fetch_env/2`, and a library that refuses an unset setting sees the second one as configured.
+  """
+  # `Enum.each` rather than a comprehension: this is often the last expression of a `setup` block,
+  # which accepts `:ok`, a map or a keyword list — and not a list of `:ok`s.
+  def put_env(app, pairs) when is_list(pairs) do
+    Enum.each(pairs, fn {key, value} -> put_env(app, key, value) end)
+  end
+
+  @doc "The same for a single setting, where the key is computed rather than written out."
+  def put_env(app, key, value) do
+    restore_later(app, key)
+    Application.put_env(app, key, value)
+  end
+
+  @doc """
+  Removes a setting for the duration of a test, and puts it back.
+
+  Its own function rather than a sentinel value passed to `put_env/2`: the settings these tests move
+  are themselves bare atoms, so any sentinel would one day be somebody's real value and delete a key
+  they meant to set.
+  """
+  def delete_env(app, key) do
+    restore_later(app, key)
+    Application.delete_env(app, key)
+  end
+
+  defp restore_later(app, key) do
+    previous = Application.fetch_env(app, key)
+    ExUnit.Callbacks.on_exit(fn -> restore_env(app, key, previous) end)
+  end
+
+  defp restore_env(app, key, {:ok, value}), do: Application.put_env(app, key, value)
+  defp restore_env(app, key, :error), do: Application.delete_env(app, key)
 
   setup tags do
     pid = Sandbox.start_owner!(Ithibati.TestRepo, shared: not tags[:async])

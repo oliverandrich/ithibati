@@ -38,7 +38,7 @@ defmodule Ithibati.Identity.PasskeysAuthenticationTest do
     end
 
     test "is not overruled by wax_'s own application environment", %{} do
-      put_wax_env(rp_id: "attacker.example", origin: "https://attacker.example")
+      put_env(:wax_, rp_id: "attacker.example", origin: "https://attacker.example")
 
       assert {:ok, challenge} = Passkeys.authentication_challenge(@rp_id, @origin)
       assert challenge.rp_id == @rp_id
@@ -167,7 +167,7 @@ defmodule Ithibati.Identity.PasskeysAuthenticationTest do
 
     test "refuses an assertion the person was not present for, whatever the environment says",
          ctx do
-      put_wax_env(silent_authentication_enabled: true)
+      put_env(:wax_, silent_authentication_enabled: true)
 
       {:ok, challenge} = Passkeys.authentication_challenge(@rp_id, @origin)
 

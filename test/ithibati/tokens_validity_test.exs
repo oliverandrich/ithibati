@@ -10,20 +10,11 @@ defmodule Ithibati.Identity.TokensValidityTest do
   alias Ithibati.Identity.Tokens
 
   setup do
-    configured = Application.fetch_env(:ithibati, :token_validity)
-
-    on_exit(fn ->
-      case configured do
-        {:ok, value} -> Application.put_env(:ithibati, :token_validity, value)
-        :error -> Application.delete_env(:ithibati, :token_validity)
-      end
-    end)
-
     %{user: user_fixture()}
   end
 
   test "session has a validity even when the application configures none", %{user: user} do
-    Application.delete_env(:ithibati, :token_validity)
+    delete_env(:ithibati, :token_validity)
 
     token = Tokens.generate_session_token(user)
 
@@ -34,14 +25,14 @@ defmodule Ithibati.Identity.TokensValidityTest do
   # Merged rather than replaced: an application that adds a context for its extension must not have
   # to restate the one the session functions promise.
   test "a configured context is added to session, not swapped for it", %{user: user} do
-    Application.put_env(:ithibati, :token_validity, %{"device" => {90, :day}})
+    put_env(:ithibati, token_validity: %{"device" => {90, :day}})
 
     assert Tokens.generate_token(user, "device")
     assert Tokens.generate_session_token(user)
   end
 
   test "an application may override session too", %{user: user} do
-    Application.put_env(:ithibati, :token_validity, %{"session" => {1, :second}})
+    put_env(:ithibati, token_validity: %{"session" => {1, :second}})
 
     token = Tokens.generate_session_token(user)
 
@@ -66,7 +57,7 @@ defmodule Ithibati.Identity.TokensValidityTest do
 
     for {name, value, pattern} <- @rejected do
       test name, %{user: user} do
-        Application.put_env(:ithibati, :token_validity, unquote(Macro.escape(value)))
+        put_env(:ithibati, token_validity: unquote(Macro.escape(value)))
 
         assert_raise ArgumentError, unquote(Macro.escape(pattern)), fn ->
           Tokens.generate_session_token(user)
@@ -79,7 +70,7 @@ defmodule Ithibati.Identity.TokensValidityTest do
     test "a broken entry is refused even when another context is the one being used", %{
       user: user
     } do
-      Application.put_env(:ithibati, :token_validity, %{"device" => {3, :month}})
+      put_env(:ithibati, token_validity: %{"device" => {3, :month}})
 
       assert_raise ArgumentError, ~r/:month/, fn -> Tokens.generate_session_token(user) end
     end

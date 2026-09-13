@@ -26,7 +26,7 @@ defmodule Ithibati.Identity.PasskeysRegistrationTest do
     # consumer who configures the library it depends on would otherwise silently decide the relying
     # party for every call — which is the one thing decision 5 says must stay per-call.
     test "is not overruled by wax_'s own application environment" do
-      put_wax_env(rp_id: "attacker.example", origin: "https://attacker.example")
+      put_env(:wax_, rp_id: "attacker.example", origin: "https://attacker.example")
 
       challenge = Passkeys.registration_challenge(@rp_id, @origin)
 
@@ -39,7 +39,7 @@ defmodule Ithibati.Identity.PasskeysRegistrationTest do
     # reason as above: configured elsewhere, it disagrees with what the browser was asked for and
     # Wax answers `:invalid_attestation_conveyance_preference`.
     test "asks for no attestation, whatever the environment says" do
-      put_wax_env(attestation: "direct")
+      put_env(:wax_, attestation: "direct")
 
       challenge = Passkeys.registration_challenge(@rp_id, @origin)
       credential = TestCredentials.credential()
@@ -51,7 +51,7 @@ defmodule Ithibati.Identity.PasskeysRegistrationTest do
     # that trusts only `:basic` refuses every registration this library can produce, and one that
     # demands a verified user disagrees with what the browser was asked for.
     test "pins the attestation types it trusts and whether the user must be verified" do
-      put_wax_env(trusted_attestation_types: [:basic], user_verification: "required")
+      put_env(:wax_, trusted_attestation_types: [:basic], user_verification: "required")
 
       challenge = Passkeys.registration_challenge(@rp_id, @origin)
       credential = TestCredentials.credential()

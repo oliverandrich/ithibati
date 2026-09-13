@@ -11,15 +11,7 @@ defmodule Ithibati.Identity.InvitationsKeyTest do
   alias Ithibati.OddInvitation
 
   setup do
-    configured = Application.fetch_env(:ithibati, :invitation_schema)
-    Application.put_env(:ithibati, :invitation_schema, OddInvitation)
-
-    on_exit(fn ->
-      case configured do
-        {:ok, value} -> Application.put_env(:ithibati, :invitation_schema, value)
-        :error -> Application.delete_env(:ithibati, :invitation_schema)
-      end
-    end)
+    put_env(:ithibati, invitation_schema: OddInvitation)
   end
 
   test "is found and accepted like any other" do

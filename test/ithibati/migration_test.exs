@@ -10,6 +10,8 @@ defmodule Ithibati.MigrationTest do
   """
   use ExUnit.Case, async: false
 
+  import Ithibati.DataCase, only: [delete_env: 2, put_env: 3]
+
   alias Ecto.Adapters.SQL.Sandbox
   alias Ithibati.RecoveryCode
   alias Ithibati.TestKey
@@ -155,6 +157,9 @@ defmodule Ithibati.MigrationTest do
   # work in a task of its own, which cannot see a connection the test process owns. ExUnit runs every
   # synchronous module after the asynchronous ones have finished, so nothing else is holding a
   # sandboxed connection while this is true.
+  #
+  # Not `Ithibati.RaceCase`, which switches it off for the other reason: nothing here races, so
+  # there is no pool to measure against and nothing for that template to hold.
   setup_all do
     Sandbox.mode(TestRepo, :auto)
     reset_schema()
@@ -395,25 +400,11 @@ defmodule Ithibati.MigrationTest do
 
   defp as_invitation_table(shape), do: as_env(:test_invitation_table, shape)
 
-  defp as_no_invitation_schema do
-    configured = Application.fetch_env(:ithibati, :invitation_schema)
-    Application.delete_env(:ithibati, :invitation_schema)
-    on_exit(fn -> restore(:invitation_schema, configured) end)
-  end
+  defp as_no_invitation_schema, do: delete_env(:ithibati, :invitation_schema)
 
-  defp restore(key, {:ok, value}), do: Application.put_env(:ithibati, key, value)
-  defp restore(key, :error), do: Application.delete_env(:ithibati, key)
+  defp as_env(key, value), do: put_env(:ithibati, key, value)
 
-  defp as_env(key, value) do
-    Application.put_env(:ithibati, key, value)
-    on_exit(fn -> Application.delete_env(:ithibati, key) end)
-  end
-
-  defp as_account_schema(module) do
-    configured = Application.get_env(:ithibati, :user_schema)
-    Application.put_env(:ithibati, :user_schema, module)
-    on_exit(fn -> Application.put_env(:ithibati, :user_schema, configured) end)
-  end
+  defp as_account_schema(module), do: as_env(:user_schema, module)
 
   defp indexes(table) do
     %{rows: rows} =

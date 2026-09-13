@@ -9,49 +9,25 @@ defmodule Ithibati.Identity.PasskeysRaceTest do
   that decides between callers who arrive together is the lock on the owner's row, and the only way
   to see it is to have them arrive together.
 
-  Not async and not sandboxed: a rollback per test would mean a single connection and no race to
-  lose. Same shape as `Ithibati.Identity.RecoveryCodesRaceTest`, and for the same reason.
+  Not async and not sandboxed, which `Ithibati.RaceCase` explains.
   """
-  use ExUnit.Case, async: false
+  use Ithibati.RaceCase
 
   import Ecto.Query
   import Ithibati.DataCase, only: [user_fixture: 1, key_fixture: 2]
 
-  alias Ecto.Adapters.SQL.Sandbox
   alias Ithibati.Identity.Passkeys
-  alias Ithibati.TestRepo
   alias Ithibati.TestUser
   alias Ithibati.UserKey
 
   @rounds 10
-
-  setup_all do
-    # Without two connections the second deleter queues instead of racing, and the test still passes
-    # — as a sequence, which is the one thing this module exists to rule out.
-    pool = TestRepo.config()[:pool_size]
-
-    assert pool >= 2, "pool_size is #{pool}, so two racers cannot be in flight at once"
-
-    Sandbox.mode(TestRepo, :auto)
-    on_exit(fn -> Sandbox.mode(TestRepo, :manual) end)
-  end
-
-  setup do
-    on_exit(&clear/0)
-  end
 
   test "of two callers deleting two different passkeys, one is refused every time" do
     for round <- 1..@rounds do
       account = user_fixture(%{email: "racer#{round}@example.test"})
       keys = for label <- ~w(one two), do: key_fixture(account, %{label: label})
 
-      outcomes =
-        keys
-        |> Task.async_stream(&Passkeys.delete_key(account, &1.id), max_concurrency: 2)
-        |> Enum.map(fn
-          {:ok, outcome} -> outcome
-          {:exit, reason} -> flunk("a racer never finished: #{inspect(reason)}")
-        end)
+      outcomes = racing(keys, &Passkeys.delete_key(account, &1.id))
 
       left = TestRepo.aggregate(from(k in UserKey, where: k.user_id == ^account.id), :count)
 

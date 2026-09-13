@@ -9,41 +9,21 @@ defmodule Ithibati.BootstrapTest do
   hold if `Ithibati.Identity.Instance` were deleted; the second races the path an application takes
   and adds what only that path can lose — an account left behind by a caller who was refused.
 
-  Not async and not sandboxed — a rollback per test would mean a single connection and no race to
-  lose.
+  Not async and not sandboxed, which `Ithibati.RaceCase` explains.
   """
-  use ExUnit.Case, async: false
+  use Ithibati.RaceCase
 
   import Ithibati.DataCase, only: [user_changeset: 1, user_fixture: 1]
 
-  alias Ecto.Adapters.SQL.Sandbox
   alias Ecto.Multi
   alias Ithibati.Bootstrap
   alias Ithibati.Identity.Instance
-  alias Ithibati.TestRepo
   alias Ithibati.TestUser
 
   @racers 8
 
-  setup_all do
-    # Without enough connections the racers queue instead of racing, and the test still passes — as a
-    # sequence, which is the one thing this module exists to rule out. A smaller machine has to make
-    # that red rather than quiet.
-    pool = TestRepo.config()[:pool_size]
-
-    assert pool >= @racers,
-           "pool_size is #{pool}, so only that many of #{@racers} racers can be in flight at once"
-
-    Sandbox.mode(TestRepo, :auto)
-    on_exit(fn -> Sandbox.mode(TestRepo, :manual) end)
-  end
-
-  setup do
-    on_exit(&clear/0)
-  end
-
   test "of #{@racers} accounts racing to set the instance up, one wins and the rest are told why" do
-    outcomes = racing(&race/1)
+    outcomes = racing(1..@racers, &race("racer#{&1}@example.test"))
 
     assert Enum.count(outcomes, &match?({:ok, _}, &1)) == 1
     assert TestRepo.aggregate(Bootstrap, :count) == 1
@@ -59,7 +39,7 @@ defmodule Ithibati.BootstrapTest do
   # loser must leave no account behind — otherwise a registration page that refuses the second person
   # still fills the accounts table with everyone who tried.
   test "of #{@racers} registrations racing, exactly one account is left standing" do
-    outcomes = racing(&register/1)
+    outcomes = racing(1..@racers, &register("racer#{&1}@example.test"))
 
     accounts = TestRepo.aggregate(TestUser, :count)
 
@@ -84,15 +64,6 @@ defmodule Ithibati.BootstrapTest do
     assert %Bootstrap{user_id: nil} = TestRepo.get!(Bootstrap, claim.id)
     assert {:error, changeset} = TestRepo.insert(Bootstrap.changeset(%Bootstrap{}, %{}))
     assert Keyword.has_key?(changeset.errors, :claimed)
-  end
-
-  defp racing(racer) do
-    1..@racers
-    |> Task.async_stream(&racer.("racer#{&1}@example.test"), max_concurrency: @racers)
-    |> Enum.map(fn
-      {:ok, outcome} -> outcome
-      {:exit, reason} -> flunk("a racer never finished: #{inspect(reason)}")
-    end)
   end
 
   defp race(email) do

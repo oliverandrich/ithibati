@@ -129,28 +129,16 @@ defmodule Ithibati.Schema.InvitationTest do
   describe "what it refuses at compile time" do
     test "a schema that uses the macro and never calls it inside the schema block" do
       assert_raise ArgumentError, ~r/never calls ithibati_invitation\/0/, fn ->
-        defmodule Forgetful do
-          use Ecto.Schema
-          use Ithibati.Schema.Invitation, identifier: :email
-
-          schema "invitations" do
-          end
-        end
+        probe("Forgetful", "use Ithibati.Schema.Invitation, identifier: :email")
       end
     end
 
     test "a schema that defines a function the macro generates" do
       assert_raise ArgumentError, ~r/defines invitation_changeset\/3/, fn ->
-        defmodule Shadowing do
-          use Ecto.Schema
-          use Ithibati.Schema.Invitation, identifier: :email
-
-          schema "invitations" do
-            ithibati_invitation()
-          end
-
-          def invitation_changeset(_invitation, _attrs, _opts), do: :mine
-        end
+        probe("Shadowing", "use Ithibati.Schema.Invitation, identifier: :email",
+          inside: "ithibati_invitation()",
+          after_schema: "def invitation_changeset(_invitation, _attrs, _opts), do: :mine"
+        )
       end
     end
 
@@ -158,27 +146,17 @@ defmodule Ithibati.Schema.InvitationTest do
     # wrong macro's documentation.
     test "a missing identifier, named as the macro the consumer actually wrote" do
       assert_raise ArgumentError, ~r/use Ithibati.Schema.Invitation needs `identifier:`/, fn ->
-        defmodule Anonymous do
-          use Ecto.Schema
-          use Ithibati.Schema.Invitation
-
-          schema "invitations" do
-            ithibati_invitation()
-          end
-        end
+        probe("Anonymous", "use Ithibati.Schema.Invitation", inside: "ithibati_invitation()")
       end
     end
 
     test "options that are not a literal keyword list" do
       assert_raise ArgumentError, ~r/takes a literal keyword list/, fn ->
-        defmodule Computed do
-          use Ecto.Schema
-          use Ithibati.Schema.Invitation, Application.get_env(:ithibati, :nope)
-
-          schema "invitations" do
-            ithibati_invitation()
-          end
-        end
+        probe(
+          "Computed",
+          "use Ithibati.Schema.Invitation, Application.get_env(:ithibati, :nope)",
+          inside: "ithibati_invitation()"
+        )
       end
     end
   end
