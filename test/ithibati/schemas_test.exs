@@ -1,6 +1,6 @@
 defmodule Ithibati.SchemasTest do
   @moduledoc """
-  The three tables this library owns, written and read back once each.
+  The tables this library owns, written and read back once each.
 
   It is a shallow test on purpose: what it pins is that the migration and the schemas agree — every
   column the schema names exists, with a type that round-trips. A disagreement between the two is
@@ -9,6 +9,7 @@ defmodule Ithibati.SchemasTest do
   """
   use Ithibati.DataCase, async: true
 
+  alias Ithibati.Bootstrap
   alias Ithibati.Config
   alias Ithibati.RecoveryCode
   alias Ithibati.UserKey
@@ -99,6 +100,8 @@ defmodule Ithibati.SchemasTest do
     assert :inserted_at in UserToken.__schema__(:fields)
   end
 
+  # `Bootstrap` is absent on purpose: its foreign key is nilified rather than cascaded, because a
+  # deleted founder must not make a second setup possible. `Ithibati.BootstrapTest` holds that.
   test "the rows die with the account they belong to", %{user: user} do
     {:ok, _} =
       %UserToken{}
@@ -129,13 +132,23 @@ defmodule Ithibati.SchemasTest do
     assert UserKey.__schema__(:source) == "ithibati_keys"
     assert RecoveryCode.__schema__(:source) == "ithibati_recovery_codes"
     assert UserToken.__schema__(:source) == "ithibati_tokens"
+    assert Bootstrap.__schema__(:source) == "ithibati_bootstrap"
   end
 
-  # The migration declares one foreign key for all three tables, reading the type off `UserKey`. It
-  # may do that only while the three agree.
+  # The migration declares the same kind of foreign key for every table, reading the type off
+  # `UserKey`. It may do that only while they all agree.
   test "every table takes the same kind of account key" do
-    types = Enum.map([UserKey, RecoveryCode, UserToken], & &1.__schema__(:type, :user_id))
+    tables = [UserKey, RecoveryCode, UserToken, Bootstrap]
+    types = Enum.map(tables, & &1.__schema__(:type, :user_id))
 
-    assert types == [Config.users_key_type(), Config.users_key_type(), Config.users_key_type()]
+    assert types == List.duplicate(Config.users_key_type(), length(tables))
+  end
+
+  test "the bootstrap row round-trips", %{user: user} do
+    assert {:ok, claim} = TestRepo.insert(Bootstrap.changeset(%Bootstrap{}, %{user_id: user.id}))
+
+    read = TestRepo.get!(Bootstrap, claim.id)
+    assert read.user_id == user.id
+    assert read.claimed
   end
 end

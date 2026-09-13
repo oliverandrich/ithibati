@@ -30,6 +30,12 @@ defmodule Ithibati.Identity.Concurrency do
   `FOR NO KEY UPDATE` rather than `FOR UPDATE`: it conflicts with itself, which is all the queueing
   needs, but not with the `FOR KEY SHARE` a foreign-key insert takes — locking an account therefore
   does not block somebody writing a row that points at it.
+
+  There is a third shape, and it needs no lock at all: where the invariant is over the *whole table*
+  rather than over a set belonging to somebody, a unique index decides and the loser comes back as a
+  constraint error rather than as a row count. `Ithibati.Identity.Instance.claim/2` is that one —
+  at most one instance may be claimed, so `ithibati_bootstrap` carries an index that permits a single
+  row, and nothing is read beforehand.
   """
   def lock_rows(query), do: lock(query, "FOR NO KEY UPDATE")
 

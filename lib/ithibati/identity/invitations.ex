@@ -23,6 +23,7 @@ defmodule Ithibati.Identity.Invitations do
   alias Ithibati.Config
   alias Ithibati.Identity.Concurrency
   alias Ithibati.Identity.Secrets
+  alias Ithibati.Identity.Steps
 
   @doc """
   The pending invitation this token opens, or `nil`.
@@ -67,14 +68,12 @@ defmodule Ithibati.Identity.Invitations do
 
   It also refuses, with `{:error, :identifier_mismatch}`, an account being created under a different
   identifier from the one the invitation was addressed to. `account:` names the step that account
-  comes from and defaults to `:account`, the same name `Ithibati.Identity.Grant` uses; a transaction
+  comes from and defaults to `:account`, the name every fragment in this library uses; a transaction
   with no such step is not checked, because there is nothing to check it against.
   """
   def accept(multi, invitation, opts \\ []) do
-    step = Keyword.get(opts, :account, :account)
-
     Multi.run(multi, :invitation, fn repo, changes ->
-      with :ok <- confirm_addressee(changes, step, invitation), do: claim(repo, invitation)
+      with :ok <- confirm_addressee(changes, opts, invitation), do: claim(repo, invitation)
     end)
   end
 
@@ -84,8 +83,8 @@ defmodule Ithibati.Identity.Invitations do
   # invitation carries is the whole of what `validate_unclaimed` is about, so the binding is checked
   # here rather than left as advice. Nothing to check when the transaction creates no account: an
   # application is allowed to compose this step on its own.
-  defp confirm_addressee(changes, step, invitation) do
-    case Map.fetch(changes, step) do
+  defp confirm_addressee(changes, opts, invitation) do
+    case Steps.account(changes, opts) do
       :error ->
         :ok
 

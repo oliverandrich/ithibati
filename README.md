@@ -120,6 +120,30 @@ def passkey_display_name(account), do: account.name
 No fallback is needed. An account that has not filled that in answers `nil`, and this library then
 shows the identifier.
 
+## The first account
+
+An instance starts with nobody, and the first account cannot be invited — there is nobody to write
+the invitation. `Ithibati.Identity.Instance.claim/2` is the step that makes a registration page a
+one-time page:
+
+```elixir
+Ecto.Multi.new()
+|> Ecto.Multi.insert(:account, User.changeset(%User{}, %{email: email}))
+|> Ithibati.Identity.Instance.claim()
+|> Ithibati.Identity.Grant.with_key_and_codes(key_attrs)
+|> MyApp.Repo.transaction()
+```
+
+The claim goes before the grant, for the reason `Instance.claim/2` gives.
+
+The second person to try gets `{:error, :bootstrap, :already_claimed, _}` and leaves no account
+behind — the whole transaction rolls back, so the guarantee holds when two people register at the
+same moment rather than one after the other. `Instance.needs_setup?/0` is the question your setup
+page asks. Why this is a table of this library's rather than a flag on your account row is
+[decision 2](docs/design.md#2-the-application-owns-the-users-table); which ways in an application
+may offer is
+[decision 10](docs/design.md#10-open-registration-and-invitation-only-and-neither-proves-an-address).
+
 ## The invitation schema
 
 Optional, and the same arrangement as the account schema: you own the table, this library owns what

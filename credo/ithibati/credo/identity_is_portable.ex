@@ -31,7 +31,7 @@ defmodule Ithibati.Credo.IdentityIsPortable do
   # Allowed rather than forbidden: a module added next year is refused without anyone remembering
   # this file exists, which forces a conscious decision instead of a silent one. `Identity` is on the
   # list because the guarded module's own `defmodule` line is an alias node too.
-  @allowed [:Config, :Identity, :RecoveryCode, :UserKey, :UserToken]
+  @allowed [:Bootstrap, :Config, :Identity, :RecoveryCode, :UserKey, :UserToken]
 
   @optional_deps [:Phoenix, :Plug]
 

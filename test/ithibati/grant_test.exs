@@ -67,12 +67,14 @@ defmodule Ithibati.Identity.GrantTest do
     end
 
     test "and says so when there is no such step" do
-      assert_raise ArgumentError, ~r/no step named :account in this multi/, fn ->
-        Multi.new()
-        |> Multi.insert(:person, user_changeset())
-        |> Grant.with_key_and_codes(key_attrs())
-        |> TestRepo.transaction()
-      end
+      assert_raise ArgumentError,
+                   ~r/no step named :account in this multi.*Steps so far: \[:person\]/s,
+                   fn ->
+                     Multi.new()
+                     |> Multi.insert(:person, user_changeset())
+                     |> Grant.with_key_and_codes(key_attrs())
+                     |> TestRepo.transaction()
+                   end
     end
 
     test "issues as many codes as the application asked for" do

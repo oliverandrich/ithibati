@@ -343,6 +343,9 @@ defmodule Ithibati.Identity.Passkeys do
   loading them is the query this is here to prevent — and it is not a secret either way: a sign-in
   page on an instance with no account has nothing to offer.
 
+  It is also not the question `Ithibati.Identity.Instance.needs_setup?/0` answers, which says how
+  the two differ and when they disagree.
+
   Read what that answer is, though: it is about the **deployment**, not about this relying party or
   this tenant. `ithibati_keys` carries no relying-party column, so an application serving several of
   them from one database gets an answer about all of them together.

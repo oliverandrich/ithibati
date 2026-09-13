@@ -73,10 +73,11 @@ defmodule Ithibati.Credo.IdentityIsPortableTest do
       """
       defmodule Ithibati.Identity do
         alias Ithibati.{RecoveryCode, UserKey, UserToken}
+        alias Ithibati.Bootstrap
         alias Ithibati.Config
 
         def get(id), do: Config.repo().get(UserKey, id)
-        def codes, do: {RecoveryCode, UserToken}
+        def codes, do: {RecoveryCode, UserToken, Bootstrap}
       end
       """
       |> check()

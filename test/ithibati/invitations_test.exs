@@ -118,6 +118,20 @@ defmodule Ithibati.Identity.InvitationsTest do
       refute TestRepo.get_by(TestUser, email: "someone-else@example.test")
     end
 
+    # A step that is absent is allowed; a step that is there and holds something else is the mistake
+    # `Ithibati.Config.account!/1` exists for, and it would otherwise be compared field by field
+    # against the invitation.
+    test "and refuses a step holding something that is not an account" do
+      invitation = invite("guarded@example.test")
+
+      assert_raise ArgumentError, ~r/expected a Ithibati.TestUser/, fn ->
+        Multi.new()
+        |> Multi.run(:account, fn _repo, _changes -> {:ok, %Ithibati.MemberUser{}} end)
+        |> Invitations.accept(invitation)
+        |> TestRepo.transaction()
+      end
+    end
+
     test "and looks for that account under the step name it was given" do
       invitation = invite("named-step@example.test")
 

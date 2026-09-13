@@ -101,7 +101,8 @@ The first draft put a boolean on the application's own table with a partial uniq
 which the application had to remember to create — and forgetting it fails nothing until two people
 register at the same moment. Measured in the reference implementation: nothing ever *reads* that
 flag. Its entire value is the index. So the index moves to a table `Ithibati.Migration.up/1` creates,
-where it cannot be forgotten.
+where it cannot be forgotten. `Ithibati.Identity.Instance.needs_setup?/0` does read the row, and that
+is comfort for a setup page — what makes a claim happen once is still the index alone.
 
 The deciding argument is not the forgetting, though. A boolean on an account conflates *this instance
 has been set up* with *this account set it up*: delete that account and both facts vanish, and a
@@ -147,9 +148,9 @@ application's own record of what the account may do are all created at once. Tha
 transaction or it is a bug: an account that exists with no membership is a person who can log in and
 see nothing, and an account that half-failed is worse.
 
-So the library hands out composable `Ecto.Multi` fragments —
-`Ithibati.Identity.Grant.with_key_and_codes/3` — and the application composes its own steps into
-the same transaction before running it.
+So the library hands out composable `Ecto.Multi` fragments — `Grant.with_key_and_codes/3`,
+`Invitations.accept/3` and `Instance.claim/2`, all under `Ithibati.Identity` — and the application
+composes its own steps into the same transaction before running it.
 
 A fragment lives in a module named after the *occasion*, not after the rows it writes: the passkey
 and the recovery codes belong to `Passkeys` and `RecoveryCodes`, and `Grant` is the composition of
@@ -407,7 +408,8 @@ it is whatever that person typed.
 **Invitation-only.** Somebody already inside writes the invitation, so the identifier is asserted by
 an account rather than by a stranger, and decision 9 says how. The first account needs no invitation,
 because there is nobody to write one yet; what stops a second account taking that route is
-`Ithibati.Bootstrap`, the row that says an instance has been set up. Nothing here refuses an
+`Ithibati.Bootstrap`, the row that says an instance has been set up, claimed through
+`Ithibati.Identity.Instance.claim/2` and asked about with `needs_setup?/0`. Nothing here refuses an
 invitation written before that row exists — an application that seeds one is doing something this
 library has no opinion about.
 
