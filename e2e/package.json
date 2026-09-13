@@ -1,0 +1,13 @@
+{
+  "name": "ithibati-e2e",
+  "private": true,
+  "type": "module",
+  "description": "Browser tests that drive the example applications, and with them the client half of the library.",
+  "scripts": {
+    "test": "playwright test",
+    "report": "playwright show-report"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.63.0"
+  }
+}

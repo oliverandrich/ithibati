@@ -54,7 +54,8 @@ table, a schema, an acceptance page — exists only in the second:
 
 Both use usernames, because a username is the identifier that needs nothing sent to it; the
 [identifier section](#the-identifier-is-yours-to-choose) is where email belongs in this document. CI compiles both,
-formats them, builds their assets and runs their tests, so neither can quietly stop working.
+formats them, builds their assets, runs their tests and drives them in a browser, so neither can
+quietly stop working.
 
 Links rather than directories: the examples are not in the published package, so these only resolve
 on GitHub.
@@ -202,6 +203,11 @@ answer it acts on itself is `%{redirect: …}`: a handler that sends somewhere �
 the recovery codes, say — is obeyed rather than reported. Everything
 in between is a `fetch` to the endpoints rather than a LiveView event, because the sign-in ends in a
 session cookie and only a controller can set one.
+
+This is the half that runs on somebody else's machine, so it is driven rather than described:
+[`e2e/`](https://github.com/oliverandrich/ithibati/tree/main/e2e) runs both example applications in
+a browser against a real WebAuthn ceremony, including the reasons the hook distinguishes when one
+does not finish. CI runs it on every push. `e2e/README.md` says why it is Chromium only.
 
 **From the package**, which always works. The specifier is bare because this library ships a
 `package.json`, the same way `phoenix` and `phoenix_live_view` do, and a Phoenix 1.8 application

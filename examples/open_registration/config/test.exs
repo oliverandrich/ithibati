@@ -13,10 +13,12 @@ config :ithibati_open, IthibatiOpen.Repo,
   pool: Ecto.Adapters.SQL.Sandbox,
   pool_size: System.schedulers_online() * 2
 
-# We don't run a server during test. If one is required,
-# you can enable the server option below.
+# `PORT` mirrors what `config/dev.exs` already does, because the browser tests under `e2e/` run both
+# examples at once and neither can keep a hardcoded port. What turns the server on there is
+# `PHX_SERVER`, which `config/runtime.exs` reads for every environment — so `server: false` stays
+# the answer here and nothing needs to repeat that decision.
 config :ithibati_open, IthibatiOpenWeb.Endpoint,
-  http: [ip: {127, 0, 0, 1}, port: 4002],
+  http: [ip: {127, 0, 0, 1}, port: String.to_integer(System.get_env("PORT") || "4002")],
   secret_key_base: "Kz1lE93UVKHyWrBnppQR9okfS9k0H3N94SFFKFQLIW/OT8tstSHkzq8X/riVCJ7X",
   server: false
 

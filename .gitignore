@@ -30,6 +30,12 @@ ithibati-*.tar
 /.beans/
 /.beans.yml
 
+# The browser suite's installed packages and its own output. The browsers themselves live in
+# ~/.cache/ms-playwright, outside the checkout.
+/e2e/node_modules/
+/e2e/test-results/
+/e2e/playwright-report/
+
 # Snapshots and console logs the Playwright MCP server writes while a page is driven.
 /.playwright-mcp/
 
