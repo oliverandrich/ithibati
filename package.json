@@ -1,6 +1,5 @@
 {
   "name": "ithibati",
   "type": "module",
-  "exports": "./priv/static/ithibati.js",
-  "files": ["package.json", "priv/static/*", "README.md", "LICENSE"]
+  "exports": "./priv/static/ithibati.js"
 }

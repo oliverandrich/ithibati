@@ -9,7 +9,9 @@ defmodule Ithibati.PackageTest do
 
   # Files rather than directories, and named one by one: a directory is shippable because of what it
   # is, a loose file because of what it does. `package.json` is what makes `import … from "ithibati"`
-  # resolve, and a package without it fails in a consumer's bundler rather than in any test here.
+  # resolve; that it *does* resolve is proven against a real bundler in
+  # `examples/open_registration/test/ithibati_open/bundling_test.exs`, and this is the half that
+  # makes sure it reaches the consumer at all.
   @shippable_files ~w(package.json)
 
   test "every shippable directory that exists is in the package file list" do
