@@ -90,9 +90,13 @@ if Code.ensure_loaded?(Phoenix.Controller) do
     defp settings(conn), do: conn.private.ithibati
     defp handler(conn), do: settings(conn).handler
 
-    # A handler that answered for itself keeps its answer — a redirect to the page that shows the
-    # recovery codes, say. Only a handler that merely changed the connection gets this library's
-    # word for what happened, which the client treats as "nothing further to do".
+    # A handler that answered for itself keeps its answer. Answer in JSON, though — the hook reads
+    # the body, and `fetch` follows a 3xx on its own, so a `Phoenix.Controller.redirect/2` here
+    # arrives as an HTML page the client cannot read and the person stays where they were. To send
+    # somebody somewhere, say so in the body: `json(conn, %{redirect: "/recovery-codes"})`.
+    #
+    # Only a handler that merely changed the connection gets this library's word for what happened,
+    # which the client treats as "nothing further to do".
     defp answered(%{state: :sent} = conn, _status), do: conn
     defp answered(conn, status), do: json(conn, %{status: status})
 

@@ -77,6 +77,45 @@ What the library does hold is the ceremony itself — and one property that is e
 challenge is single-use, so it is spent the first time a verification is attempted, whether that
 attempt succeeded or not.
 
+## Who is signed in
+
+`Ithibati.Web.Gate` answers that on a plain connection and in a LiveView, from one module, because
+two answers that drift apart is the failure this shape exists to rule out.
+
+```elixir
+pipeline :browser do
+  plug :fetch_session
+  plug Ithibati.Web.Gate, :current_account
+end
+
+live_session :admin, on_mount: [{Ithibati.Web.Gate, {:require_account, to: ~p"/sign-in"}}] do
+  live "/admin", AdminLive
+end
+```
+
+Two modes and no others. `:current_account` assigns `@current_account`, or `nil`, and always
+continues. `:require_account` refuses when there is nobody: the plug redirects when you give it
+`:to` and answers `401` when you do not, which is what an API route wants; the `on_mount` requires
+`:to`, because a LiveView that halts with nowhere to send a person is a dead end.
+
+An unrecognised mode raises where it is written. A gate that listed its modes and let anything else
+through would turn a typo into a page that refuses nobody — protection that never fails visibly.
+
+`Gate.log_in(conn, account)` is what a handler's `authenticate/2` usually ends with: a session
+token, stored under this library's key, after the session is renewed against fixation.
+`Gate.log_out/1` revokes the token rather than merely forgetting it, so a copied cookie stops
+working for new requests and new mounts — a LiveView already connected in another tab keeps its
+socket until it reconnects.
+
+Signing in clears the session, the CSRF token with it, so **the flow has to end in a full page
+load**: answer from your handler with `%{redirect: …}` and the hook follows it. A page that stays
+put after signing in holds a token the new session has never heard of, and its next form post is
+refused. Neither is imposed — a handler issuing a bearer token for an extension calls neither, and
+the gate then finds nobody, which is the right answer.
+
+This gates *authentication* and stops there. What an account may **do** is your question, not this
+library's.
+
 ## The JavaScript
 
 The passkey ceremonies need a little client code: the browser's API wants buffers where this
