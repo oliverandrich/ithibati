@@ -220,22 +220,38 @@ jobs:
           mix precommit
 
       # What the root matrix cannot see: `lib/` compiled *as a dependency*, where `Mix.env()` is
-      # `prod` and `elixirc_paths` is `["lib"]` alone. The output is read rather than exited on,
-      # and both halves were measured — a consumer's `mix compile` does not apply
-      # `--warnings-as-errors` to its dependencies, and `mix deps.compile` does not accept the
-      # switch at all, printing the warning and exiting 0 either way.
+      # `prod` — Mix puts `env: :prod` on every dependency that does not ask for another, whatever
+      # the parent's `MIX_ENV` is — so `elixirc_paths` is `["lib"]` alone. Counted rather than
+      # assumed: the build holds 24 modules for the 24 files under `lib/` and nothing from `credo/`.
+      # That is why this can use the build the gate above already filled.
+      #
+      # It has to use that one. Pointed at an empty `_build/dev` the compile answers with a screen
+      # of `cannot infer signatures from :bandit because it is not loaded` — the sibling
+      # dependencies are simply absent there — and the check then reports the library for the state
+      # of its own build.
+      #
+      # The switch cannot do this: measured, a consumer's `mix compile` does not apply
+      # `--warnings-as-errors` to its dependencies, and `mix deps.compile` does not accept it at
+      # all. So the output is read — and printed before it is judged, because a compile that *fails*
+      # says why in the same stream, and swallowing that leaves a red job with an empty log.
       #
       # Once, not per example: both take the same library at the same path with the same optional
-      # dependencies present, so the second run would compile the same source into the same
-      # warnings and only cost a minute.
+      # dependencies present.
       - name: Check the library compiled into the example without warnings
         if: matrix.example == 'open_registration'
         working-directory: examples/${{ matrix.example }}
         run: |
-          rm -rf _build/dev/lib/ithibati
-          out=$(mix deps.compile ithibati --force 2>&1)
+          rm -rf _build/test/lib/ithibati
+          set +e
+          out=$(MIX_ENV=test mix deps.compile ithibati --force 2>&1)
+          rc=$?
+          set -e
           echo "$out"
-          if grep -q "warning:" <<<"$out"; then
+          if [ $rc -ne 0 ]; then
+            echo "the library did not compile as a dependency at all"
+            exit 1
+          fi
+          if sed -n '/^==> ithibati$/,$p' <<<"$out" | grep -q "warning:"; then
             echo "the library emitted warnings into a consumer's build"
             exit 1
           fi
