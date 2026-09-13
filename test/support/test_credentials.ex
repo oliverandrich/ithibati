@@ -13,6 +13,14 @@ defmodule Ithibati.TestCredentials do
   if `wax_` ever drops one this module is where it says so.
   """
 
+  # Attested credential data is present, the person was there and was verified. The bit order is the
+  # specification's: extension data, attested credential data, reserved, backup state, backup
+  # eligibility, user verified, reserved, user present.
+  @default_flags <<0b01000101>>
+
+  # The same byte without the attested-credential-data bit.
+  @flags_without_attested <<0b00000101>>
+
   @doc """
   An ES256 credential, in the three shapes the ceremony needs it in: the COSE map as `Wax` hands it
   back, the same map term-encoded the way this library stores it, and the private scalar to sign
@@ -34,22 +42,70 @@ defmodule Ithibati.TestCredentials do
   end
 
   @doc """
-  What a browser posts back after a registration ceremony — the two raw values
-  `Ithibati.Passkeys.verify_registration/4` takes, before base64url encoding.
+  What a browser posts after a registration ceremony: the `PublicKeyCredential` as `toJSON/0`
+  serialises it, which is exactly what `Ithibati.Identity.Passkeys.verify_registration/2` takes.
 
-  Two options, for tests that need an authenticator which did something else: `:flags` overrides the
-  flag byte, and `attested: false` sends authenticator data with no attested credential data in it —
-  which is a registration carrying no credential at all, and which `Wax` accepts.
+  Options, for tests that need an authenticator or a client which did something else: `:flags`
+  overrides the flag byte, `attested: false` sends authenticator data with no attested credential
+  data in it — a registration carrying no credential at all, which `Wax` accepts — and
+  `:discoverable` sets what the client reported under `credProps`, `nil` meaning it reported
+  nothing.
   """
   def attestation(credential, challenge, opts \\ []) do
+    object =
+      CBOR.encode(%{
+        "fmt" => "none",
+        "attStmt" => %{},
+        "authData" => bytes(authenticator_data(credential, challenge, opts))
+      })
+
     %{
-      attestation_object:
-        CBOR.encode(%{
-          "fmt" => "none",
-          "attStmt" => %{},
-          "authData" => bytes(authenticator_data(credential, challenge, opts))
-        }),
-      client_data: client_data("webauthn.create", challenge)
+      "id" => url64(credential.key_id),
+      "type" => "public-key",
+      "response" => %{
+        "attestationObject" => url64(object),
+        "clientDataJSON" => url64(client_data("webauthn.create", challenge))
+      },
+      "clientExtensionResults" => extension_results(opts)
+    }
+  end
+
+  defp extension_results(opts) do
+    case Keyword.get(opts, :discoverable, true) do
+      nil -> %{}
+      reported -> %{"credProps" => %{"rk" => reported}}
+    end
+  end
+
+  @doc """
+  What a browser posts after an authentication ceremony: the `PublicKeyCredential` as `toJSON/0`
+  serialises it, which is exactly what `Ithibati.Identity.Passkeys.verify_authentication/2` takes.
+
+  The authenticator data is the same builder a registration uses with the attested credential data
+  left out, which is what an assertion carries. `:flags` overrides the flag byte, for the test that
+  asks what happens when the person was not there.
+  """
+  def assertion(credential, challenge, opts \\ []) do
+    client_data = client_data("webauthn.get", challenge)
+    auth_data = authenticator_data(credential, challenge, Keyword.put(opts, :attested, false))
+
+    signature =
+      :crypto.sign(
+        :ecdsa,
+        :sha256,
+        auth_data <> :crypto.hash(:sha256, client_data),
+        [credential.private, :secp256r1]
+      )
+
+    %{
+      "id" => url64(credential.key_id),
+      "type" => "public-key",
+      "response" => %{
+        "authenticatorData" => url64(auth_data),
+        "clientDataJSON" => url64(client_data),
+        "signature" => url64(signature)
+      },
+      "clientExtensionResults" => %{}
     }
   end
 
@@ -61,14 +117,6 @@ defmodule Ithibati.TestCredentials do
       origin: challenge.origin
     })
   end
-
-  # Attested credential data is present, the person was there and was verified. The bit order is
-  # the specification's: extension data, attested credential data, reserved, backup state, backup
-  # eligibility, user verified, reserved, user present.
-  @default_flags <<0b01000101>>
-
-  # The same byte without the attested-credential-data bit.
-  @flags_without_attested <<0b00000101>>
 
   defp authenticator_data(credential, challenge, opts) do
     {default_flags, attested} =
@@ -102,4 +150,6 @@ defmodule Ithibati.TestCredentials do
   end
 
   defp bytes(value), do: %CBOR.Tag{tag: :bytes, value: value}
+
+  defp url64(value), do: Base.url_encode64(value, padding: false)
 end

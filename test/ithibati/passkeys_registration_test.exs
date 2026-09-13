@@ -44,7 +44,7 @@ defmodule Ithibati.Identity.PasskeysRegistrationTest do
       challenge = Passkeys.registration_challenge(@rp_id, @origin)
       credential = TestCredentials.credential()
 
-      assert {:ok, _attrs} = verify(credential, challenge, true)
+      assert {:ok, _attrs} = verify(credential, challenge)
     end
 
     # The same class as the attestation: not passed, and `wax_`'s environment decides. A challenge
@@ -57,7 +57,15 @@ defmodule Ithibati.Identity.PasskeysRegistrationTest do
       credential = TestCredentials.credential()
 
       assert challenge.user_verification == "preferred"
-      assert {:ok, _attrs} = verify(credential, challenge, true)
+      assert {:ok, _attrs} = verify(credential, challenge)
+    end
+
+    # Wax compares it as a string, so an atom would leave the browser enforcing what the server does
+    # not.
+    test "refuses a user-verification setting Wax would not recognise" do
+      assert_raise ArgumentError, ~r/user_verification: must be one of/, fn ->
+        Passkeys.registration_challenge(@rp_id, @origin, user_verification: :required)
+      end
     end
   end
 
@@ -133,7 +141,7 @@ defmodule Ithibati.Identity.PasskeysRegistrationTest do
     end
   end
 
-  describe "verify_registration/4" do
+  describe "verify_registration/2" do
     setup do
       challenge = Passkeys.registration_challenge(@rp_id, @origin)
       credential = TestCredentials.credential()
@@ -142,22 +150,24 @@ defmodule Ithibati.Identity.PasskeysRegistrationTest do
     end
 
     test "answers the credential the authenticator attested", ctx do
-      assert {:ok, attrs} = verify(ctx.credential, ctx.challenge, true)
+      assert {:ok, attrs} = verify(ctx.credential, ctx.challenge)
 
       assert attrs.key_id == ctx.credential.key_id
       assert attrs.public_key == ctx.credential.public_key
     end
 
     test "turns away an authenticator that kept the credential to itself", ctx do
-      assert {:error, :not_discoverable} = verify(ctx.credential, ctx.challenge, false)
+      assert {:error, :not_discoverable} =
+               verify(ctx.credential, ctx.challenge, discoverable: false)
     end
 
     test "and the same answer when the browser said so as a string", ctx do
-      assert {:error, :not_discoverable} = verify(ctx.credential, ctx.challenge, "false")
+      assert {:error, :not_discoverable} =
+               verify(ctx.credential, ctx.challenge, discoverable: "false")
     end
 
     test "but silence is not a denial", ctx do
-      assert {:ok, _attrs} = verify(ctx.credential, ctx.challenge, nil)
+      assert {:ok, _attrs} = verify(ctx.credential, ctx.challenge, discoverable: nil)
     end
 
     # `Wax` accepts authenticator data with no attested credential data — the registration simply
@@ -165,12 +175,12 @@ defmodule Ithibati.Identity.PasskeysRegistrationTest do
     # with a stale challenge instead of the refusal every other bad registration gets.
     test "refuses a registration that carries no credential at all", ctx do
       assert {:error, :no_attested_credential} =
-               verify(ctx.credential, ctx.challenge, true, attested: false)
+               verify(ctx.credential, ctx.challenge, attested: false)
     end
 
     test "refuses one where the person was not there", ctx do
       assert {:error, _reason} =
-               verify(ctx.credential, ctx.challenge, true, flags: <<0b01000000>>)
+               verify(ctx.credential, ctx.challenge, flags: <<0b01000000>>)
     end
 
     # WebAuthn L2 §5.1.3 caps a credential id at 1023 bytes; `Wax` does not, and its length prefix
@@ -178,24 +188,56 @@ defmodule Ithibati.Identity.PasskeysRegistrationTest do
     test "refuses a credential id longer than the specification allows", ctx do
       oversized = %{ctx.credential | key_id: :crypto.strong_rand_bytes(1024)}
 
-      assert {:error, :credential_id_too_long} = verify(oversized, ctx.challenge, true)
+      assert {:error, :credential_id_too_long} = verify(oversized, ctx.challenge)
     end
 
     test "refuses an attestation for another challenge", ctx do
       other = Passkeys.registration_challenge(@rp_id, @origin)
 
-      %{attestation_object: object, client_data: client_data} =
-        TestCredentials.attestation(ctx.credential, other)
-
       assert {:error, _reason} =
-               Passkeys.verify_registration(object, client_data, ctx.challenge, true)
+               Passkeys.verify_registration(
+                 TestCredentials.attestation(ctx.credential, other),
+                 ctx.challenge
+               )
     end
 
     # Wax raises on some malformed input rather than answering. A caller of this library gets the
     # same error tuple either way, because the alternative is a 500 with a stale challenge behind it.
     test "answers rather than raising on rubbish", ctx do
-      assert {:error, _reason} =
-               Passkeys.verify_registration(<<1, 2, 3>>, "not json", ctx.challenge, true)
+      credential = TestCredentials.attestation(ctx.credential, ctx.challenge)
+      broken = put_in(credential, ["response", "attestationObject"], "AQID")
+
+      assert {:error, _reason} = Passkeys.verify_registration(broken, ctx.challenge)
+    end
+
+    # The body is the browser's like everything else it carries, so a shape this library never asked
+    # for is refused rather than raised on.
+    test "refuses a body that is not a credential at all", ctx do
+      for nonsense <- [%{}, %{"response" => %{}}, "not a map", nil] do
+        assert {:error, :malformed_credential} =
+                 Passkeys.verify_registration(nonsense, ctx.challenge)
+      end
+    end
+
+    # The extensions are the one member read by walking rather than matching, and a client may post
+    # anything there — including shapes that make a walk raise instead of answer.
+    test "and one whose extension results are any shape at all", ctx do
+      credential = TestCredentials.attestation(ctx.credential, ctx.challenge)
+
+      for extensions <- ["yes", 7, true, [], [1, 2], %{"credProps" => "x"}, %{"credProps" => []}] do
+        assert {:ok, _attrs} =
+                 Passkeys.verify_registration(
+                   Map.put(credential, "clientExtensionResults", extensions),
+                   ctx.challenge
+                 )
+      end
+    end
+
+    test "and one whose fields are not base64url", ctx do
+      credential = TestCredentials.attestation(ctx.credential, ctx.challenge)
+      broken = put_in(credential, ["response", "clientDataJSON"], "not base64url!!")
+
+      assert {:error, :malformed_credential} = Passkeys.verify_registration(broken, ctx.challenge)
     end
   end
 
@@ -207,21 +249,10 @@ defmodule Ithibati.Identity.PasskeysRegistrationTest do
     end
   end
 
-  defp verify(credential, challenge, discoverable, opts \\ []) do
-    %{attestation_object: object, client_data: client_data} =
-      TestCredentials.attestation(credential, challenge, opts)
-
-    Passkeys.verify_registration(object, client_data, challenge, discoverable)
+  defp verify(credential, challenge, opts \\ []) do
+    Passkeys.verify_registration(
+      TestCredentials.attestation(credential, challenge, opts),
+      challenge
+    )
   end
-
-  defp put_wax_env(pairs) do
-    for {key, value} <- pairs do
-      previous = Application.fetch_env(:wax_, key)
-      Application.put_env(:wax_, key, value)
-      on_exit(fn -> restore_wax_env(key, previous) end)
-    end
-  end
-
-  defp restore_wax_env(key, {:ok, value}), do: Application.put_env(:wax_, key, value)
-  defp restore_wax_env(key, :error), do: Application.delete_env(:wax_, key)
 end

@@ -165,7 +165,7 @@ row described below.
 Three properties make this an addition rather than a rewrite, and all three are already true of the
 code being moved here — verified against the reference implementation, not assumed:
 
-- **Verification does not mint a credential.** `verify_authentication/5` returns the account. What
+- **Verification does not mint a credential.** `verify_authentication/2` returns the account. What
   is then issued — a session token behind a cookie, a long-lived device token behind a bearer
   header — is the caller's decision, taken in a separate call.
 - **The token row carries a context.** One table, one shape, distinguished by a column. A device
@@ -249,6 +249,15 @@ for the `credProps` extension at all. What the web half owns is the transport �
 serialisation, the hook that calls `navigator.credentials`. The shape of the dictionary is a
 protocol detail, and protocol details are what this library is for.
 
+**The inbound direction is the same argument, so it takes the same shape.** The verifications take
+the `PublicKeyCredential` the browser produced, parsed — `"id"`, `"response"`, and
+`"clientExtensionResults"`, exactly as `toJSON/0` serialises them — and decode the base64url
+themselves. A consumer hands over what arrived and nothing else. The alternative, loose binaries in
+a fixed order with the decoding left outside, puts unpadded base64url in the caller's hands and
+makes two transposed fields indistinguishable from a genuinely bad assertion: same type, same
+arity, same refusal. Whether a credential is discoverable comes from the same map for the same
+reason — it is where the browser puts it, so there is no wrong value to pass.
+
 **A registration must produce a discoverable credential.** Sign-in names no credential (decision 5
 explains why), so a credential the authenticator keeps to itself would be invisible there, and the
 person would find out at their next visit, where the platform says "no passkey available" and
@@ -260,7 +269,9 @@ is no option to turn it off, because a sign-in that names no credential cannot w
 
 **Everything else the library's behaviour depends on is passed to `wax_` per call**, never left to
 `config :wax_`: the relying party, the attestation conveyance, the attestation types trusted, how
-long the ceremony may take, and whether the user must be verified. An option not passed is one a
+long the ceremony may take, whether the user must be verified, and — on the sign-in side —
+`silent_authentication_enabled`, which accepts an assertion made without the person being
+present. An option not passed is one a
 consumer can change from a distance without knowing what it disagrees with — a
 `trusted_attestation_types` without `:none` refuses every registration this library can produce.
 
@@ -269,6 +280,24 @@ authenticator must verify who is holding it, and how long a challenge stays acce
 defaults (`"preferred"` and sixty seconds) and both are read back off the challenge when the
 browser's options are built, so the two sides cannot disagree — a disagreement there is silent and
 looks like a broken authenticator.
+
+**A sign-in names no credential.** `allowCredentials` is sent empty rather than filled with the
+ids this deployment knows. Naming them would turn a discoverable-credential sign-in into one
+restricted to those ids: the platform routes straight to whoever holds one and never offers a
+chooser, so a second authenticator could never be picked — and this runs unauthenticated by
+necessity, so every id it named would be readable by anyone who opened the page. It is the sign-in
+counterpart of requiring a discoverable credential at registration, and a consumer wiring its own
+controller must not reverse it.
+
+**Two properties this library cannot hold for a consumer, and says so rather than leaving them to
+be discovered.** A challenge is single-use, and it lives wherever the caller put it — so deleting it
+on the first verification is the caller's step; nothing here can tell a replayed assertion from a
+first one. And the signature counter is neither stored nor compared: it exists to detect a cloned
+authenticator, and a synced passkey reports zero forever, so a comparison either says nothing or
+locks out the person whose credential moved between devices.
+
+Inside this project the caller that holds the first of those is the web half: its endpoint deletes
+the challenge the first time it verifies one, success or failure.
 
 **The algorithms offered are ES256 and RS256.** Ed25519 is absent deliberately rather than
 forgotten: no authenticator in circulation offers it and neither of these two, and a list a consumer

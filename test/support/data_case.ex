@@ -77,6 +77,24 @@ defmodule Ithibati.DataCase do
     )
   end
 
+  @doc """
+  Moves `wax_`'s own application environment for the duration of a test, and puts it back.
+
+  Wax fills any challenge option it was not passed from there, so a test that proves this library
+  passes one explicitly has to set the other value. It is global state: a module using this is
+  `async: false`, and the restore is what keeps a leaked key out of every other module.
+  """
+  def put_wax_env(pairs) do
+    for {key, value} <- pairs do
+      previous = Application.fetch_env(:wax_, key)
+      Application.put_env(:wax_, key, value)
+      ExUnit.Callbacks.on_exit(fn -> restore_wax_env(key, previous) end)
+    end
+  end
+
+  defp restore_wax_env(key, {:ok, value}), do: Application.put_env(:wax_, key, value)
+  defp restore_wax_env(key, :error), do: Application.delete_env(:wax_, key)
+
   setup tags do
     pid = Sandbox.start_owner!(Ithibati.TestRepo, shared: not tags[:async])
     on_exit(fn -> Sandbox.stop_owner(pid) end)
