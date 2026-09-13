@@ -42,10 +42,20 @@ jobs:
           # with them present.
           - name: without optional deps
             without_optional: "1"
+          # The colocated delivery route, which every other leg leaves unbuilt: the variable is what
+          # puts LiveView's compiler in `compilers/0`, and nothing else in this matrix sets it. Its
+          # own step below checks that the manifest a consumer imports was actually written — the
+          # compile succeeding proves only that the task exists.
+          - name: colocated hooks
+            colocated_hooks: "1"
+            # Not the full gate: style is judged once, by the `check` leg, on this same source and
+            # this same toolchain. What is new here is the compiler entry and the manifest below.
+            gate: build-and-test
 
     env:
       ITHIBATI_USERS_KEY_TYPE: ${{ matrix.users_key_type }}
       ITHIBATI_WITHOUT_OPTIONAL: ${{ matrix.without_optional }}
+      ITHIBATI_COLOCATED_HOOKS: ${{ matrix.colocated_hooks }}
       # Through the environment rather than straight into `run:`, which is where a workflow
       # expression becomes code. `matrix` is written in this file and not attacker-controlled, so
       # the risk here is theoretical — the habit is not.
@@ -120,10 +130,24 @@ jobs:
           # and everything they brought stay behind in mix.lock — where `deps.unlock --check-unused`
           # inside the gate finds them and fails the leg for a reason that is not the leg's point.
           # This checkout is disposable; the committed lock is untouched.
-          if [ -n "$ITHIBATI_WITHOUT_OPTIONAL" ]; then mix deps.unlock --unused; fi
+          # `= 1` rather than "non-empty", because `enabled?/1` in mix.exs reads named values and
+          # the two must agree about the same variable. The matrix above is its only writer.
+          if [ "$ITHIBATI_WITHOUT_OPTIONAL" = 1 ]; then mix deps.unlock --unused; fi
 
       - name: Run the gate
         run: mise run "$GATE"
+
+      # The gate compiling proves the compiler task exists; it does not prove a consumer can import
+      # anything. This is the file that import resolves to, and the name inside it is what a
+      # template's `phx-hook` has to say.
+      - name: Check the colocated manifest was written
+        if: matrix.colocated_hooks
+        run: |
+          manifest=_build/test/phoenix-colocated/ithibati/index.js
+          test -f "$manifest" || { echo "no manifest at $manifest"; exit 1; }
+          # The name is spelled here by hand; test/ithibati/web/hooks_test.exs is what owns it and
+          # derives it from the module, so a rename fails there first and loudly.
+          grep -q "Ithibati.Web.Hooks.PasskeyCeremony" "$manifest"
 
   zizmor:
     name: zizmor

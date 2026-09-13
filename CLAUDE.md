@@ -73,6 +73,12 @@ stronger here than it looks: nothing in this repository can resolve one.
   sabotaged version. A later `mix credo` then reports a violation that exists only in the leftover
   build — here it accused `Ithibati.Schema.Identifier`, which the check has allowed since it was
   written. Rebuild both, or read the finding as a question about the build before believing it.
+- **The CI leg without the optional dependencies cannot be reproduced in this checkout — use
+  `mise run check-without-optional`.** `lib/ithibati/web/` is guarded by `Code.ensure_loaded?`,
+  which answers from the code path, and `_build` still holds the compiled Phoenix beams after any
+  ordinary run. So the guard passes, the module compiles, and the run dies on `struct
+  Phoenix.LiveView.Rendered is undefined (the module was also only available…)` — that failure is
+  the local build talking, not the change. The task works from a clean copy, which is what CI gets.
 - Before "done": `mise run check` is green. That is the whole gate; `mix precommit` is its Elixir
   half. **It needs a running Postgres**: the suite creates and migrates its own database, but it
   cannot invent a server. Credentials come from `PGUSER`/`PGPASSWORD`/`PGHOST`/`PGPORT`, defaulting

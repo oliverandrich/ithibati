@@ -21,6 +21,7 @@ defmodule Ithibati.MixProject do
       # requirement is measured rather than hoped for.
       elixir: "~> 1.17",
       elixirc_paths: elixirc_paths(Mix.env()),
+      compilers: compilers(),
       start_permanent: Mix.env() == :prod,
       deps: deps(),
       aliases: aliases(),
@@ -48,8 +49,26 @@ defmodule Ithibati.MixProject do
   defp elixirc_paths(:dev), do: ["lib", "credo"]
   defp elixirc_paths(_), do: ["lib"]
 
+  # The LiveView compiler is what writes the manifest a consumer imports as
+  # `phoenix-colocated/ithibati`, and it writes one per application, for the current one alone — so
+  # a consumer's own compiler does not write ours. It cannot be listed unconditionally: an
+  # application that took this library without Phoenix never receives `phoenix_live_view`, and its
+  # build would die on `The task "compile.phoenix_live_view" could not be found`.
+  #
+  # The condition is an environment variable because nothing else is visible from here. A
+  # dependency's `project/0` can read the process environment and nothing about the project being
+  # built — measured: `Code.ensure_loaded?` is false even in a consumer where the task exists, and
+  # `deps_path()`/`build_path()` answer with directories under this library that do not exist. A
+  # consumer who does not set it imports `priv/static/ithibati.js` by path instead, which is the
+  # route that always works.
+  defp compilers do
+    if enabled?("ITHIBATI_COLOCATED_HOOKS"),
+      do: [:phoenix_live_view] ++ Mix.compilers(),
+      else: Mix.compilers()
+  end
+
   defp refuse_partial_package(_args) do
-    if System.get_env("ITHIBATI_WITHOUT_OPTIONAL") not in [nil, ""] do
+    if enabled?("ITHIBATI_WITHOUT_OPTIONAL") do
       Mix.raise(
         "ITHIBATI_WITHOUT_OPTIONAL is set, which drops the optional dependencies from deps/0. " <>
           "A package built now would not declare them. Unset it and try again."
@@ -74,14 +93,41 @@ defmodule Ithibati.MixProject do
   # never compiled at all — while `precommit` runs `--warnings-as-errors`. Leaving them out of the
   # list is the only way to compile that path, so one CI leg sets this and nothing else does.
   defp optional_deps do
-    if System.get_env("ITHIBATI_WITHOUT_OPTIONAL") in [nil, ""] do
+    if enabled?("ITHIBATI_WITHOUT_OPTIONAL") do
+      []
+    else
       [
-        {:phoenix, "~> 1.7", optional: true},
-        {:phoenix_live_view, "~> 1.0", optional: true},
+        # Not `~> 1.7`/`~> 1.0`, below which `Phoenix.LiveView.ColocatedHook` does not exist.
+        # `Ithibati.Web.Hooks` compiles for anyone who has Phoenix LiveView at all — that is where
+        # `Phoenix.Component` lives, and the environment variable gates the manifest, not the module
+        # — so an older pair would fail inside this dependency for a consumer who never asked for a
+        # colocated hook. The floor is what the feature needs, said once, rather than a runtime
+        # check that reports the same thing later and worse.
+        {:phoenix, "~> 1.8", optional: true},
+        {:phoenix_live_view, "~> 1.1", optional: true},
         {:plug, "~> 1.16", optional: true}
       ]
-    else
-      []
+    end
+  end
+
+  # One reading for both build switches. A named value rather than "anything non-empty", because
+  # `ITHIBATI_COLOCATED_HOOKS` is documented in the README: a consumer who writes `=0` to turn it off
+  # means it, and the loose test would have turned it on. An unrecognised value raises rather than
+  # falling back, for the reason config/config.exs gives about the other variable it reads — a typo
+  # would otherwise make a CI leg an exact copy of another one, green and saying nothing.
+  defp enabled?(variable) do
+    case System.get_env(variable) do
+      value when value in [nil, ""] ->
+        false
+
+      value when value in ~w(1 true yes) ->
+        true
+
+      value when value in ~w(0 false no) ->
+        false
+
+      other ->
+        Mix.raise("#{variable} must be one of 1/true/yes/0/false/no, got: #{inspect(other)}")
     end
   end
 
@@ -93,7 +139,7 @@ defmodule Ithibati.MixProject do
     [
       licenses: ["MIT"],
       links: %{"GitHub" => @source_url},
-      files: ~w(lib docs .formatter.exs mix.exs README.md LICENSE CHANGELOG.md)
+      files: ~w(lib priv docs .formatter.exs mix.exs package.json README.md LICENSE CHANGELOG.md)
     ]
   end
 

@@ -18,6 +18,19 @@ run = ["zizmor .github/", "mix precommit"]
 description = "Compile without warnings and run the tests"
 run = "mix build_and_test"
 
+# The one CI leg a normal checkout cannot reproduce: `lib/ithibati/web/` is guarded by
+# `Code.ensure_loaded?`, which answers from the code path, and `_build` still holds the compiled
+# Phoenix beams after any ordinary run. Named here so that CI and a laptop run the same thing rather
+# than two copies of it, and so the recipe is not retyped from a comment each time.
+[tasks.check-without-optional]
+description = "Compile and test as a consumer without the optional Phoenix dependencies"
+run = [
+  "rm -rf tmp/without-optional",
+  "mkdir -p tmp/without-optional",
+  "rsync -a --exclude _build --exclude deps --exclude .git --exclude .beans --exclude tmp . tmp/without-optional/",
+  "cd tmp/without-optional && ITHIBATI_WITHOUT_OPTIONAL=1 mix deps.get && ITHIBATI_WITHOUT_OPTIONAL=1 mix build_and_test",
+]
+
 # Deliberately not part of `check`; it runs on a schedule instead. Why, in
 # .github/workflows/audit.yml.
 [tasks.audit]

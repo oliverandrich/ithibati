@@ -46,6 +46,46 @@ migration reads the account table's own catalogue entries to check what it is ab
 foreign key at, and no other adapter answers those questions. CI builds both ends of the Elixir
 range and both account-key types.
 
+## The JavaScript
+
+The passkey ceremonies need a little client code: the browser's API wants buffers where this
+library sends unpadded base64url, and it hands back a credential that has to be serialised the way
+the verifications expect. That lives in `priv/static/ithibati.js`.
+
+There are two ways to reach it, they differ in one string, and both register the same hook name, so
+a template written for one works under the other:
+
+```heex
+<div id="sign-in" phx-hook="Ithibati.Web.Hooks.PasskeyCeremony"></div>
+```
+
+**From the package**, which always works. The specifier is bare because this library ships a
+`package.json`, the same way `phoenix` and `phoenix_live_view` do, and a Phoenix 1.8 application
+already has `deps` on esbuild's `NODE_PATH`:
+
+```javascript
+import {hooks as ithibatiHooks} from "ithibati"
+
+let liveSocket = new LiveSocket("/live", Socket, {hooks: {...ithibatiHooks}})
+```
+
+**From the colocated manifest**, if you would rather LiveView kept track of it. Set
+`ITHIBATI_COLOCATED_HOOKS=1` in the environment that builds your project, so that this library runs
+LiveView's compiler and writes the manifest:
+
+```javascript
+import {hooks as ithibatiHooks} from "phoenix-colocated/ithibati"
+```
+
+Then build this library again — `mix deps.compile ithibati --force`. Mix does not rebuild a
+dependency because an environment variable changed, and the manifest is only written while
+compiling, so without that step the import resolves to nothing and the bundler says so without
+saying why.
+
+If you are not using LiveView, import `register` and `authenticate` from the same package instead
+of the hook. They take the options this library produced, drive `navigator.credentials`, and return
+what the verifications expect.
+
 ## Design
 
 These decisions shape it, and [`docs/design.md`](docs/design.md) carries each one with its reasoning:
