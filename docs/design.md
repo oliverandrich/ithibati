@@ -2,7 +2,9 @@
 
 Ithibati is the half of an accounts context that knows *who someone is and how they prove it* —
 the account row, its passkeys, its recovery codes, its tokens. It deliberately knows nothing about
-what an account may *do*: roles, tenancy, memberships, invitations stay in the application.
+what an account may *do*: roles, tenancy and memberships stay in the application. An invitation
+straddles that line, and decision 9 says where it is cut — whom it is addressed to is here, what it
+grants is not.
 
 The reference implementation is [Chapisho](https://github.com/oliverandrich/chapisho), a
 self-hostable blog engine, where this code was written first and where a Credo check already kept
@@ -45,9 +47,9 @@ rather than leaving half a schema behind.
 Four questions followed from this decision. Three are settled, and the answers belong here rather
 than in the code that implements them.
 
-**The tables this library owns are `ithibati_keys`, `ithibati_recovery_codes` and
-`ithibati_tokens`** — three, not the five the reference implementation's accounts context manages.
-Links are profile and belong to the consumer. A handle reservation exists so an old
+**The tables this library owns are `ithibati_keys`, `ithibati_recovery_codes`, `ithibati_tokens` and
+`ithibati_bootstrap`** — not the ones beside them in the reference implementation's accounts
+context. Links are profile and belong to the consumer. A handle reservation exists so an old
 `@handle@domain` cannot come to name somebody else, which is federation, and also the consumer's,
 even though it is reached from the account changeset. The prefix is configurable and prefixed by
 default for a reason an application does not have: `phx.gen.auth` generates `users_tokens` in the
@@ -70,7 +72,7 @@ the application names — there is no default. A library that never sends mail h
 requiring an address: that would be a personal detail collected and never used, and an application
 that identifies people by username should be able to say so rather than work around an assumption.
 `format:` is optional beside it, and the pattern for an address is *offered* as
-`Ithibati.Schema.User.email_format/0` rather than imposed.
+`Ithibati.Schema.Identifier.email_format/0` rather than imposed.
 
 That pattern is the one the HTML specification publishes for `<input type=email>`, not RFC 5322 or a
 parser of it. An identifier here is a credential rather than a mailbox, so there is no deliverability
@@ -341,3 +343,82 @@ it unused. That the predicate alone is enough is specific to this case: both cal
 guard is over a *set* of rows — the last passkey, the last superadmin — two writers aiming at
 different rows wait on nothing, and the set needs something of its own to lock. Measured: with the
 read moved out of the update, eight callers spending one code all succeed.
+
+## 9. Invitations are the application's table and this library's invariants
+
+Most applications this library is for are invite-only: nobody registers, the first account
+bootstraps and then invites the rest. An invitation is how somebody comes to have an account at all,
+which makes it part of the first answer — *who is this* — and so it belongs here. What it *grants* is not, and that is the whole difficulty: an invitation says a role,
+a site, a team, and decision 3 keeps all three out of `lib/`.
+
+The way out is the arrangement decision 2 already made for accounts. **The application declares the
+schema and owns the table**; `use Ithibati.Schema.Invitation` injects the identifier of the person
+invited, the token digest, the expiry and the acceptance timestamp, plus the changeset that fills
+them. Nothing here ever names `role` or `site_id`. A second kind of ownership in the same library
+would be harder to explain than the same one twice.
+
+**The secret leaves through a virtual field.** `invitation_changeset/3` mints the token, puts the
+plaintext in `:token` and its sha256 in `token_hash`, and after the insert the caller holds the only
+copy there will ever be. A changeset cannot answer with a second value, and a caller who has to
+remember to generate a token is a caller who will forget — which is the version that gets written by
+hand, and written wrong, in every application that would otherwise do this itself.
+
+**It is not in `ithibati_tokens`**, where this library's session and device tokens live, because that
+table's `user_id` is `null: false` and an invitation exists before its account does.
+
+**Accepting composes, it does not notify.** The obvious design is an event after acceptance that
+lets the application fill in its own fields, and decision 4 already rules it out — this is the case
+it was written for. An event can be missed, and what is left behind is an account that can sign in
+and see nothing. So `Invitations.accept/2` adds one step to the caller's own `Ecto.Multi`, beside
+the account, the first passkey, the recovery codes and whatever the application grants: all of them,
+or none.
+
+**"Not yet accepted" rides the `WHERE` of the update that accepts it**, for the reason decision 8
+sets out, and this is the case where the predicate alone suffices — both callers aim at the same
+row. Measured: with the read moved out of the update, all eight of eight callers opening one link
+accept it.
+
+**An invitation to an address that already has an account is refused when it is written.** The
+unique index on the accounts table is what makes two impossible; this is the earlier half, so that
+whoever is inviting is told at the form instead of the invitee finding out at the end of a passkey
+ceremony. It is advisory — an account can appear between the check and the acceptance — which is why
+it does not replace the index.
+
+**And the account being created has to be the one the invitation named.** An acceptance form that
+lets the invitee correct their address is an ordinary thing to build, and without this it would hand
+one person's invitation, and whatever it grants, to another.
+
+**This library schedules nothing.** What runs on a timer is the application's business, and
+`fetch/1` refuses an expired invitation anyway, so a row left lying is inert. The *queries* are this
+library's — `expired/0` and `delete_expired/0` — and what calls them is not.
+
+## 10. Open registration and invitation-only, and neither proves an address
+
+There are two ways to let people in, and this library ships both halves without forbidding either.
+Which one an application runs is decided by one thing: whether it offers a registration path to
+somebody who is not signed in.
+
+**Open.** Anyone who reaches the page registers a passkey and an account exists. The identifier on
+it is whatever that person typed.
+
+**Invitation-only.** Somebody already inside writes the invitation, so the identifier is asserted by
+an account rather than by a stranger, and decision 9 says how. The first account needs no invitation,
+because there is nobody to write one yet; what stops a second account taking that route is
+`Ithibati.Bootstrap`, the row that says an instance has been set up. Nothing here refuses an
+invitation written before that row exists — an application that seeds one is doing something this
+library has no opinion about.
+
+**Neither verifies that the person owns the address**, and there is no confirm-by-email loop in the
+first release. Sending mail needs a mailer, and a library that takes one on makes a choice that
+belongs to its consumer — Swoosh, Bamboo, an API, a queue — for the same reason decision 3 keeps
+other contexts out of here. A consuming application already has a mailer. What it does not have is
+the part that gets hand-rolled wrong, and that part is here.
+
+So **the invitation token is a bearer secret**: whoever holds the link accepts it, and delivering it
+to the right person is the application's job. An invitation mailed to a typo hands over an account.
+
+What that also means is the useful half: an application that *does* mail the link has a weak proof of
+the address as a side effect — whoever accepted it read mail sent there. An application that wants a
+stronger one can build it today without waiting for this library, by verifying the address first and
+writing the invitation second. A later release might add the token recipe for such a loop. It will
+not add a mailer.

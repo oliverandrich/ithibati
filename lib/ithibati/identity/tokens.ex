@@ -16,8 +16,6 @@ defmodule Ithibati.Identity.Tokens do
 
   @session "session"
 
-  @bytes 32
-
   # The context the convenience functions promise, with the validity that goes with it — one module
   # owns both, so neither can be changed into a promise the other does not keep. An application may
   # still override it.
@@ -43,7 +41,7 @@ defmodule Ithibati.Identity.Tokens do
     %{id: user_id} = Config.account!(account)
     known_context!(context)
 
-    token = @bytes |> :crypto.strong_rand_bytes() |> Secrets.url64()
+    token = Secrets.token()
 
     Config.repo().insert!(
       UserToken.changeset(%UserToken{}, %{

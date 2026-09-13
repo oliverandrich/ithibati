@@ -5,9 +5,10 @@ defmodule Ithibati.TestUser do
   """
   use Ecto.Schema
 
+  alias Ithibati.Schema.Identifier
   alias Ithibati.Schema.User
 
-  use User, identifier: :email, format: User.email_format()
+  use User, identifier: :email, format: Identifier.email_format()
 
   import Ecto.Changeset
 
@@ -35,9 +36,10 @@ defmodule Ithibati.NamedUser do
   """
   use Ecto.Schema
 
+  alias Ithibati.Schema.Identifier
   alias Ithibati.Schema.User
 
-  use User, identifier: :email, format: User.email_format()
+  use User, identifier: :email, format: Identifier.email_format()
 
   @primary_key Ithibati.TestKey.primary_key()
 

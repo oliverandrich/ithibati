@@ -83,6 +83,31 @@ defmodule Ithibati.Credo.IdentityIsPortableTest do
       |> refute_issues()
     end
 
+    # The two hand-cut exceptions, pinned: each is a clause of its own rather than an entry on the
+    # allow-list, so a third `Ithibati.Schema.*` module is refused until somebody decides otherwise.
+    test "and that includes the two schema contracts, but not their siblings" do
+      """
+      defmodule Ithibati.Identity.Passkeys do
+        alias Ithibati.Schema.Identifier
+        alias Ithibati.Schema.User
+
+        def name(account), do: {User.passkey_display_name(account), Identifier.normalize("A")}
+      end
+      """
+      |> check()
+      |> refute_issues()
+
+      """
+      defmodule Ithibati.Identity.Passkeys do
+        alias Ithibati.Schema.Invitation
+
+        def invite, do: Invitation
+      end
+      """
+      |> check()
+      |> assert_issue()
+    end
+
     # Neither a docstring nor a comment is a node, so the rule can say what it forbids.
     test "a doc and a comment may name anything" do
       """

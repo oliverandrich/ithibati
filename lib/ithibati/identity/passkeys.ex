@@ -16,6 +16,7 @@ defmodule Ithibati.Identity.Passkeys do
 
   alias Ithibati.Config
   alias Ithibati.Identity.Secrets
+  alias Ithibati.Schema.Identifier
   alias Ithibati.Schema.User
   alias Ithibati.UserKey
 
@@ -391,7 +392,7 @@ defmodule Ithibati.Identity.Passkeys do
 
   # Through the same normalisation the identifier will go through when the account row is written,
   # so the derived handle is the same on a second attempt whatever case the invitation link carried.
-  defp subject(identifier) when is_binary(identifier), do: User.normalize(identifier)
+  defp subject(identifier) when is_binary(identifier), do: Identifier.normalize(identifier)
 
   # The account's own key once there is a row, and before that a value derived from the identifier
   # rather than a fresh random one: an authenticator replaces a discoverable credential only when

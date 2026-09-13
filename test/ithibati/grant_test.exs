@@ -15,15 +15,7 @@ defmodule Ithibati.Identity.GrantTest do
   # Through the library's own builder, so these tests assert against the shape it produces rather
   # than one assembled here — and with stand-in key material, because nothing in this module checks
   # a signature.
-  defp key_attrs do
-    Passkeys.key_attrs(
-      %{
-        key_id: :crypto.strong_rand_bytes(16),
-        public_key: :erlang.term_to_binary(%{stand_in: :crypto.strong_rand_bytes(32)})
-      },
-      "A phone"
-    )
-  end
+  defp key_attrs, do: Passkeys.key_attrs(stand_in_key(), "A phone")
 
   defp grant(opts \\ []) do
     {attrs, opts} = Keyword.pop(opts, :attrs, key_attrs())
@@ -138,7 +130,7 @@ defmodule Ithibati.Identity.GrantTest do
     test "takes the account from the multi, never from the attributes" do
       victim = user_fixture()
 
-      attrs = Map.put(key_attrs(), :user_id, victim.id)
+      attrs = Map.put(stand_in_key(), :user_id, victim.id)
 
       {:ok, changes} =
         grant(attrs: attrs)

@@ -20,6 +20,7 @@ defmodule Ithibati.Config do
 
   # Not `:prefix`: in Ecto that already means the Postgres schema, which is a separate thing this
   # library may want to support later, and two meanings under one name is a trap for that release.
+  alias Ithibati.Schema.Invitation
   alias Ithibati.Schema.User
 
   @table_prefix Application.compile_env(:ithibati, :table_prefix, "ithibati")
@@ -72,6 +73,63 @@ defmodule Ithibati.Config do
         ArgumentError,
         "config :ithibati, user_schema: #{inspect(schema)} — that module does not " <>
           "`use Ithibati.Schema.User`"
+      )
+
+    schema
+  end
+
+  @doc """
+  The invitation schema an application owns, as a module, or `nil` when it invites nobody.
+
+  Optional, unlike the account schema: a library that also answers "who may be invited" has to be
+  told, but a consumer with no invitations configures nothing and never reaches the module that
+  reads this.
+
+  The identifier is checked against the account schema's here rather than read from it: a schema's
+  fields are fixed when its module compiles, and which module is the account's is read at runtime —
+  so the two are stated separately and this is the first moment both are known.
+  """
+  def invitation_schema do
+    case Application.get_env(:ithibati, :invitation_schema) do
+      nil -> nil
+      schema -> checked_invitation!(schema)
+    end
+  end
+
+  @doc """
+  The same, for a caller that cannot do anything without one.
+
+  `invitation_schema/0` answers `nil` because the migration has to know when there is no invitation
+  table to index. Everything else needs the module, and says so here rather than each in its own
+  words.
+  """
+  def invitation_schema! do
+    invitation_schema() ||
+      raise(
+        ArgumentError,
+        "config :ithibati, invitation_schema: MyApp.Accounts.Invitation — this library is told " <>
+          "which schema holds your invitations before it can look one up."
+      )
+  end
+
+  defp checked_invitation!(schema) do
+    Invitation.invitation_schema?(schema) ||
+      raise(
+        ArgumentError,
+        "config :ithibati, invitation_schema: #{inspect(schema)} — that module does not " <>
+          "`use Ithibati.Schema.Invitation`"
+      )
+
+    invitee = schema.__ithibati_invitation__(:identifier)
+    accounts = user_schema()
+    account = accounts.__ithibati__(:identifier)
+
+    invitee == account ||
+      raise(
+        ArgumentError,
+        "#{inspect(schema)} invites by #{inspect(invitee)} and #{inspect(accounts)} is " <>
+          "identified by #{inspect(account)} — an invitation has to be addressed to the thing an " <>
+          "account is known by, or accepting one cannot fill it in."
       )
 
     schema

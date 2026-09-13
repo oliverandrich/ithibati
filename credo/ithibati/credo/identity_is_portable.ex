@@ -114,10 +114,13 @@ defmodule Ithibati.Credo.IdentityIsPortable do
   defp refuse([root | _rest] = segments, _guarded?) when root in @optional_deps,
     do: {:optional_dep, segments |> Enum.take(2) |> Name.full()}
 
-  # A clause rather than an entry on the list above, which matches the second segment alone and would
-  # have admitted every `Ithibati.Schema.*` there will ever be. `Ithibati.Schema.User` is this
-  # library's own contract with the account, and the ceremony asks it what belongs in a credential.
+  # Clauses rather than an entry on the list above, which matches the second segment alone and would
+  # have admitted every `Ithibati.Schema.*` there will ever be. Both named modules are this library's
+  # own contract with a schema the application owns, not another context: the ceremony asks `User`
+  # what belongs in a credential, and `Identifier` for the one normalisation an identifier gets, so
+  # that a lookup cannot disagree with the write that stored it.
   defp refuse([:Ithibati, :Schema, :User], true), do: nil
+  defp refuse([:Ithibati, :Schema, :Identifier], true), do: nil
 
   defp refuse([:Ithibati, sibling | _rest], true) when sibling not in @allowed,
     do: {:not_allowed, Name.full([:Ithibati, sibling])}

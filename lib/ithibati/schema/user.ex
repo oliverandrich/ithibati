@@ -4,11 +4,14 @@ defmodule Ithibati.Schema.User do
 
       defmodule MyApp.Accounts.User do
         use Ecto.Schema
+        alias Ithibati.Schema.Identifier
         alias Ithibati.Schema.User
 
-        use User, identifier: :email, format: User.email_format()
+        use User, identifier: :email, format: Identifier.email_format()
 
         import Ecto.Changeset
+
+  alias Ithibati.Schema.Identifier
 
         schema "users" do
           ithibati_account()
@@ -28,6 +31,7 @@ defmodule Ithibati.Schema.User do
 
     * `identifier:` — required, a literal atom: the field an account is known by.
     * `format:` — optional, a regular expression, evaluated once when your module compiles.
+      `Ithibati.Schema.Identifier.email_format/0` offers one for addresses.
     * `constraint_name:` — optional, the name of the unique index on that column. Say it when your
       naming convention is not the one Ecto derives; this library then creates it under that name,
       and the changeset's constraint matches it.
@@ -53,19 +57,7 @@ defmodule Ithibati.Schema.User do
 
   import Ecto.Changeset
 
-  # RFC 5321's maximum for an address, and the longest identifier this library expects to see.
-  @max 254
-
-  @email_format ~r"^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$"
-
-  @doc """
-  The pattern to use when the identifier is an email address — offered, not imposed.
-
-  It is the one the HTML specification publishes for `<input type=email>` rather than RFC 5322: an
-  identifier here is a credential, not a mailbox, so the full grammar's quoted local parts with
-  spaces in them would be a hazard. It accepts `you@localhost`; it refuses `"a b"@example.com`.
-  """
-  def email_format, do: @email_format
+  alias Ithibati.Schema.Identifier
 
   @doc """
   Declares the identifier field and the associations this library needs. Call it inside your
@@ -95,10 +87,10 @@ defmodule Ithibati.Schema.User do
         "use Ithibati.Schema.User takes a literal keyword list, got: #{Macro.to_string(opts)}"
       )
 
-    field = identifier!(opts)
-    format = format!(opts, __CALLER__)
-    constraint = constraint_name!(opts)
-    unique_index = unique_index!(opts)
+    field = Identifier.identifier!(opts, __MODULE__)
+    format = Identifier.format!(opts, __CALLER__)
+    constraint = Identifier.constraint_name!(opts)
+    unique_index = Identifier.unique_index!(opts)
 
     quote do
       import Ithibati.Schema.User, only: [ithibati_account: 0]
@@ -133,9 +125,9 @@ defmodule Ithibati.Schema.User do
   # original to exist before an override, and anything generated here comes after everything the
   # consumer wrote.
   defmacro __before_compile__(env) do
-    refuse_shadowing!(env)
+    Identifier.refuse_shadowing!(env, [__ithibati__: 1, identifier_changeset: 2], __MODULE__)
 
-    field = declared!(env)
+    field = Identifier.declared!(env, __MODULE__, "ithibati_account/0")
     format = Module.get_attribute(env.module, :ithibati_format)
     constraint = Module.get_attribute(env.module, :ithibati_constraint)
     unique_index = Module.get_attribute(env.module, :ithibati_unique_index)
@@ -170,134 +162,12 @@ defmodule Ithibati.Schema.User do
     end
   end
 
-  # A consumer's own clause for `__ithibati__(:identifier)` would win by clause order, and the
-  # library's would never run.
-  defp refuse_shadowing!(env) do
-    Enum.each([__ithibati__: 1, identifier_changeset: 2], fn {name, arity} ->
-      Module.defines?(env.module, {name, arity}) &&
-        raise(
-          ArgumentError,
-          "#{inspect(env.module)} defines #{name}/#{arity}, which use Ithibati.Schema.User " <>
-            "generates. Rename yours — a definition here silently replaces the library's."
-        )
-    end)
-  end
-
-  # `@ithibati_declared` is an ordinary attribute, so a line below the schema block can reassign it.
-  # Holding it against the fields Ecto recorded is what makes the claim above true.
-  defp declared!(env) do
-    field = Module.get_attribute(env.module, :ithibati_declared)
-
-    field ||
-      raise(
-        ArgumentError,
-        "#{inspect(env.module)} uses Ithibati.Schema.User but never calls ithibati_account/0 " <>
-          "inside its schema block, so it has no identifier field"
-      )
-
-    declared = env.module |> Module.get_attribute(:ecto_fields) |> Keyword.keys()
-
-    field in declared ||
-      raise(
-        ArgumentError,
-        "#{inspect(env.module)} has no field #{inspect(field)}; its schema declares " <>
-          "#{inspect(declared)}. Something reassigned @ithibati_declared after the schema block."
-      )
-
-    field
-  end
-
-  # Told apart from "not given", because a non-literal reports the option as missing when it was in
-  # fact passed — and `true`/`false` are atoms, so a schema would compile with a field named `false`.
-  defp identifier!(opts) do
-    case Keyword.fetch(opts, :identifier) do
-      {:ok, field} when is_atom(field) and field not in [nil, true, false] ->
-        field
-
-      {:ok, other} ->
-        raise ArgumentError,
-              "`identifier:` must be a literal atom, got: #{Macro.to_string(other)}. " <>
-                "The macro reads it while your module compiles, so a variable or attribute " <>
-                "cannot be seen here."
-
-      :error ->
-        raise ArgumentError,
-              "use Ithibati.Schema.User needs `identifier:` — the field an account is known by, " <>
-                "such as `identifier: :email` or `identifier: :username`. There is no default: " <>
-                "this library never sends mail, so it will not ask you for an address by assumption."
-    end
-  end
-
-  # Evaluated here rather than in the generated function body, for two reasons that are the same
-  # reason: it happens once instead of per changeset, and what comes out can be checked. A binary
-  # slips through `validate_format/4` as `String.contains?/2`, which is wrong in both directions —
-  # it would refuse `"abc"` against `"^[a-z]+$"` and accept `"x^[a-z]+$y"`.
-  defp format!(opts, env) do
-    case Keyword.fetch(opts, :format) do
-      :error ->
-        nil
-
-      {:ok, ast} ->
-        {value, _binding} = Code.eval_quoted(ast, [], env)
-
-        is_struct(value, Regex) ||
-          raise(
-            ArgumentError,
-            "`format:` must be a regular expression, got: #{inspect(value)}" <>
-              if(is_binary(value), do: " — did you mean ~r/#{value}/?", else: "")
-          )
-
-        value
-    end
-  end
-
-  # The bare name: the changeset turns it into an option list, and the migration names the index it
-  # creates.
-  defp constraint_name!(opts) do
-    case Keyword.fetch(opts, :constraint_name) do
-      :error ->
-        nil
-
-      # `true`/`false` are atoms too, and a constraint named "true" matches no index — every
-      # duplicate would then surface as the `Ecto.ConstraintError` this option exists to prevent.
-      {:ok, name} when is_atom(name) and name not in [nil, true, false] ->
-        name
-
-      {:ok, other} ->
-        raise ArgumentError, "`constraint_name:` must be an atom, got: #{Macro.to_string(other)}"
-    end
-  end
-
-  defp unique_index!(opts) do
-    case Keyword.fetch(opts, :unique_index) do
-      :error ->
-        true
-
-      {:ok, value} when is_boolean(value) ->
-        value
-
-      {:ok, other} ->
-        raise ArgumentError,
-              "`unique_index:` must be true or false, got: #{Macro.to_string(other)}"
-    end
-  end
-
   @doc false
   def __changeset__(account_or_changeset, attrs, field, format, constraint) do
     account_or_changeset
-    |> cast(attrs, [field])
-    |> update_change(field, &normalize/1)
-    |> validate_required([field])
-    |> validate_pattern(field, format)
-    |> validate_length(field, max: @max)
-    |> unique_constraint(field, unique_opts(constraint))
+    |> Identifier.steps(attrs, field, format)
+    |> unique_constraint(field, Identifier.unique_opts(constraint))
   end
-
-  defp unique_opts(nil), do: []
-  defp unique_opts(name), do: [name: name]
-
-  defp validate_pattern(changeset, _field, nil), do: changeset
-  defp validate_pattern(changeset, field, format), do: validate_format(changeset, field, format)
 
   @doc """
   Whether a module carries what this macro injects.
@@ -307,10 +177,6 @@ defmodule Ithibati.Schema.User do
   """
   def account_schema?(module),
     do: Code.ensure_loaded?(module) and function_exported?(module, :__ithibati__, 1)
-
-  @doc "An identifier as it is stored: trimmed and lowercased, whatever it is called."
-  def normalize(nil), do: nil
-  def normalize(value), do: value |> String.trim() |> String.downcase()
 
   @doc """
   The `name` and `displayName` a WebAuthn registration shows, for an account or for an identifier

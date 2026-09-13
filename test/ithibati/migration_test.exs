@@ -42,16 +42,35 @@ defmodule Ithibati.MigrationTest do
         {true, _} -> :ok
         {false, :unique} -> create(unique_index(:users, [:email], name: :users_email_uniq))
         {false, :plain} -> create(index(:users, [:email], name: :users_email_uniq))
+        {false, :partial} -> execute(partial_index())
         {false, :none} -> :ok
       end
+
+      create_invitations(Application.get_env(:ithibati, :test_invitation_table, :configured))
 
       Ithibati.Migration.up(version: 1)
     end
 
     def down do
       Ithibati.Migration.down(version: 1)
+      # The invitation table is left standing on purpose: an application takes its own tables down
+      # in its own migration, and what this half has to give back is the index it created on one.
       drop table(:users)
     end
+
+    # The other table a consumer owns, when it invites anybody. `:none` is how a test shows an
+    # application that configured an invitation schema and then did not create the table for it.
+    defp create_invitations(:configured) do
+      create table(:invitations, primary_key: false) do
+        add :id, :binary_id, primary_key: true
+        add :email, :string
+        add :token_hash, :binary
+        add :expires_at, :utc_datetime_usec
+        add :accepted_at, :utc_datetime_usec
+      end
+    end
+
+    defp create_invitations(:none), do: :ok
 
     # The key type the library's schemas were compiled with is not movable at runtime, so what a
     # disagreement test moves is the other side: the account table this probe plays the part of.
@@ -124,6 +143,12 @@ defmodule Ithibati.MigrationTest do
     end
 
     defp create_users(:none), do: :ok
+
+    # Not expressible through `unique_index/2` with a `where:` that Ecto renders the same way, and
+    # written out here so the `WHERE` is unmistakably part of the index rather than of the migration.
+    defp partial_index do
+      "CREATE UNIQUE INDEX users_email_uniq ON #{prefix()}.users (email) WHERE email IS NOT NULL"
+    end
   end
 
   # The sandbox is switched off for this module rather than checked out: `Ecto.Migrator` does its
@@ -206,12 +231,57 @@ defmodule Ithibati.MigrationTest do
     end
   end
 
+  # A partial unique index is the shape a consumer with soft-deleted accounts writes, and it permits
+  # exactly what the check exists to forbid: two rows sharing the identifier, one of them filtered
+  # out of the index.
+  test "and a unique index that covers only some of the rows does not count either" do
+    as_account_schema(Ithibati.OptedOutUser)
+    as_application_index(:partial)
+
+    assert_raise ArgumentError, ~r/unique index on users\.email — there is none/, fn ->
+      migrate(:up)
+    end
+  end
+
   test "the index it creates carries the name the application asked for" do
     as_account_schema(Ithibati.NamedIndexUser)
 
     :ok = migrate(:up)
 
     assert "users_email_house" in indexes("users")
+  end
+
+  describe "the invitation table an application configures" do
+    test "gets the unique index the library's lookup depends on" do
+      :ok = migrate(:up)
+
+      assert "invitations_token_hash_index" in indexes("invitations")
+    end
+
+    test "and loses it again on the way down, without the table going with it" do
+      :ok = migrate(:up)
+
+      assert :ok = migrate(:down)
+
+      assert Enum.reject(indexes("invitations"), &String.ends_with?(&1, "_pkey")) == []
+    end
+
+    # An invitation schema in the configuration and no table to go with it is the same shape of
+    # mistake as a missing account table, and gets the same refusal rather than a Postgres error.
+    test "and a configured schema with no table behind it is refused" do
+      as_invitation_table(:none)
+
+      assert_raise ArgumentError, ~r/there is no table probe\.invitations/, fn -> migrate(:up) end
+    end
+
+    # Configuring none is the ordinary case for an application that never invites anybody, and the
+    # migration has nothing to do about it.
+    test "and an application that configures none is asked for nothing" do
+      as_no_invitation_schema()
+      as_invitation_table(:none)
+
+      assert :ok = migrate(:up)
+    end
   end
 
   test "the foreign key takes the account table's key type" do
@@ -322,6 +392,17 @@ defmodule Ithibati.MigrationTest do
   defp as_account_table(shape), do: as_env(:test_account_table, shape)
 
   defp as_application_index(kind), do: as_env(:test_app_index, kind)
+
+  defp as_invitation_table(shape), do: as_env(:test_invitation_table, shape)
+
+  defp as_no_invitation_schema do
+    configured = Application.fetch_env(:ithibati, :invitation_schema)
+    Application.delete_env(:ithibati, :invitation_schema)
+    on_exit(fn -> restore(:invitation_schema, configured) end)
+  end
+
+  defp restore(key, {:ok, value}), do: Application.put_env(:ithibati, key, value)
+  defp restore(key, :error), do: Application.delete_env(:ithibati, key)
 
   defp as_env(key, value) do
     Application.put_env(:ithibati, key, value)

@@ -71,15 +71,25 @@ defmodule Ithibati.DataCase do
   reach for it only where a signature or an attestation is actually checked.
   """
   def key_fixture(user, attrs \\ %{}) do
-    defaults = %{
-      user_id: user.id,
-      key_id: :crypto.strong_rand_bytes(16),
-      public_key: :erlang.term_to_binary(%{stand_in: :crypto.strong_rand_bytes(32)})
-    }
+    defaults = Map.put(stand_in_key(), :user_id, user.id)
 
     Ithibati.TestRepo.insert!(
       Ithibati.UserKey.changeset(%Ithibati.UserKey{}, Map.merge(defaults, attrs))
     )
+  end
+
+  @doc """
+  Stand-in credential material: random bytes that verify nothing.
+
+  What a test about *rows* needs, and three modules were each writing it out. A test that checks a
+  signature or an attestation wants `Ithibati.TestCredentials.credential/0` instead, which costs a
+  P-256 key generation.
+  """
+  def stand_in_key do
+    %{
+      key_id: :crypto.strong_rand_bytes(16),
+      public_key: :erlang.term_to_binary(%{stand_in: :crypto.strong_rand_bytes(32)})
+    }
   end
 
   @doc """

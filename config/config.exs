@@ -30,6 +30,7 @@ if config_env() == :test do
   config :ithibati,
     ecto_repos: [Ithibati.TestRepo],
     user_schema: Ithibati.TestUser,
+    invitation_schema: Ithibati.TestInvitation,
     users_key_type: key_type,
     repo: Ithibati.TestRepo,
     # Two contexts beyond the built-in "session", so the token tests can prove that validity is

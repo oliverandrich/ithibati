@@ -11,7 +11,7 @@ defmodule Ithibati.ConfigTest do
 
   setup do
     configured =
-      Map.new([:user_schema, :repo], fn key ->
+      Map.new([:user_schema, :repo, :invitation_schema], fn key ->
         {key, Application.fetch_env(:ithibati, key)}
       end)
 
@@ -52,6 +52,38 @@ defmodule Ithibati.ConfigTest do
 
     test "set correctly, it answers the module" do
       assert Config.user_schema() == Ithibati.TestUser
+    end
+  end
+
+  describe "invitation_schema/0" do
+    # The one setting of the three that is allowed to be absent: an application that invites nobody
+    # configures nothing, and every path that would read it is one it never takes.
+    test "unset, it answers nothing rather than raising" do
+      Application.delete_env(:ithibati, :invitation_schema)
+
+      assert Config.invitation_schema() == nil
+    end
+
+    test "set to a module that is not an invitation schema, it says that" do
+      Application.put_env(:ithibati, :invitation_schema, Ithibati.TestUser)
+
+      assert_raise ArgumentError, ~r/does not `use Ithibati.Schema.Invitation`/, fn ->
+        Config.invitation_schema()
+      end
+    end
+
+    # An invitation addressed to something an account can never be named by is a pair that cannot
+    # work, and the moment it is read is a better one to find out than the moment somebody accepts.
+    test "set to one addressed by a field the account schema does not use, it says that" do
+      Application.put_env(:ithibati, :invitation_schema, Ithibati.MismatchedInvitation)
+
+      assert_raise ArgumentError, ~r/invites by :username and .* is identified by :email/, fn ->
+        Config.invitation_schema()
+      end
+    end
+
+    test "set correctly, it answers the module" do
+      assert Config.invitation_schema() == Ithibati.TestInvitation
     end
   end
 

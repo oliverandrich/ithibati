@@ -16,4 +16,15 @@ defmodule Ithibati.Identity.Secrets do
   Unpadded, because `=` is punctuation in all three.
   """
   def url64(bytes), do: Base.url_encode64(bytes, padding: false)
+
+  @bytes 32
+
+  @doc """
+  A fresh secret, ready to hand over: #{@bytes} random bytes as URL-safe text.
+
+  The length is here rather than at each caller for the reason the module exists — a token and an
+  invitation link are the same kind of secret, and a library that mints them at two lengths has made
+  a decision nobody took.
+  """
+  def token, do: @bytes |> :crypto.strong_rand_bytes() |> url64()
 end

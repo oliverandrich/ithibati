@@ -23,8 +23,21 @@ Ithibati will answer only the first:
   the same row with a different context
 - the changeset pieces and the composable `Ecto.Multi` fragments to hang your own steps on
 
-Your application keeps its own `users` table, its own roles and its own invitations, and composes
-the grant into one transaction with the library's half.
+Your application keeps its own `users` table, its own roles and — since every application this is
+for is invite-only — its own invitations table, and composes the grant into one transaction with the
+library's half.
+
+## Two ways to let people in
+
+**Open:** anyone who reaches your registration page makes a passkey and an account. **Invitation
+only:** somebody already signed in writes an invitation, and nobody else gets one. You decide which
+by whether you offer a registration path to somebody who is not signed in; the library ships both
+halves and forbids neither.
+
+Neither proves that the person owns the address they were named by, and nothing here sends mail — so
+the invitation token is a bearer secret, and delivering it to the right person is yours to do.
+[Decision 10](docs/design.md#10-open-registration-and-invitation-only-and-neither-proves-an-address)
+is the whole of the reasoning, including what a later release might add.
 
 ## What it runs on
 
@@ -45,6 +58,8 @@ These decisions shape it, and [`docs/design.md`](docs/design.md) carries each on
 6. [No authenticator name data ships with it](docs/design.md#6-no-authenticator-name-data-ships-with-this-library)
 7. [The core builds what the browser reads](docs/design.md#7-the-core-builds-what-the-browser-reads-and-which-webauthn-choices-are-whose)
 8. [The second credential set refills itself](docs/design.md#8-the-second-credential-set-refills-itself)
+9. [Invitations are the application's table and this library's invariants](docs/design.md#9-invitations-are-the-applications-table-and-this-librarys-invariants)
+10. [Open registration and invitation-only, and neither proves an address](docs/design.md#10-open-registration-and-invitation-only-and-neither-proves-an-address)
 
 ## The account schema
 
@@ -55,9 +70,10 @@ one you name — three associations and three functions, and nothing else:
 defmodule MyApp.Accounts.User do
   use Ecto.Schema
 
+  alias Ithibati.Schema.Identifier
   alias Ithibati.Schema.User
 
-  use User, identifier: :email, format: User.email_format()
+  use User, identifier: :email, format: Identifier.email_format()
 
   import Ecto.Changeset
 
@@ -85,7 +101,8 @@ use User, identifier: :username, format: ~r/^[a-z0-9][a-z0-9_-]{2,31}$/
 use User, identifier: :handle
 ```
 
-`format:` is optional, and `email_format/0` offers a pattern for addresses rather than imposing one.
+`format:` is optional, and `Ithibati.Schema.Identifier.email_format/0` offers a pattern for
+addresses rather than imposing one.
 `constraint_name:` and `unique_index:` concern the index on that column — see the migration below.
 Values written through `identifier_changeset/2` are trimmed and lowercased, so a plain unique index refuses `AdaLovelace`
 beside `adalovelace` with no functional index for you to remember — a write that bypasses the
@@ -103,6 +120,71 @@ def passkey_display_name(account), do: account.name
 No fallback is needed. An account that has not filled that in answers `nil`, and this library then
 shows the identifier.
 
+## The invitation schema
+
+Optional, and the same arrangement as the account schema: you own the table, this library owns what
+has to be right about it. Declare it, add whatever the invitation grants, and configure it:
+
+```elixir
+defmodule MyApp.Accounts.Invitation do
+  use Ecto.Schema
+  import Ecto.Changeset
+
+  alias Ithibati.Schema.Identifier
+  alias Ithibati.Schema.Invitation
+
+  use Invitation, identifier: :email, format: Identifier.email_format()
+
+  schema "invitations" do
+    ithibati_invitation()
+
+    field :role, Ecto.Enum, values: [:admin, :author]
+    belongs_to :site, MyApp.Sites.Site
+
+    timestamps(type: :utc_datetime_usec)
+  end
+
+  def changeset(invitation, attrs, opts \\ []) do
+    invitation
+    |> invitation_changeset(attrs, opts)
+    |> cast(attrs, [:role, :site_id])
+    |> validate_required([:role, :site_id])
+  end
+end
+```
+
+`ithibati_invitation/0` adds the invitee's identifier, `token_hash`, `expires_at`, `accepted_at` and
+a virtual `:token`. The secret is minted for you and leaves through that virtual field: after the
+insert, `invitation.token` is the only copy there will ever be, and the row holds its sha256.
+`invitation_changeset/3` takes `days:`, which defaults to seven for a new invitation; pass it to an
+existing one to extend it, and the link that was already sent keeps working. The identifier has to
+be the field your account schema is identified by, and the configuration refuses the pair when it is
+not. An address that already has an account is refused as you write the invitation, which is advice
+rather than a guarantee — the unique index on your accounts table is the guarantee.
+
+Accepting composes into your own transaction, so the account and what it is a member of arrive
+together or not at all:
+
+```elixir
+Ecto.Multi.new()
+|> Ecto.Multi.insert(:account, User.changeset(%User{}, Invitations.account_attrs(invitation)))
+|> Ithibati.Identity.Grant.with_key_and_codes(key_attrs)
+|> Ithibati.Identity.Invitations.accept(invitation)
+|> Ecto.Multi.insert(:membership, fn %{account: account, invitation: accepted} -> … end)
+|> MyApp.Repo.transaction()
+```
+
+`accept/2` goes after the step that creates the account, and checks that the account being created
+carries the identifier the invitation was addressed to — `{:error, :identifier_mismatch}` otherwise,
+so an acceptance form that lets people correct their address cannot hand the invitation to somebody
+else. Name the step with `account:` if yours is not called `:account`.
+
+`Invitations.fetch/1` answers the pending, unexpired invitation a token opens, or `nil`.
+`expired/0` and `delete_expired/0` are there for a sweeper of your own; this library schedules
+nothing. Configure no `invitation_schema` and none of this is reachable —
+[decision 9](docs/design.md#9-invitations-are-the-applications-table-and-this-librarys-invariants)
+carries the reasoning for all of it.
+
 ## The migration
 
 The tables this library owns are created by a migration you write and it fills in:
@@ -117,10 +199,14 @@ end
 ```
 
 Pin the version, as above. An unpinned call would mean a different set of tables depending on when
-it runs, and a rollback that undoes neither.
+it runs, and a rollback that undoes neither. It runs after the migrations that create the tables you
+own — your accounts table, and your invitations table if you have one — because it points foreign
+keys at one and puts an index on the other.
 
 That creates `ithibati_keys`, `ithibati_recovery_codes`, `ithibati_tokens` and `ithibati_bootstrap`,
-each with a foreign key to your own account table — and the unique index on your identifier column,
+each with a foreign key to your own account table — the unique index on your invitation table's
+`token_hash`, when you configured an invitation schema, and the unique index on your identifier
+column,
 because account lookup is `Repo.get_by/3`, which raises on a second match rather than signing anybody
 in. The column itself is yours to add, on your own table:
 
@@ -152,6 +238,7 @@ config :ithibati,
   token_validity: %{                  # "session" is 60 days unless you say otherwise
     "device" => {90, :day}
   },
+  invitation_schema: MyApp.Accounts.Invitation,  # optional — see below
   users_key_type: :id,                # default :binary_id — compiled into the schemas
   table_prefix: "auth"                # default "ithibati" — compiled into the schemas
 ```
