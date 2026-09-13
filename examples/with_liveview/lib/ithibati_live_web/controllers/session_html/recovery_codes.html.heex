@@ -1,0 +1,12 @@
+<h1 class="text-2xl font-semibold">Your recovery codes</h1>
+
+<p class="mt-4">
+  Twelve of them, each good for one sign-in, and this is the only time they are shown — what the
+  database holds is their digests. Put them somewhere safe now.
+</p>
+
+<ul class="mt-6 grid grid-cols-2 gap-2 font-mono text-sm">
+  <li :for={code <- @codes} class="rounded bg-neutral-100 px-3 py-2">{code}</li>
+</ul>
+
+<p class="mt-6"><.link navigate={~p"/"} class="underline">Done</.link></p>

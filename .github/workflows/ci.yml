@@ -149,6 +149,80 @@ jobs:
           # derives it from the module, so a rename fails there first and loudly.
           grep -q "Ithibati.Web.Hooks.PasskeyCeremony" "$manifest"
 
+  # The example is documentation that either compiles or does not, and it is what the browser tests
+  # will drive. It takes the library by path, so it is also the only place that compiles the library
+  # the way a consumer does.
+  example:
+    name: example
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        # A tag, where every action below is pinned by SHA, and the difference is deliberate: an
+        # action runs inside this job with its token and its workspace, while this is a database
+        # the tests reach over TCP. A tag that moves breaks the run visibly; an action that moves
+        # does not.
+        image: postgres:18-alpine
+        # No credentials in the job: config/config.exs falls back to postgres/postgres on
+        # localhost:5432, which is exactly what this container offers.
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4.3.0
+        with:
+          version: 2026.9.5
+          cache_key_prefix: mise-example
+
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            examples/with_liveview/deps
+            examples/with_liveview/_build
+          key: ${{ runner.os }}-example-${{ hashFiles('examples/with_liveview/mix.lock') }}
+          restore-keys: ${{ runner.os }}-example-
+
+      # `mix precommit` rather than a second copy of it, the way mise.toml puts it for this
+      # repository: following the example's own alias locally then means following the gate. It
+      # runs compile, format, the assets and the tests — compiling alone let two unformatted lines
+      # land, and cannot see the bare `import … from "ithibati"` resolving or a ceremony route
+      # answering, which are the two things this example exists to demonstrate.
+      - name: Run the example's gate
+        working-directory: examples/with_liveview
+        run: |
+          mix local.hex --force
+          mix local.rebar --force
+          mix deps.get
+          mix assets.setup
+          mix precommit
+
+      # What the root matrix cannot see: `lib/` compiled *as a dependency*, where `Mix.env()` is
+      # `prod` and `elixirc_paths` is `["lib"]` alone. The output is read rather than exited on,
+      # and both halves were measured — a consumer's `mix compile` does not apply
+      # `--warnings-as-errors` to its dependencies, and `mix deps.compile` does not accept the
+      # switch at all, printing the warning and exiting 0 either way.
+      - name: Check the library compiled into the example without warnings
+        working-directory: examples/with_liveview
+        run: |
+          rm -rf _build/dev/lib/ithibati
+          out=$(mix deps.compile ithibati --force 2>&1)
+          echo "$out"
+          if grep -q "warning:" <<<"$out"; then
+            echo "the library emitted warnings into a consumer's build"
+            exit 1
+          fi
+
   zizmor:
     name: zizmor
     runs-on: ubuntu-latest

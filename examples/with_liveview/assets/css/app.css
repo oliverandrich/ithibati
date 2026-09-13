@@ -1,0 +1,6 @@
+/* Plain Tailwind and nothing else. The generator adds daisyUI and a heroicons plugin; both are
+   removed so that what is left to read is Ithibati and the Phoenix around it. */
+@import "tailwindcss" source(none);
+@source "../css";
+@source "../js";
+@source "../../lib/ithibati_live_web";
