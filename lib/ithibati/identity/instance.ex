@@ -15,9 +15,9 @@ defmodule Ithibati.Identity.Instance do
       |> Ithibati.Identity.Grant.with_key_and_codes(key_attrs)
       |> MyApp.Repo.transaction()
 
-  Before the grant rather than after it: a refused claim then never mints the recovery codes, which
-  `Ithibati.Identity.Grant.with_key_and_codes/3` warns would otherwise sit in plaintext in the
-  `changes_so_far` of a transaction that rolled back.
+  Before the grant rather than after it, for the reason `Ithibati.Identity.Grant.with_key_and_codes/3`
+  warns about: this step can refuse, and a refusal after the grant has already minted the recovery
+  codes.
 
   Named for the deployment rather than for the table, because that is what both functions are about
   and what an application asks them. The *step* `claim/2` adds is named for the row, `:bootstrap`,

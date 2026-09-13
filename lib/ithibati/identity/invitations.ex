@@ -11,10 +11,14 @@ defmodule Ithibati.Identity.Invitations do
 
       Ecto.Multi.new()
       |> Ecto.Multi.insert(:account, MyApp.Accounts.User.changeset(%User{}, account_attrs(invitation)))
-      |> Ithibati.Identity.Grant.with_key_and_codes(key_attrs)
       |> Ithibati.Identity.Invitations.accept(invitation)
+      |> Ithibati.Identity.Grant.with_key_and_codes(key_attrs)
       |> Ecto.Multi.insert(:membership, fn %{account: account, invitation: invitation} -> … end)
       |> MyApp.Repo.transaction()
+
+  Before the grant, for the reason `Ithibati.Identity.Grant.with_key_and_codes/3` warns about. Two
+  people opening one link is exactly the race this step's refusal exists for, so it is not a rare
+  path here.
   """
 
   import Ecto.Query

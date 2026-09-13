@@ -9,8 +9,8 @@ defmodule Ithibati.Identity.Grant do
 
       Ecto.Multi.new()
       |> Ecto.Multi.insert(:account, MyApp.Accounts.User.changeset(%User{}, attrs))
-      |> Ithibati.Identity.Grant.with_key_and_codes(key_attrs)
       |> Ecto.Multi.insert(:membership, fn %{account: account} -> … end)
+      |> Ithibati.Identity.Grant.with_key_and_codes(key_attrs)
       |> MyApp.Repo.transaction()
 
   """
@@ -35,7 +35,10 @@ defmodule Ithibati.Identity.Grant do
   >
   > A later step failing hands you `{:error, name, value, changes_so_far}`, and `changes_so_far`
   > still carries the plaintext codes of an account that was rolled back. Do not log that tuple
-  > whole.
+  > whole — and compose whatever can refuse *before* this step rather than after it, so a
+  > transaction that was never going to commit does not mint a batch on its way to being rolled
+  > back. `Ithibati.Identity.Instance.claim/2` and `Ithibati.Identity.Invitations.accept/3` are
+  > both such steps.
   """
   def with_key_and_codes(multi, key_attrs, opts \\ []) do
     multi

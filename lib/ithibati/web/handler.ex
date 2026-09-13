@@ -38,6 +38,12 @@ if Code.ensure_loaded?(Phoenix.Component) do
     a closed instance that already has its first account, an invitation that was spent. What the
     dialog is called and how the ceremony is configured are not asked here: those are the same for
     every request a mount serves, so they are given to `ithibati_routes/1` once.
+
+    Return the identifier as it will be *stored*, not as it was typed:
+    `Ithibati.Schema.Identifier.normalize/1` is what the account row goes through, so approving the
+    raw value puts `Ada` on the passkey dialog and `ada` in the table, and nothing fails to say so.
+    A changeset answers both questions at once — whether the value is acceptable, and what it
+    normalises to.
     """
     @callback registration_subject(Plug.Conn.t(), params :: map()) ::
                 {:ok, subject()} | {:error, term()}
