@@ -34,41 +34,100 @@ if Code.ensure_loaded?(Phoenix.Controller) do
       %{user: user, credential: credential}
     end
 
-    setup :a_key_on_file
+    # Every test here drives the sign-in endpoints, which answer `:no_credentials` with
+    # nothing on file at all. The registration tests build their own credential inside the
+    # test and need none of it.
+    describe "authentication" do
+      setup :a_key_on_file
 
-    test "an assertion signs in once and is refused the second time", ctx do
-      started = request("/auth/authentication/challenge", %{})
-      assert started.status == 200
+      test "an assertion signs in once and is refused the second time", ctx do
+        started = request("/auth/authentication/challenge", %{})
+        assert started.status == 200
 
-      challenge = Plug.Conn.get_session(started, :ithibati_authentication_challenge)
-      assert challenge, "the challenge has to survive between the two round-trips"
+        challenge = Plug.Conn.get_session(started, :ithibati_authentication_challenge)
+        assert challenge, "the challenge has to survive between the two round-trips"
 
-      assertion = TestCredentials.assertion(ctx.credential, challenge)
+        assertion = TestCredentials.assertion(ctx.credential, challenge)
 
-      signed_in = request("/auth/authentication", %{"credential" => assertion}, started)
-      assert signed_in.status == 200
-      assert signed_in.assigns.account.id == ctx.user.id
+        signed_in = request("/auth/authentication", %{"credential" => assertion}, started)
+        assert signed_in.status == 200
+        assert signed_in.assigns.account.id == ctx.user.id
 
-      replayed = request("/auth/authentication", %{"credential" => assertion}, signed_in)
-      assert replayed.status == 422
-      assert Jason.decode!(replayed.resp_body) == %{"error" => "no_challenge"}
-    end
+        replayed = request("/auth/authentication", %{"credential" => assertion}, signed_in)
+        assert replayed.status == 422
+        assert Jason.decode!(replayed.resp_body) == %{"error" => "no_challenge"}
+      end
 
-    # The path nobody writes a test for, because the successful one is the one on the mind. A
-    # challenge left behind by a failure is a challenge an attacker may keep guessing against.
-    test "a failed verification spends the challenge too" do
-      started = request("/auth/authentication/challenge", %{})
-      challenge = Plug.Conn.get_session(started, :ithibati_authentication_challenge)
+      # The path nobody writes a test for, because the successful one is the one on the mind. A
+      # challenge left behind by a failure is a challenge an attacker may keep guessing against.
+      test "a failed verification spends the challenge too" do
+        started = request("/auth/authentication/challenge", %{})
+        challenge = Plug.Conn.get_session(started, :ithibati_authentication_challenge)
 
-      stranger = TestCredentials.assertion(TestCredentials.credential(), challenge)
+        stranger = TestCredentials.assertion(TestCredentials.credential(), challenge)
 
-      failed = request("/auth/authentication", %{"credential" => stranger}, started)
-      assert failed.status == 422
+        failed = request("/auth/authentication", %{"credential" => stranger}, started)
+        assert failed.status == 422
 
-      assert Plug.Conn.get_session(failed, :ithibati_authentication_challenge) == nil
+        assert Plug.Conn.get_session(failed, :ithibati_authentication_challenge) == nil
 
-      retried = request("/auth/authentication", %{"credential" => stranger}, failed)
-      assert Jason.decode!(retried.resp_body) == %{"error" => "no_challenge"}
+        retried = request("/auth/authentication", %{"credential" => stranger}, failed)
+        assert Jason.decode!(retried.resp_body) == %{"error" => "no_challenge"}
+      end
+
+      # The connection this node accepted is not what the browser saw: behind a proxy that terminates
+      # TLS it says `http` and the wrong port, and every ceremony would fail on an origin mismatch in
+      # production and nowhere else. The test conn's host is `www.example.com`; the endpoint is
+      # configured as `https://example.test`, so only one of the two can be the answer.
+      test "the relying party comes from the endpoint's configured URL, not from the connection" do
+        started = request("/auth/authentication/challenge", %{})
+        challenge = Plug.Conn.get_session(started, :ithibati_authentication_challenge)
+
+        assert challenge.rp_id == "example.test"
+        assert challenge.origin == "https://example.test"
+      end
+
+      # Both of these were unreachable through the web half at first, and the handler's return value
+      # looked like where to ask for them: an application that needed user verification would have
+      # sent it, got no error, and been given "preferred" anyway — on both sides, since the browser's
+      # options are read back off the challenge, so nothing would ever have looked wrong.
+      test "the ceremony options a mount was given reach the challenge" do
+        relaxed = request("/auth/authentication/challenge", %{})
+        strict = request("/strict/authentication/challenge", %{})
+
+        assert Plug.Conn.get_session(relaxed, :ithibati_authentication_challenge).user_verification ==
+                 "preferred"
+
+        assert Plug.Conn.get_session(strict, :ithibati_authentication_challenge).user_verification ==
+                 "required"
+      end
+
+      # The authentication endpoint has no handler gate — it cannot, sign-in names nobody. So if both
+      # ceremonies shared one session slot, a challenge taken from there would be accepted by the
+      # registration endpoint, and `registration_subject` — the only place an instance can say "not
+      # you" — would never be consulted. Wax does not save us: it checks the type the *client* put in
+      # the client data, not the type of the challenge it is verifying against.
+      test "a challenge minted for signing in cannot be spent on registering" do
+        started = request("/auth/authentication/challenge", %{})
+        assert started.status == 200
+
+        challenge = Plug.Conn.get_session(started, :ithibati_authentication_challenge)
+        attestation = TestCredentials.attestation(TestCredentials.credential(), challenge)
+
+        smuggled = request("/auth/registration", %{"credential" => attestation}, started)
+
+        assert smuggled.status == 422
+        assert Jason.decode!(smuggled.resp_body) == %{"error" => "no_challenge"}
+      end
+
+      test "a body with no credential at all still spends the challenge" do
+        started = request("/auth/authentication/challenge", %{})
+        assert Plug.Conn.get_session(started, :ithibati_authentication_challenge)
+
+        refused = request("/auth/authentication", %{}, started)
+        assert refused.status == 422
+        assert Plug.Conn.get_session(refused, :ithibati_authentication_challenge) == nil
+      end
     end
 
     describe "registration" do
@@ -139,60 +198,6 @@ if Code.ensure_loaded?(Phoenix.Controller) do
         assert replayed.status == 422
         assert Jason.decode!(replayed.resp_body) == %{"error" => "no_challenge"}
       end
-    end
-
-    # The connection this node accepted is not what the browser saw: behind a proxy that terminates
-    # TLS it says `http` and the wrong port, and every ceremony would fail on an origin mismatch in
-    # production and nowhere else. The test conn's host is `www.example.com`; the endpoint is
-    # configured as `https://example.test`, so only one of the two can be the answer.
-    test "the relying party comes from the endpoint's configured URL, not from the connection" do
-      started = request("/auth/authentication/challenge", %{})
-      challenge = Plug.Conn.get_session(started, :ithibati_authentication_challenge)
-
-      assert challenge.rp_id == "example.test"
-      assert challenge.origin == "https://example.test"
-    end
-
-    # Both of these were unreachable through the web half at first, and the handler's return value
-    # looked like where to ask for them: an application that needed user verification would have
-    # sent it, got no error, and been given "preferred" anyway — on both sides, since the browser's
-    # options are read back off the challenge, so nothing would ever have looked wrong.
-    test "the ceremony options a mount was given reach the challenge" do
-      relaxed = request("/auth/authentication/challenge", %{})
-      strict = request("/strict/authentication/challenge", %{})
-
-      assert Plug.Conn.get_session(relaxed, :ithibati_authentication_challenge).user_verification ==
-               "preferred"
-
-      assert Plug.Conn.get_session(strict, :ithibati_authentication_challenge).user_verification ==
-               "required"
-    end
-
-    # The authentication endpoint has no handler gate — it cannot, sign-in names nobody. So if both
-    # ceremonies shared one session slot, a challenge taken from there would be accepted by the
-    # registration endpoint, and `registration_subject` — the only place an instance can say "not
-    # you" — would never be consulted. Wax does not save us: it checks the type the *client* put in
-    # the client data, not the type of the challenge it is verifying against.
-    test "a challenge minted for signing in cannot be spent on registering" do
-      started = request("/auth/authentication/challenge", %{})
-      assert started.status == 200
-
-      challenge = Plug.Conn.get_session(started, :ithibati_authentication_challenge)
-      attestation = TestCredentials.attestation(TestCredentials.credential(), challenge)
-
-      smuggled = request("/auth/registration", %{"credential" => attestation}, started)
-
-      assert smuggled.status == 422
-      assert Jason.decode!(smuggled.resp_body) == %{"error" => "no_challenge"}
-    end
-
-    test "a body with no credential at all still spends the challenge" do
-      started = request("/auth/authentication/challenge", %{})
-      assert Plug.Conn.get_session(started, :ithibati_authentication_challenge)
-
-      refused = request("/auth/authentication", %{}, started)
-      assert refused.status == 422
-      assert Plug.Conn.get_session(refused, :ithibati_authentication_challenge) == nil
     end
   end
 end
