@@ -68,6 +68,11 @@ stronger here than it looks: nothing in this repository can resolve one.
 - Every timestamp is `:utc_datetime_usec`, in the schema and in the migration both.
 - Tests first, and **every new test gets a control check**: break the thing it guards, watch *that
   assertion* go red, restore from a copy. A test that does not go red is not evidence.
+- **A control check on anything under `credo/` has to rebuild both environments.** The checks are
+  `dev`/`test`-only code, and `MIX_ENV=test mix compile --force` leaves the `dev` beam holding the
+  sabotaged version. A later `mix credo` then reports a violation that exists only in the leftover
+  build — here it accused `Ithibati.Schema.Identifier`, which the check has allowed since it was
+  written. Rebuild both, or read the finding as a question about the build before believing it.
 - Before "done": `mise run check` is green. That is the whole gate; `mix precommit` is its Elixir
   half. **It needs a running Postgres**: the suite creates and migrates its own database, but it
   cannot invent a server. Credentials come from `PGUSER`/`PGPASSWORD`/`PGHOST`/`PGPORT`, defaulting
