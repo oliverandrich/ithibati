@@ -44,6 +44,12 @@ if Code.ensure_loaded?(Phoenix.Component) do
     raw value puts `Ada` on the passkey dialog and `ada` in the table, and nothing fails to say so.
     A changeset answers both questions at once — whether the value is acceptable, and what it
     normalises to.
+
+    **Return the account itself when it already has one.** Adding a second device is the same
+    ceremony with the account in hand, and `registration_options/3` fills `excludeCredentials`
+    from an account and cannot from an identifier — so approving the identifier there hands the
+    browser an empty exclusion list, it re-offers a passkey already enrolled, and the person is
+    refused only after completing the ceremony.
     """
     @callback registration_subject(Plug.Conn.t(), params :: map()) ::
                 {:ok, subject()} | {:error, term()}
@@ -52,10 +58,11 @@ if Code.ensure_loaded?(Phoenix.Component) do
     The credential verified; make of it what the application makes of it.
 
     `key_attrs` is what `Ithibati.Identity.Passkeys.verify_registration/2` returned, ready for
-    `Ithibati.Identity.Grant.with_key_and_codes/3`. Whether that becomes the first account of an
-    instance, the acceptance of an invitation, or a second passkey on an account that already
-    exists is not something this library can tell, and decision 3 in `docs/design.md` is why it does
-    not try.
+    `Ithibati.Identity.Grant.with_key_and_codes/3` when an account is being created, or for
+    `Ithibati.Identity.Passkeys.add_key/2` when it already exists. Whether that becomes the first
+    account of an instance, the acceptance of an invitation, or a second passkey on an account
+    that already has one is not something this library can tell, and decision 3 in
+    `docs/design.md` is why it does not try.
 
     On answering, see `c:authenticate/2` — `%{redirect: path}` means the same thing here.
 

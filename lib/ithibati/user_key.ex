@@ -26,14 +26,23 @@ defmodule Ithibati.UserKey do
     timestamps(type: :utc_datetime_usec)
   end
 
+  # WebAuthn Level 2, §5.1.3: a relying party must reject a credential id longer than this. The
+  # ceremony refuses one, and so does the write — a row stored past it is a passkey no sign-in can
+  # ever reach, because the lookup short-circuits before it queries.
+  @credential_id_max 1023
+
   @doc "How much of a label is kept. A longer one is cut, not refused; the column has no limit."
   def label_max, do: @label_max
+
+  @doc "The longest credential id this library stores."
+  def credential_id_max, do: @credential_id_max
 
   @doc false
   def changeset(user_key, attrs) do
     user_key
     |> cast(attrs, [:key_id, :public_key, :label, :last_used_at, :user_id])
     |> validate_required([:key_id, :public_key, :user_id])
+    |> validate_length(:key_id, max: @credential_id_max, count: :bytes)
     |> put_label()
     |> unique_constraint(:key_id)
     |> foreign_key_constraint(:user_id)

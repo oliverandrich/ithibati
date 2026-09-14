@@ -22,10 +22,11 @@ defmodule Ithibati.Identity.Passkeys do
   alias Ithibati.Schema.User
   alias Ithibati.UserKey
 
-  # WebAuthn Level 2, §5.1.3: a relying party must reject a credential id longer than 1023 bytes.
-  # `Wax` does not — the length prefix is 16 bits, so an authenticator may claim up to 65535 — and
-  # what arrives here is the browser's, which makes the size somebody else's choice.
-  @credential_id_max 1023
+  # `Wax` does not refuse an over-long credential id — the length prefix is 16 bits, so an
+  # authenticator may claim up to 65535 — and what arrives here is the browser's, which makes the
+  # size somebody else's choice. Read from the schema so that the refusal on the way in and the
+  # one on the way out cannot come apart; a literal, because guards cannot call a function.
+  @credential_id_max UserKey.credential_id_max()
 
   # Compared as strings by Wax, which is why an atom cannot be allowed through: `:required` renders
   # as `"required"` in the JSON the browser reads and matches nothing on the server, so the browser
@@ -183,6 +184,41 @@ defmodule Ithibati.Identity.Passkeys do
   """
   def key_attrs(%{key_id: key_id, public_key: public_key}, label) do
     %{key_id: key_id, public_key: public_key, label: label}
+  end
+
+  @doc """
+  Enrols a credential on an account that already exists — a second device, or a replacement.
+
+  What `Ithibati.Identity.Grant.with_key_and_codes/3` does for an account being created, done for
+  one that is already there. Takes what `key_attrs/2` returned and answers `{:ok, key}`.
+
+  `{:error, :already_enrolled}` is the one refusal, and it should be rare:
+  `registration_options/3` puts this account's credentials in `excludeCredentials`, so a browser
+  that honours it never offers an authenticator it has already enrolled here. The unique index
+  answers for one that does not — and for the same authenticator arriving on a *different*
+  account, which is the same collision, because a credential identifies a device rather than a
+  person.
+  """
+  def add_key(account, key_attrs) do
+    key_attrs
+    |> credential_changeset(account)
+    # `mode: :savepoint`, because the refusal below is a constraint violation and Postgres aborts
+    # the surrounding transaction on one. Without it a caller who composes this into a transaction
+    # of their own gets `{:error, :already_enrolled}` and then `25P02` on their next statement.
+    |> Config.repo().insert(mode: :savepoint)
+    |> already_enrolled?()
+  end
+
+  defp already_enrolled?({:ok, key}), do: {:ok, key}
+
+  # The unique index is the only failure a caller can act on. A foreign key that no longer points
+  # anywhere — an account deleted between the read and this write — raises instead, which is what
+  # `generate_token/2` does in the same situation; `Ithibati.Config.account!/1` checks the struct's
+  # module, not that its row still exists.
+  defp already_enrolled?({:error, changeset}) do
+    if Concurrency.collided?(changeset, :key_id),
+      do: {:error, :already_enrolled},
+      else: raise(Ecto.InvalidChangesetError, action: :insert, changeset: changeset)
   end
 
   @doc """

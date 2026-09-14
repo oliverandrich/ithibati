@@ -460,16 +460,31 @@ carries the reasoning for all of it.
 
 ## The passkeys an account has
 
-`Ithibati.Identity.Passkeys` lists, renames and revokes them:
+`Ithibati.Identity.Passkeys` enrols, lists, renames and revokes them:
 
 ```elixir
+Passkeys.add_key(account, Passkeys.key_attrs(registration, "My phone"))
 Passkeys.list_keys(account)                       # oldest first, stable order
 Passkeys.rename_key(account, id, "My work laptop")
 Passkeys.delete_key(account, id)
 ```
 
-All three are scoped to the account: `list_keys/1` answers only its own, and the two that take an
-id answer `{:error, :not_found}` for one belonging to somebody else rather than reaching their row.
+**Adding a second device is the same ceremony as the first**, with the account already in hand:
+mint a challenge with `registration_challenge/3`, hand `registration_options/3` to the browser,
+verify what comes back with `verify_registration/2`, then `add_key/2`. The difference is that
+`with_key_and_codes/3` builds the account and this does not — it writes one row onto an account
+that is already there.
+
+`{:error, :already_enrolled}` is the refusal you handle. It is also what you get when the same
+authenticator sits on *somebody else's* account, because a credential identifies a device rather
+than a person. How rare it is depends on your handler returning the account rather than the
+identifier — `c:Ithibati.Web.Handler.registration_subject/2` says why.
+
+An account deleted between the ceremony and the write raises rather than answering, the way
+minting a token does in the same situation.
+
+Each is scoped to the account: `list_keys/1` answers only its own, and the two that take an id
+answer `{:error, :not_found}` for one belonging to somebody else rather than reaching their row.
 A rename cannot move a key to another account.
 
 **The last passkey is not deleted by default** — `{:error, :last_key}`. Recovery codes still reach

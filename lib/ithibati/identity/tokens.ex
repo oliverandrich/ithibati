@@ -26,12 +26,6 @@ defmodule Ithibati.Identity.Tokens do
   # `DateTime.shift/2`'s, not ours.
   @units [:second, :minute, :hour, :day, :week]
 
-  ## The WebAuthn ceremony
-
-  # WebAuthn Level 2, §5.1.3: a relying party must reject a credential id longer than 1023 bytes.
-  # `Wax` does not — the length prefix is 16 bits, so an authenticator may claim up to 65535 — and
-  # what arrives here is the browser's, which makes the size somebody else's choice.
-
   @doc """
   Mints a token for the account in this context and returns it as URL-safe text.
 

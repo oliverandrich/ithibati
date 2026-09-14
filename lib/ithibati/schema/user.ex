@@ -60,6 +60,7 @@ defmodule Ithibati.Schema.User do
 
   import Ecto.Changeset
 
+  alias Ithibati.Identity.Concurrency
   alias Ithibati.Schema.Identifier
 
   @doc """
@@ -201,9 +202,7 @@ defmodule Ithibati.Schema.User do
   def identifier_taken?(%Ecto.Changeset{data: %module{}} = changeset) do
     ensure_account_schema!(module)
 
-    changeset.errors
-    |> Keyword.get_values(module.__ithibati__(:identifier))
-    |> Enum.any?(fn {_message, opts} -> opts[:constraint] == :unique end)
+    Concurrency.collided?(changeset, module.__ithibati__(:identifier))
   end
 
   @doc """

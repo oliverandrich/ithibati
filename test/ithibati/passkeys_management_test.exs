@@ -5,7 +5,7 @@ defmodule Ithibati.Identity.PasskeysManagementTest do
   Async, unlike the other two passkey modules: those are serial because they move `wax_`'s
   application environment, and nothing here goes near the ceremony.
 
-  The refusal these tests are mostly about is `delete_key/2`'s. What happens when two passkeys are
+  The refusals these tests are mostly about are `add_key/2`'s and `delete_key/2`'s. What happens when two passkeys are
   deleted at the same moment is `Ithibati.Identity.PasskeysRaceTest`'s, because a sequence cannot
   show it.
   """
@@ -13,6 +13,75 @@ defmodule Ithibati.Identity.PasskeysManagementTest do
 
   alias Ithibati.Identity.Passkeys
   alias Ithibati.UserKey
+
+  describe "add_key/2" do
+    test "enrols a credential on an account that already has one" do
+      account = user_fixture()
+      first = key_fixture(account, %{label: "Laptop"})
+
+      assert {:ok, second} =
+               Passkeys.add_key(account, Passkeys.key_attrs(stand_in_key(), "Phone"))
+
+      assert second.label == "Phone"
+      assert second.user_id == account.id
+      assert Enum.map(Passkeys.list_keys(account), & &1.id) == [first.id, second.id]
+    end
+
+    # `registration_options/3` puts the account's credentials in `excludeCredentials`, so a browser
+    # that honours it never offers one twice. The unique index is what answers for a client that
+    # does not, and this is the word it answers with.
+    test "and refuses the same authenticator twice" do
+      account = user_fixture()
+      material = stand_in_key()
+      {:ok, _} = Passkeys.add_key(account, Passkeys.key_attrs(material, "Laptop"))
+
+      assert {:error, :already_enrolled} =
+               Passkeys.add_key(account, Passkeys.key_attrs(material, "Laptop again"))
+
+      assert length(Passkeys.list_keys(account)) == 1
+    end
+
+    # A credential identifies an authenticator, not a person, so the same one on two accounts is
+    # the same collision — and it must not read as "yours".
+    test "and refuses one another account already enrolled" do
+      material = stand_in_key()
+      {:ok, _} = Passkeys.add_key(user_fixture(), Passkeys.key_attrs(material, "Theirs"))
+
+      assert {:error, :already_enrolled} =
+               Passkeys.add_key(user_fixture(), Passkeys.key_attrs(material, "Mine"))
+    end
+
+    # The read side short-circuits a credential id past this without querying, so a row stored
+    # past it is a passkey no sign-in can ever reach.
+    test "and refuses a credential id longer than one this library could ever look up" do
+      account = user_fixture()
+      too_long = :crypto.strong_rand_bytes(1024)
+      attrs = Passkeys.key_attrs(%{key_id: too_long, public_key: "x"}, "Oversized")
+
+      assert_raise Ecto.InvalidChangesetError, fn -> Passkeys.add_key(account, attrs) end
+      assert Passkeys.list_keys(account) == []
+    end
+
+    # The refusal has to leave the surrounding transaction usable, and only a caller's own
+    # transaction can show it: the sandbox wraps every statement in a savepoint of its own until
+    # one is open, which would hide a missing savepoint here behind the test harness.
+    test "and refuses without taking a caller's transaction down with it" do
+      account = user_fixture()
+      material = stand_in_key()
+      {:ok, _} = Passkeys.add_key(account, Passkeys.key_attrs(material, "Laptop"))
+
+      assert {:ok, :carried_on} =
+               TestRepo.transaction(fn ->
+                 assert {:error, :already_enrolled} =
+                          Passkeys.add_key(account, Passkeys.key_attrs(material, "Again"))
+
+                 {:ok, _} = Passkeys.add_key(account, Passkeys.key_attrs(stand_in_key(), "Phone"))
+                 :carried_on
+               end)
+
+      assert length(Passkeys.list_keys(account)) == 2
+    end
+  end
 
   describe "list_keys/1" do
     test "answers the account's own credentials, oldest first" do

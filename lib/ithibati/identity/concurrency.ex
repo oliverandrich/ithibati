@@ -56,6 +56,19 @@ defmodule Ithibati.Identity.Concurrency do
   end
 
   @doc """
+  Whether a unique index is what refused this changeset, on the field named.
+
+  The other half of the same job as `one_affected/2`: where a row count says a write lost a race,
+  a constraint error says an index did. Three callers were each asking it in their own words and
+  had already come apart on whether `:constraint` had to say `:unique` at all.
+  """
+  def collided?(%Ecto.Changeset{errors: errors}, field) do
+    errors
+    |> Keyword.get_values(field)
+    |> Enum.any?(fn {_message, opts} -> opts[:constraint] == :unique end)
+  end
+
+  @doc """
   Reads the outcome off a write that carried `select:` — `{:ok, row}`, or `{:error, refusal}` when
   it matched none.
 
