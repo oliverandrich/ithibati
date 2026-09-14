@@ -68,3 +68,41 @@ to be a working one — a database it can reach, and configuration for that envi
 an application that would rather find out at boot than at the first ceremony can call it from its
 own `Application.start/2`, or serve it from a health endpoint. The Mix task is a printer around
 it.
+
+## Credo checks
+
+Two rules you can switch on in your own `.credo.exs`. They ship with this library and cost you
+nothing if you do not name them — they are only defined when Credo is there to define them
+against, so a release of yours does not carry them.
+
+```elixir
+# .credo.exs
+%{
+  configs: [
+    %{
+      name: "default",
+      # `config/` is not in Credo's default list, and the wax rule has nothing to read without it.
+      files: %{included: ["lib/", "test/", "config/"]},
+      checks: %{
+        extra: [
+          {Ithibati.Credo.NoDirectTableAccess, []},
+          {Ithibati.Credo.NoWaxConfiguration, []}
+        ]
+      }
+    }
+  ]
+}
+```
+
+`Ithibati.Credo.NoDirectTableAccess` keeps this library's tables behind this library, and
+`Ithibati.Credo.NoWaxConfiguration` reports the two `wax_` settings nothing here reads. Each
+module carries its own reasoning, published here and shown by `mix credo explain`.
+
+`NoDirectTableAccess` recognises a schema of ours wherever it is being read — piped into a repo,
+joined into somebody else's query, passed to a repo called anything at all — and a table of ours
+named as a string, resolved against the prefix you configured. What it cannot see is SQL inside a
+string: `Repo.query!("select … from ithibati_tokens")` passes, and nothing here will tell you.
+
+One thing to know about running them: `mix credo` does not compile first, so against a stale build
+these checks are not loaded, Credo prints `Ignoring an undefined check`, and the run says "no
+issues" having asked nothing. Put `compile` in front of it, the way your test alias already does.
