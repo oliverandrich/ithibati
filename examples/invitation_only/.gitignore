@@ -35,3 +35,5 @@ ithibati_invites-*.tar
 npm-debug.log
 /assets/node_modules/
 
+# Wallaby writes these when a browser test fails.
+/screenshots/

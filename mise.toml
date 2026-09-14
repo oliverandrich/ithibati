@@ -6,10 +6,12 @@ erlang = "29"
 # Dependabot does not read this file. The two move by hand, together.
 zizmor = "1.30.0"
 
-# What `e2e/` needs and nothing else does: the asset pipeline is the Elixir esbuild and tailwind
-# wrappers, which fetch their own standalone binaries. Pinned here so that CI installs it through
-# mise-action like every other tool, rather than through a second setup step with its own version.
-node = "24"
+# No chromedriver here on purpose, though mise can install one. The version has to match the Chrome
+# on *this* machine — a driver refuses a browser from another major, and Chrome updates itself
+# while a tracked pin does not — so a number written here would be right for whoever added it and
+# wrong for everybody else a month later. The examples' `test_helper.exs` works out which major you
+# need and prints the `mise use` line; CI uses the runner's own driver through `CHROMEWEBDRIVER`.
+# Keeping it out of `[tools]` also stops every unrelated CI job from downloading one.
 
 [tasks.check]
 description = "Everything that has to be green before a change is done"
@@ -34,25 +36,6 @@ run = [
   "mkdir -p tmp/without-optional",
   "rsync -a --exclude _build --exclude deps --exclude .git --exclude .beans --exclude tmp . tmp/without-optional/",
   "cd tmp/without-optional && ITHIBATI_WITHOUT_OPTIONAL=1 mix deps.get && ITHIBATI_WITHOUT_OPTIONAL=1 mix build_and_test",
-]
-
-# Deliberately not part of `check`, the same way `audit` is not: `check` is what has to be green
-# before a change is done, and this needs npm packages and a 100 MB browser that a first run has to
-# download. CI runs it on every push in its own job; a laptop runs it when the client half changed.
-[tasks.e2e]
-description = "Drive the example applications in a browser, and with them the library's JavaScript"
-run = [
-  # The examples are prepared here rather than by whoever calls this: the suite starts their servers
-  # itself, so a fresh checkout would otherwise die inside Playwright's `webServer` at `mix
-  # ecto.reset` with a dependency error, or serve pages with no `app.js` — `priv/static/assets` is
-  # gitignored — and every test would time out naming a locator instead of the cause.
-  #
-  # `MIX_ENV=test` because that is the environment the servers run in, so nothing is compiled twice.
-  "cd examples/open_registration && mix deps.get && MIX_ENV=test mix assets.setup && MIX_ENV=test mix assets.build",
-  "cd examples/invitation_only && mix deps.get && MIX_ENV=test mix assets.setup && MIX_ENV=test mix assets.build",
-  "npm --prefix e2e ci",
-  "npx --prefix e2e playwright install --with-deps chromium",
-  "npm --prefix e2e test",
 ]
 
 # Deliberately not part of `check`; it runs on a schedule instead. Why, in

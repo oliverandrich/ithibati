@@ -19,22 +19,6 @@ updates:
           - minor
           - patch
 
-  # The browser suite pins `@playwright/test` exactly and commits its lock file, so without this
-  # entry that pin is the kind that rots silently. `node` in mise.toml is a major line that mise
-  # resolves forward, so it does not need one.
-  - package-ecosystem: npm
-    directory: /e2e
-    cooldown:
-      default-days: 7
-    schedule:
-      interval: weekly
-    open-pull-requests-limit: 3
-    groups:
-      playwright:
-        update-types:
-          - minor
-          - patch
-
   - package-ecosystem: mix
     directory: /
     cooldown:

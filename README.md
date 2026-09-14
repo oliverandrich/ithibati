@@ -217,10 +217,12 @@ the recovery codes, say — is obeyed rather than reported. Everything
 in between is a `fetch` to the endpoints rather than a LiveView event, because the sign-in ends in a
 session cookie and only a controller can set one.
 
-This is the half that runs on somebody else's machine, so it is driven rather than described:
-[`e2e/`](https://github.com/oliverandrich/ithibati/tree/main/e2e) runs both example applications in
-a browser against a real WebAuthn ceremony, including the reasons the hook distinguishes when one
-does not finish. CI runs it on every push. `e2e/README.md` says why it is Chromium only.
+This is the half that runs on somebody else's machine, so it is driven rather than described. Both
+example applications carry Wallaby feature tests — `test/features/` in each — that put this file in
+a real browser against a real WebAuthn ceremony, including the reasons the hook distinguishes when
+one does not finish. They are part of each example's own `mix test`, so CI runs them on every push.
+Chromium only: the virtual authenticator is Chrome DevTools Protocol's, which is the one that hands
+the page a credential real enough for `toJSON()`.
 
 **From the package**, which always works. The specifier is bare because this library ships a
 `package.json`, the same way `phoenix` and `phoenix_live_view` do, and a Phoenix 1.8 application

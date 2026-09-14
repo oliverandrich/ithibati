@@ -149,9 +149,10 @@ jobs:
           # derives it from the module, so a rename fails there first and loudly.
           grep -q "Ithibati.Web.Hooks.PasskeyCeremony" "$manifest"
 
-  # The examples are documentation that either compiles or does not, and they are what the browser
-  # tests will drive. They take the library by path, so this is also the only place that compiles
-  # the library the way a consumer does.
+  # The examples are documentation that either compiles or does not — and their own suites drive
+  # them in a real browser, which is the only thing here that executes `priv/static/ithibati.js`.
+  # They take the library by path, so this is also the only place that compiles the library the way
+  # a consumer does.
   example:
     name: example (${{ matrix.example }})
     runs-on: ubuntu-latest
@@ -202,11 +203,23 @@ jobs:
           key: ${{ runner.os }}-example-${{ matrix.example }}-${{ hashFiles(format('examples/{0}/mix.lock', matrix.example)) }}
           restore-keys: ${{ runner.os }}-example-${{ matrix.example }}-
 
+      # The runner images ship a Chrome and a matching chromedriver and point `CHROMEWEBDRIVER` at
+      # the second; `test_helper.exs` prefers it over a locally installed one precisely so that the
+      # pair cannot drift apart here. Named rather than assumed — if it ever stops being set, this
+      # says so instead of the suite failing to spawn a session.
+      - name: Check the runner brought a browser
+        run: |
+          test -x "$CHROMEWEBDRIVER/chromedriver" || {
+            echo "CHROMEWEBDRIVER=$CHROMEWEBDRIVER has no chromedriver in it"
+            exit 1
+          }
+          "$CHROMEWEBDRIVER/chromedriver" --version
+          google-chrome --version
+
       # `mix precommit` rather than a second copy of it, the way mise.toml puts it for this
       # repository: following the example's own alias locally then means following the gate. It
-      # runs compile, format, the assets and the tests — compiling alone let two unformatted lines
-      # land, and cannot see the bare `import … from "ithibati"` resolving or a ceremony route
-      # answering, which are the two things this example exists to demonstrate.
+      # runs compile, format, the assets and the tests — including the browser tests under
+      # `test/features/`, which are the only thing anywhere that executes the library's JavaScript.
       - name: Run the example's gate
         working-directory: examples/${{ matrix.example }}
         run: |
@@ -218,6 +231,16 @@ jobs:
           # every dependency once in each environment. The binaries land in `_build/` either way.
           MIX_ENV=test mix assets.setup
           mix precommit
+
+      # A failed feature test names a selector and nothing about the page it failed against.
+      - name: Keep the screenshots when a browser test fails
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: screenshots-${{ matrix.example }}
+          path: examples/${{ matrix.example }}/screenshots/
+          if-no-files-found: ignore
+          retention-days: 7
 
       # What the root matrix cannot see: `lib/` compiled *as a dependency*, where `Mix.env()` is
       # `prod` — Mix puts `env: :prod` on every dependency that does not ask for another, whatever
@@ -255,76 +278,6 @@ jobs:
             echo "the library emitted warnings into a consumer's build"
             exit 1
           fi
-
-  # The only job that executes `priv/static/ithibati.js`. Everything else about the client half is a
-  # source-level string match — which is what it was until this existed, and a broken hook ships
-  # inside the package where a consumer cannot patch around it.
-  browser:
-    name: browser
-    runs-on: ubuntu-latest
-
-    services:
-      postgres:
-        image: postgres:18-alpine
-        env:
-          POSTGRES_PASSWORD: postgres
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-
-      - uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4.3.0
-        with:
-          version: 2026.9.5
-          cache_key_prefix: mise-browser
-
-      # Both examples in one entry, unlike the `example` job, which caches them per matrix leg
-      # because each leg only ever builds one. This job builds both every time, so one entry holding
-      # both trees is a single restore rather than two.
-      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: |
-            examples/open_registration/deps
-            examples/open_registration/_build
-            examples/invitation_only/deps
-            examples/invitation_only/_build
-          key: ${{ runner.os }}-browser-${{ hashFiles('examples/*/mix.lock') }}
-          restore-keys: ${{ runner.os }}-browser-
-
-      # The browser is what takes the minute, and the lockfile is what pins which one: a key on it
-      # changes exactly when Playwright does.
-      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: ~/.cache/ms-playwright
-          key: ${{ runner.os }}-playwright-${{ hashFiles('e2e/package-lock.json') }}
-
-      - name: Install the Elixir package managers
-        run: |
-          mix local.hex --force
-          mix local.rebar --force
-
-      # `mise run e2e` and not a second copy of what it contains, so a laptop and CI run the same
-      # thing. It prepares both examples itself, which is why nothing above does.
-      - name: Run the browser suite
-        run: mise run e2e
-
-      # A red browser run is unreadable without it: the report carries the trace, the screenshot and
-      # the page as it was when the assertion failed.
-      - name: Keep the report when it fails
-        if: failure()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: playwright-report
-          path: e2e/playwright-report/
-          retention-days: 7
 
   zizmor:
     name: zizmor

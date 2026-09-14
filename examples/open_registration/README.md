@@ -26,6 +26,22 @@ run one at a time, or give this one `PORT=4001`.) No hardware needed if you woul
 DevTools has a virtual authenticator under *More tools → WebAuthn*. Register as often as you like —
 that is what open means. `mix ecto.reset` starts over.
 
+## The browser tests
+
+`test/features/` drives these pages in a real Chrome, through the JavaScript the library ships —
+`mix test` runs them like anything else.
+
+They need a chromedriver matching *your* Chrome, because a driver refuses a browser from another
+major version. That version is therefore not pinned in the tracked `mise.toml`; run `mix test`
+once and it will print the exact line, something like:
+
+```
+mise use --path ../../mise.local.toml chromedriver@150
+```
+
+CI uses the runner's own driver instead. There is no way to skip these tests quietly — a missing
+driver fails the run and says what to do.
+
 ## What to read, in this order
 
 | | |
