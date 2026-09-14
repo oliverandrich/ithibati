@@ -124,8 +124,8 @@ defmodule Ithibati.Schema.Identifier do
       {:ok, other} ->
         raise ArgumentError,
               "`identifier:` must be a literal atom, got: #{Macro.to_string(other)}. " <>
-                "The macro reads it while your module compiles, so a variable or attribute " <>
-                "cannot be seen here."
+                "It is the field your schema declares, and this library wants it readable at the " <>
+                "`use` line rather than named elsewhere. (`format:` may be a module attribute.)"
 
       :error ->
         raise ArgumentError,
@@ -135,29 +135,42 @@ defmodule Ithibati.Schema.Identifier do
     end
   end
 
-  # Evaluated here rather than in the generated function body, for two reasons that are the same
-  # reason: it happens once instead of per changeset, and what comes out can be checked. A binary
-  # slips through `validate_format/4` as `String.contains?/2`, which is wrong in both directions —
-  # it would refuse `"abc"` against `"^[a-z]+$"` and accept `"x^[a-z]+$y"`.
+  # A call rather than a value, because `format: @address` is still an unresolved `@` in the AST
+  # here: asking for its value where the macro expands is what the compiler refuses with "undefined
+  # module attribute". The macro assigns the call to an attribute instead, and the consumer's module
+  # body evaluates it — by then every attribute they wrote exists.
+  #
+  # Absence is decided here, where the key can still be seen, because `format:` left out and
+  # `format: nil` are not the same thing. The second is almost always a misspelled attribute, which
+  # evaluates to `nil` with nothing but a warning, and would silently mean no pattern at all.
   @doc false
-  def format!(opts, env) do
+  def format_call(opts) do
     case Keyword.fetch(opts, :format) do
-      :error ->
-        nil
-
-      {:ok, ast} ->
-        {value, _binding} = Code.eval_quoted(ast, [], env)
-
-        is_struct(value, Regex) ||
-          raise(
-            ArgumentError,
-            "`format:` must be a regular expression, got: #{inspect(value)}" <>
-              if(is_binary(value), do: " — did you mean ~r/#{value}/?", else: "")
-          )
-
-        value
+      {:ok, format} -> quote(do: unquote(__MODULE__).validated_format!(unquote(format)))
+      :error -> nil
     end
   end
+
+  # A format that is not a regular expression should say so where it is written, not at somebody's
+  # first registration. A binary slips through `validate_format/4` as `String.contains?/2`, which
+  # is wrong in both directions — it refuses `"abc"` against `"^[a-z]+$"` and accepts
+  # `"x^[a-z]+$y"`.
+  @doc false
+  def validated_format!(%Regex{} = format), do: format
+
+  def validated_format!(other) do
+    raise ArgumentError,
+          "`format:` must be a regular expression, got: #{inspect(other)}" <> hint(other)
+  end
+
+  defp hint(other) when is_binary(other), do: " — did you mean ~r/#{other}/?"
+
+  defp hint(nil) do
+    " — a misspelled module attribute is `nil` with only a warning. " <>
+      "Leave `format:` out to ask for no pattern."
+  end
+
+  defp hint(_other), do: ""
 
   # The bare name: the changeset turns it into an option list, and the migration names the index it
   # creates.

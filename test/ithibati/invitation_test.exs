@@ -140,7 +140,44 @@ defmodule Ithibati.Schema.InvitationTest do
     end
   end
 
+  # An invitation reads `format:` through the same module an account does, so it takes the same
+  # shapes — a named pattern among them.
+  describe "a format given as a module attribute" do
+    test "compiles and is applied" do
+      body = """
+      @address ~r/\\A[a-z]+@example\\.test\\z/
+      use Ithibati.Schema.Invitation, identifier: :email, format: @address
+      """
+
+      module = probe("AttributeInvitation", body, inside: "ithibati_invitation()")
+
+      assert %{valid?: true} =
+               module.invitation_changeset(struct(module), %{email: "ada@example.test"})
+
+      assert %{valid?: false} =
+               module.invitation_changeset(struct(module), %{email: "ada@elsewhere.test"})
+    end
+  end
+
   describe "what it refuses at compile time" do
+    # The same accident as a forgotten sigil, and reachable from the shape the README now shows: a
+    # misspelled attribute is `nil` with only a warning, and would mean no pattern at all.
+    test "a format: that arrived as nil, where leaving it out is fine" do
+      assert_raise ArgumentError, ~r/misspelled module attribute/, fn ->
+        probe("NilFormat", "use Ithibati.Schema.Invitation, identifier: :email, format: nil",
+          inside: "ithibati_invitation()"
+        )
+      end
+
+      formatless =
+        probe("NoFormat", "use Ithibati.Schema.Invitation, identifier: :email",
+          inside: "ithibati_invitation()"
+        )
+
+      assert %{valid?: true} =
+               formatless.invitation_changeset(struct(formatless), %{email: "anything at all"})
+    end
+
     test "a schema that uses the macro and never calls it inside the schema block" do
       assert_raise ArgumentError, ~r/never calls ithibati_invitation\/0/, fn ->
         probe("Forgetful", "use Ithibati.Schema.Invitation, identifier: :email")

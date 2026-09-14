@@ -19,7 +19,9 @@ defmodule Ithibati.DataCase do
 
       alias Ithibati.GuestUser
       alias Ithibati.MemberUser
+      alias Ithibati.NamedIndexUser
       alias Ithibati.NamedUser
+      alias Ithibati.OptedOutUser
       alias Ithibati.TestCredentials
       alias Ithibati.TestRepo
       alias Ithibati.TestUser

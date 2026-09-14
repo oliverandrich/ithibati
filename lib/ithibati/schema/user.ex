@@ -11,8 +11,6 @@ defmodule Ithibati.Schema.User do
 
         import Ecto.Changeset
 
-  alias Ithibati.Schema.Identifier
-
         schema "users" do
           ithibati_account()
 
@@ -30,7 +28,8 @@ defmodule Ithibati.Schema.User do
   ## Options
 
     * `identifier:` — required, a literal atom: the field an account is known by.
-    * `format:` — optional, a regular expression, evaluated once when your module compiles.
+    * `format:` — optional, a regular expression, evaluated once when your module compiles. Write
+      it inline or name it with a module attribute standing above the `use` line.
       `Ithibati.Schema.Identifier.email_format/0` offers one for addresses.
     * `constraint_name:` — optional, the name of the unique index on that column. Say it when your
       naming convention is not the one Ecto derives; this library then creates it under that name,
@@ -88,7 +87,7 @@ defmodule Ithibati.Schema.User do
       )
 
     field = Identifier.identifier!(opts, __MODULE__)
-    format = Identifier.format!(opts, __CALLER__)
+    format_call = Identifier.format_call(opts)
     constraint = Identifier.constraint_name!(opts)
     unique_index = Identifier.unique_index!(opts)
 
@@ -98,7 +97,9 @@ defmodule Ithibati.Schema.User do
       @before_compile Ithibati.Schema.User
 
       @ithibati_identifier unquote(field)
-      @ithibati_format unquote(Macro.escape(format))
+      # No `Macro.escape`, unlike its three siblings: this one is a call, and it is the consumer's
+      # module body that evaluates it.
+      @ithibati_format unquote(format_call)
       @ithibati_constraint unquote(Macro.escape(constraint))
       @ithibati_unique_index unquote(unique_index)
 

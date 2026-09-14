@@ -34,7 +34,8 @@ defmodule Ithibati.Schema.Invitation do
       end
 
   The options are the account macro's: `identifier:` (required), `format:` — for which
-  `Ithibati.Schema.Identifier.email_format/0` offers a pattern — `constraint_name:` and
+  `Ithibati.Schema.Identifier.email_format/0` offers a pattern, and which may equally be a module
+  attribute standing above the `use` line — `constraint_name:` and
   `unique_index:`, the last two naming the unique index on the token digest rather than on the
   identifier.
 
@@ -90,7 +91,7 @@ defmodule Ithibati.Schema.Invitation do
       )
 
     field = Identifier.identifier!(opts, __MODULE__)
-    format = Identifier.format!(opts, __CALLER__)
+    format_call = Identifier.format_call(opts)
     constraint = Identifier.constraint_name!(opts)
     unique_index = Identifier.unique_index!(opts)
 
@@ -100,7 +101,9 @@ defmodule Ithibati.Schema.Invitation do
       @before_compile Ithibati.Schema.Invitation
 
       @ithibati_identifier unquote(field)
-      @ithibati_format unquote(Macro.escape(format))
+      # No `Macro.escape`, unlike its three siblings: this one is a call, and it is the consumer's
+      # module body that evaluates it.
+      @ithibati_format unquote(format_call)
       @ithibati_constraint unquote(Macro.escape(constraint))
       @ithibati_unique_index unquote(unique_index)
     end

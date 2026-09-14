@@ -12,12 +12,15 @@ defmodule Ithibati.Schema.UserTest do
   alias Ithibati.Schema
 
   # Every account schema the suite carries, with the field it is identified by and the fields it
-  # declared itself. One list, so a fourth fixture is one line and no test forgets it.
+  # declared itself. One list, so the next fixture is one line and no test forgets it.
+  @own [:id, :inserted_at, :updated_at]
   @fixtures [
-    {TestUser, :email, [:id, :nickname, :slug, :inserted_at, :updated_at]},
-    {MemberUser, :username, [:id, :inserted_at, :updated_at]},
-    {GuestUser, :handle, [:id, :inserted_at, :updated_at]},
-    {NamedUser, :email, [:id, :nickname, :inserted_at, :updated_at]}
+    {TestUser, :email, @own ++ [:nickname, :slug]},
+    {MemberUser, :username, @own},
+    {GuestUser, :handle, @own},
+    {NamedUser, :email, @own ++ [:nickname]},
+    {NamedIndexUser, :email, @own},
+    {OptedOutUser, :email, @own}
   ]
 
   describe "what the macro contributes" do
@@ -168,6 +171,31 @@ defmodule Ithibati.Schema.UserTest do
     end
   end
 
+  # The README invites a format of one's own, and naming the pattern is how a person writes one
+  # worth naming. The macro has to hand the option on rather than ask for its value, because a
+  # module attribute of the consumer does not exist where the macro expands.
+  describe "a format given as a module attribute" do
+    test "is applied, and is the attribute's own pattern rather than some default" do
+      body = """
+      @address ~r/\\A[a-z]+@example\\.test\\z/
+      use Ithibati.Schema.User, identifier: :email, format: @address
+      """
+
+      module = probe("AttributeUser", body, inside: "ithibati_account()")
+
+      assert %{valid?: true} =
+               module.identifier_changeset(struct(module), %{email: "ada@example.test"})
+
+      assert %{email: ["has invalid format"]} =
+               errors_on(
+                 module.identifier_changeset(struct(module), %{email: "ada@elsewhere.test"})
+               )
+
+      # `TestUser` takes the library's email format, which accepts what the attribute's refuses.
+      assert %{valid?: true} = TestUser.changeset(%TestUser{}, %{email: "ada@elsewhere.test"})
+    end
+  end
+
   describe "the format, which is optional and the application's" do
     # Without the check this compiles and `validate_format/4` degrades to `String.contains?/2`,
     # which refuses "abc" against "^[a-z]+$" and accepts "x^[a-z]+$y" — wrong in both directions,
@@ -176,6 +204,22 @@ defmodule Ithibati.Schema.UserTest do
       assert_raise ArgumentError, ~r/did you mean ~r/, fn ->
         probe("Stringly", ~s|use Ithibati.Schema.User, identifier: :email, format: "^[a-z]+$"|)
       end
+    end
+
+    # A misspelled attribute is the way this happens: the compiler warns and carries on with `nil`,
+    # and a `format:` silently worth nothing is the same accident as a forgotten sigil.
+    test "an option that arrived as nil is refused, where leaving it out is not" do
+      assert_raise ArgumentError, ~r/misspelled module attribute/, fn ->
+        probe("Nilly", "use Ithibati.Schema.User, identifier: :email, format: nil")
+      end
+
+      formatless =
+        probe("Formatless", "use Ithibati.Schema.User, identifier: :email",
+          inside: "ithibati_account()"
+        )
+
+      assert %{valid?: true} =
+               formatless.identifier_changeset(struct(formatless), %{email: "anything at all"})
     end
 
     # The pattern offered for an address is the one the HTML specification publishes for

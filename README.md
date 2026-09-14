@@ -313,7 +313,20 @@ use User, identifier: :username, format: Identifier.username_format()
 use User, identifier: :handle
 ```
 
-`format:` is optional, and a pattern of your own is as welcome as either of the two above.
+`format:` is optional, and a pattern of your own is as welcome as either of the two above —
+written inline, or named, whichever reads better:
+
+```elixir
+@handle ~r/\A[a-z][a-z0-9_]{2,29}\z/
+
+use User, identifier: :handle, format: @handle
+```
+
+The attribute has to stand above the `use` line — it is read where your module body reaches it. A
+name that is not there yet, or one that is misspelled, is `nil`, and `format: nil` is refused
+rather than quietly taken to mean no pattern. `format:` is the only option that takes an attribute;
+the three below are read while the macro expands and have to be written out.
+
 `constraint_name:` and `unique_index:` concern the index on that column — see the migration below.
 Values written through `identifier_changeset/2` are trimmed and lowercased, so a plain unique index refuses `AdaLovelace`
 beside `adalovelace` with no functional index for you to remember — a write that bypasses the
