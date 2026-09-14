@@ -83,6 +83,13 @@ stronger here than it looks: nothing in this repository can resolve one.
   sabotaged version. A later `mix credo` then reports a violation that exists only in the leftover
   build — here it accused `Ithibati.Schema.Identifier`, which the check has allowed since it was
   written. Rebuild both, or read the finding as a question about the build before believing it.
+- **A control check on the schema macros has to `mix compile --force` after the restore.** The
+  fixtures under `test/support/` bake the expansion in at *their* compile time, so restoring
+  `lib/ithibati/schema/identifier.ex` alone leaves them holding the sabotaged version, and the
+  next plain `mix test` runs against it. Measured: after a restore whose `grep` confirmed the
+  source was clean, nineteen migration tests still failed on the sabotage's own value. The
+  dangerous direction is the other one — a sabotage that never reaches the fixtures leaves the
+  suite green and reads as "this test guards nothing".
 - **The CI leg without the optional dependencies cannot be reproduced in this checkout — use
   `mise run check-without-optional`.** `lib/ithibati/web/` is guarded by `Code.ensure_loaded?`,
   which answers from the code path, and `_build` still holds the compiled Phoenix beams after any
