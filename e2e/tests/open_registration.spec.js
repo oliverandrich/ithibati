@@ -40,6 +40,35 @@ test.describe("open registration", () => {
     await expect(page.getByText(`Signed in as ${username}`)).toBeVisible()
   })
 
+  // The bug this suite was built to be able to see. A revoked token stops the *next* request and
+  // the next mount; a LiveView already connected holds its account in assigns and goes on accepting
+  // events as that account until something tells its socket to go away.
+  test("signing out in one tab ends a LiveView left open in another", async ({page, context}) => {
+    const username = aUsername("ada")
+
+    await page.goto(`${OPEN}/`)
+    await page.getByRole("textbox").fill(username)
+    await page.getByRole("button", {name: "Register"}).click()
+    await page.waitForURL("**/recovery-codes")
+
+    // The second tab, sharing the one session the way two tabs of a browser do.
+    const other = await context.newPage()
+    await other.goto(`${OPEN}/inside`)
+    await expect(other.getByText(`Only ${username} sees this.`)).toBeVisible()
+
+    await page.goto(`${OPEN}/`)
+    await page.getByRole("link", {name: "sign out"}).click()
+    await expect(page.getByText("Signed in as")).toHaveCount(0)
+
+    // Not a page the second tab asked for: the socket was closed under it, the client reconnected,
+    // and the gate turned it away. Without the disconnect it would sit there indefinitely, still
+    // rendering an account that no longer has a session.
+    await other.waitForURL(`${OPEN}/`)
+    await expect(other.getByText(`Only ${username} sees this.`)).toHaveCount(0)
+
+    await other.close()
+  })
+
   // The server-side refusal is pinned in `test/ithibati_open/auth_test.exs`, and it cannot also be
   // driven from here: the `pattern` attribute is derived from the same regex the server validates
   // with, so the browser refuses everything the server would. That agreement is the subject of this

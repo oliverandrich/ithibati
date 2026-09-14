@@ -25,9 +25,15 @@ if Code.ensure_loaded?(Phoenix.Component) do
     import Plug.Conn
     import Phoenix.Controller, only: [redirect: 2]
 
+    alias Ithibati.Identity.Secrets
     alias Ithibati.Identity.Tokens
 
     @session "ithibati_account_token"
+
+    # Phoenix's name, not this library's: `Phoenix.LiveView.Socket.id/1` reads exactly this key out
+    # of the cookie session, so it cannot be namespaced and a consumer's own use of it would
+    # collide. Written out rather than derived, because the string is the contract.
+    @live_socket "live_socket_id"
     @modes [:current_account, :require_account]
     @options [:to]
 
@@ -51,7 +57,35 @@ if Code.ensure_loaded?(Phoenix.Component) do
     def log_in(conn, account) do
       token = Tokens.generate_session_token(account)
 
-      conn |> renew_session() |> put_session(@session, token)
+      conn
+      |> renew_session()
+      |> put_session(@session, token)
+      |> name_live_socket(token)
+    end
+
+    @doc """
+    The topic the sockets of one session answer on.
+
+    Derived from the token's *digest*: a topic reaches logs, telemetry and everything subscribed to
+    the pubsub server, and `phx.gen.auth` puts the live token itself in there. Per token rather than
+    per account, so signing out in one browser leaves the same person's other devices alone.
+
+    Public for an application that ends a session somewhere other than `log_out/1` and holds the
+    raw token while doing it. It cannot serve "sign out my other devices": that starts from what the
+    database has, which is digests — see decision 11.
+    """
+    def live_socket_id(token) when is_binary(token) do
+      "ithibati_sessions:" <> Secrets.url64(Secrets.digest(token))
+    end
+
+    # Only where the endpoint can carry it, and the guard is on the *write* rather than on the
+    # broadcast for a reason worth knowing: `Phoenix.Socket` subscribes to this id when a socket
+    # connects, through the same call that raises without a `:pubsub_server`. An id written into an
+    # application that has none would take down every websocket at connect, not just the sign-out.
+    defp name_live_socket(conn, token) do
+      if pubsub_endpoint(conn),
+        do: put_session(conn, @live_socket, live_socket_id(token)),
+        else: conn
     end
 
     @doc """
@@ -62,8 +96,28 @@ if Code.ensure_loaded?(Phoenix.Component) do
     """
     def log_out(conn) do
       conn |> get_session(@session) |> Tokens.delete_session_token()
+      disconnect_live_sockets(conn)
 
       renew_session(conn)
+    end
+
+    # Before the session is renewed, because renewing is what takes the topic away. Both halves ask
+    # the same question, but not in the same release: a cookie outlives a deploy that dropped the
+    # pubsub server, so the endpoint is checked here too rather than inferred from the key existing.
+    defp disconnect_live_sockets(conn) do
+      with topic when is_binary(topic) <- get_session(conn, @live_socket),
+           endpoint when not is_nil(endpoint) <- pubsub_endpoint(conn) do
+        endpoint.broadcast(topic, "disconnect", %{})
+      end
+    end
+
+    # The endpoint, when it is one that can carry a broadcast. `nil` for an application that
+    # configured no server, and for a connection that never went through an endpoint at all — a plug
+    # called directly in a test, say. The server's *name* is never wanted, only whether there is one.
+    defp pubsub_endpoint(conn) do
+      endpoint = conn.private[:phoenix_endpoint]
+
+      if endpoint && endpoint.config(:pubsub_server), do: endpoint
     end
 
     # Both halves, and either alone reads like the whole thing: renewing carries the contents over

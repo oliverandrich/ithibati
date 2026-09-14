@@ -69,7 +69,15 @@ if config_env() == :test do
   config :ithibati, Ithibati.TestEndpoint,
     url: [host: "example.test", scheme: "https", port: 443],
     secret_key_base: String.duplicate("a", 64),
+    # What a `mix phx.new` application always has, and what `Ithibati.Web.Gate` needs before it will
+    # name a live socket at all.
+    pubsub_server: Ithibati.TestPubSub,
     server: false
+
+  # The other kind of consumer: Phoenix without a pubsub server. Its whole content is the key that
+  # is *missing* — no URL and no secret, because nothing is dispatched through this endpoint and a
+  # second copy of those would bury the one line that makes it different.
+  config :ithibati, Ithibati.TestEndpointWithoutPubSub, server: false
 
   config :logger, level: :warning
 end

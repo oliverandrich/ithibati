@@ -168,4 +168,17 @@ if Code.ensure_loaded?(Phoenix.Component) do
     plug(Plug.Session, store: :cookie, key: "_ithibati_test", signing_salt: "MJ1tPqEr")
     plug(Ithibati.TestRouter)
   end
+
+  # The other kind of consumer: Phoenix with no `pubsub_server`. It exists so that the branch which
+  # leaves such an application alone has something to answer for — `log_in/2` must write no socket
+  # id there, because one written would take every websocket down at connect, not merely fail to
+  # disconnect.
+  #
+  # No plugs, because nothing is ever dispatched through it: the tests reach it by naming it on a
+  # connection, and all they ask is what it has configured. Giving it a pipeline would present a
+  # second working consumer that nothing has ever run.
+  defmodule Ithibati.TestEndpointWithoutPubSub do
+    @moduledoc false
+    use Phoenix.Endpoint, otp_app: :ithibati
+  end
 end

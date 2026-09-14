@@ -38,6 +38,13 @@ Ecto.Adapters.SQL.Sandbox.mode(repo, :manual)
 # module name, so a second `async: true` module doing the same would collide — as a flake, in
 # whichever module happened to lose the race. It serves nothing (`server: false`); the ceremony
 # tests want it only for the configured URL its relying party comes from.
-if Code.ensure_loaded?(Ithibati.TestEndpoint), do: {:ok, _} = Ithibati.TestEndpoint.start_link()
+if Code.ensure_loaded?(Ithibati.TestEndpoint) do
+  # Before the endpoints: one of them names this server, and subscribing goes looking for it.
+  {:ok, _} =
+    Supervisor.start_link([{Phoenix.PubSub, name: Ithibati.TestPubSub}], strategy: :one_for_one)
+
+  {:ok, _} = Ithibati.TestEndpoint.start_link()
+  {:ok, _} = Ithibati.TestEndpointWithoutPubSub.start_link()
+end
 
 ExUnit.start()

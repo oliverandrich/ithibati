@@ -427,3 +427,70 @@ the address as a side effect — whoever accepted it read mail sent there. An ap
 stronger one can build it today without waiting for this library, by verifying the address first and
 writing the invitation second. A later release might add the token recipe for such a loop. It will
 not add a mailer.
+
+## 11. The gate ends the sockets a session opened, when it can
+
+Revoking a session token stops the next request and the next mount. It does not stop a LiveView
+that is **already connected**: that socket holds the account in its assigns and keeps accepting
+events until something closes it. Sign out in one tab, and the admin page open in another goes on
+working. The reference implementation has the same gap and never closed it, so this is a decision
+rather than a port.
+
+Phoenix already answers the mechanism: a session value named `live_socket_id` becomes the socket's
+pubsub topic, and broadcasting `"disconnect"` on it stops the transport — with it every LiveView
+multiplexed on that socket. The client reconnects, meets the gate with a dead token, and is sent
+away. The question is only who does the broadcasting.
+
+**The gate does it, but only where the endpoint carries a `:pubsub_server`.** Three candidates, and
+the two rejected ones fail in ways this project cares about:
+
+- *Broadcast unconditionally.* `Endpoint.broadcast/3` raises without a pubsub server, so a consumer
+  who has none would meet an `ArgumentError` at the moment they sign out. A library that breaks
+  signing out to improve signing out has not improved anything.
+- *Write the id and let the consumer broadcast.* This is what `mix phx.gen.auth` generates, and it
+  is right for generated code, which the author reads and owns. As a library it makes the safe path
+  the one you have to remember, and forgetting it changes nothing visible — the shape decision 3
+  and the Credo check exist to avoid.
+
+So `log_in/2` writes the id **only** when the endpoint has a pubsub server, and `log_out/1`
+broadcasts when it finds one. The guard is on the write and not merely on the broadcast, which
+looks over-careful and is not: `Phoenix.Socket` *subscribes* to the id when a socket connects,
+through the same call that raises, so an id written into an application without pubsub would take
+down every websocket at connect rather than only the sign-out.
+
+The topic is `ithibati_sessions:` plus the token's **digest**, not the token. `phx.gen.auth` puts
+the live credential into the topic string, where it reaches logs, telemetry and every subscriber of
+the pubsub server; the digest is just as unique and is already what the database stores. Per token
+rather than per account, so signing out in one browser leaves the same person's phone alone.
+
+`live_socket_id` itself is Phoenix's name and cannot be namespaced — `Phoenix.LiveView.Socket.id/1`
+reads that exact key — so an application already using it for its own sockets will find this library
+writing there too.
+
+The guard asks the endpoint's configuration, so it answers for a server that was never named. It
+does not answer for one named but never started — `Phoenix.PubSub` looks the registry up at
+broadcast time and raises `unknown registry` when it is not there. That is left to raise on purpose:
+such an application's websockets are already failing at connect for the same reason, so a sign-out
+that also fails is the second symptom of one misconfiguration rather than a new one, and swallowing
+it would hide the first.
+
+**One precondition is beyond the guard's reach, and it is the one that fails quietly.** That same
+`id/1` reads the key out of `connect_info[:session]`, which is populated only if the endpoint
+declares `socket "/live", Phoenix.LiveView.Socket, websocket: [connect_info: [session: …]]`. An
+application with a pubsub server and without that line gets the id written and the broadcast sent,
+and nothing subscribes to hear it. There is nothing to detect from a `conn` — a socket declaration
+is not visible there — so this one is documented in the README beside the pubsub requirement rather
+than guarded. It is the failure mode this decision otherwise exists to avoid, admitted rather than
+solved.
+
+Two things are deliberately outside this. Revoking an account's *other* sessions starts from what
+the database holds, which is digests, while `live_socket_id/1` needs the raw token — so bulk
+revocation needs its own shape rather than this function, which is public for the narrower case of
+an application ending a session somewhere other than `log_out/1` while it still holds the token.
+And signing in again does not end the sockets of the session it replaces: `log_in/2` renews the
+cookie, which is the only record of the previous token, so that token lives out its window with its
+sockets attached. Both belong with whatever adds bulk revocation.
+
+This does not settle the open question in decision 4. That one is about the **core** announcing
+changes over `Phoenix.PubSub` while Phoenix is optional to it; the gate lives in
+`lib/ithibati/web/`, where Phoenix is mandatory, and a running pubsub server still is not.

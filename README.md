@@ -159,8 +159,21 @@ through would turn a typo into a page that refuses nobody — protection that ne
 `Gate.log_in(conn, account)` is what a handler's `authenticate/2` usually ends with: a session
 token, stored under this library's key, after the session is renewed against fixation.
 `Gate.log_out/1` revokes the token rather than merely forgetting it, so a copied cookie stops
-working for new requests and new mounts — a LiveView already connected in another tab keeps its
-socket until it reconnects.
+working for new requests and new mounts — and it ends the sockets that session opened, so a
+LiveView left running in another tab does not go on answering as somebody who signed out. That
+second half needs two things a `mix phx.new` application already has: a `:pubsub_server` on your
+endpoint, and the live socket declared with the session in its `connect_info` —
+
+```elixir
+socket "/live", Phoenix.LiveView.Socket,
+  websocket: [connect_info: [session: @session_options]]
+```
+
+— because that session is where `Phoenix.LiveView.Socket.id/1` looks. Without the pubsub server the
+gate writes no socket id and says nothing, and you are back to the first half alone. Without the
+`connect_info`, nothing subscribes and the broadcast reaches nobody: no error, just a socket that
+outlives its session. [Decision 11](docs/design.md#11-the-gate-ends-the-sockets-a-session-opened-when-it-can) is
+why it is arranged that way rather than asked of you.
 
 Signing in clears the session, the CSRF token with it, so **the flow has to end in a full page
 load**: answer from your handler with `%{redirect: …}` and the hook follows it. A page that stays
@@ -250,6 +263,7 @@ These decisions shape it, and [`docs/design.md`](docs/design.md) carries each on
 8. [The second credential set refills itself](docs/design.md#8-the-second-credential-set-refills-itself)
 9. [Invitations are the application's table and this library's invariants](docs/design.md#9-invitations-are-the-applications-table-and-this-librarys-invariants)
 10. [Open registration and invitation-only, and neither proves an address](docs/design.md#10-open-registration-and-invitation-only-and-neither-proves-an-address)
+11. [The gate ends the sockets a session opened, when it can](docs/design.md#11-the-gate-ends-the-sockets-a-session-opened-when-it-can)
 
 ## The account schema
 

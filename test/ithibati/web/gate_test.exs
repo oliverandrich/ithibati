@@ -153,7 +153,11 @@ if Code.ensure_loaded?(Phoenix.Component) do
       # holds afterwards. Asserting only on the contents leaves `configure_session(renew: true)`
       # free to be deleted with the suite still green.
       test "log_in clears the session and renews its id", ctx do
-        before = build_conn() |> Plug.Test.init_test_session(%{decoy: "kept?"})
+        before =
+          Ithibati.TestEndpoint
+          |> build_conn_with_endpoint()
+          |> Plug.Conn.put_session(:decoy, "kept?")
+
         signed_in = Gate.log_in(before, ctx.account)
 
         assert Plug.Conn.get_session(signed_in, :decoy) == nil
@@ -161,9 +165,96 @@ if Code.ensure_loaded?(Phoenix.Component) do
       end
     end
 
+    # The half a revoked token does not reach: a LiveView that is already connected holds its
+    # account in assigns and keeps accepting events, because nothing re-reads the session until the
+    # socket reconnects. Phoenix answers this with a topic named in the session and a `"disconnect"`
+    # broadcast on it; `docs/design.md` decision 11 says why this library sends that itself.
+    describe "the sockets a session opened" do
+      test "log_in names the live socket, so something can be said to it later", ctx do
+        signed_in = Gate.log_in(build_conn_with_endpoint(Ithibati.TestEndpoint), ctx.account)
+
+        token = Plug.Conn.get_session(signed_in, Gate.session_key())
+
+        # The key is Phoenix's, not this library's — `Phoenix.LiveView.Socket.id/1` reads exactly
+        # this string — so it is written out rather than derived from anything here.
+        assert Plug.Conn.get_session(signed_in, "live_socket_id") == Gate.live_socket_id(token)
+      end
+
+      # Per token rather than per account: the same person signed in on a phone is a different
+      # session, and signing out here must not reach it.
+      test "the topic is a different one for every session of the same account", ctx do
+        one = Tokens.generate_session_token(ctx.account)
+        two = Tokens.generate_session_token(ctx.account)
+
+        refute Gate.live_socket_id(one) == Gate.live_socket_id(two)
+      end
+
+      # The token is a live credential. Topics reach logs and telemetry, so what goes in one is the
+      # digest — `phx.gen.auth` puts the token itself there and this library deliberately does not.
+      test "and carries no part of the token that opens anything", ctx do
+        token = Tokens.generate_session_token(ctx.account)
+
+        # The token first, because `Secrets.token/0` already answers base64url *text* — encoding it
+        # again produces a string it can never appear in, so the encoded forms alone let the
+        # simplest regression of all, putting the token straight into the topic, go unnoticed.
+        refute Gate.live_socket_id(token) =~ token
+        refute Gate.live_socket_id(token) =~ Base.url_encode64(token, padding: false)
+      end
+
+      test "log_out tells that socket to go away", ctx do
+        response = signed_in(ctx.account)
+        topic = Plug.Conn.get_session(response, "live_socket_id")
+        assert topic
+
+        Ithibati.TestEndpoint.subscribe(topic)
+
+        recycle(response) |> get("/session/out")
+
+        assert_receive %Phoenix.Socket.Broadcast{event: "disconnect", topic: ^topic}
+      end
+
+      # The consumer the guard exists for. A `live_socket_id` in an application with no pubsub
+      # server would not merely fail to disconnect: `Phoenix.Socket` subscribes to that id when a
+      # socket connects, through the same call that raises, so every websocket would die at init.
+      # Writing nothing leaves such an application exactly where it was.
+      test "an application without a pubsub server is left alone, not broken", ctx do
+        conn = build_conn_with_endpoint(Ithibati.TestEndpointWithoutPubSub)
+        signed_in = Gate.log_in(conn, ctx.account)
+
+        assert Plug.Conn.get_session(signed_in, Gate.session_key())
+        refute Plug.Conn.get_session(signed_in, "live_socket_id")
+
+        # Nothing was named, so nothing is said: this is the *write* being skipped. That signing
+        # out stays quiet when a socket id is present anyway is the next test's job.
+        assert Gate.log_out(signed_in)
+      end
+
+      # The write and the broadcast are guarded on the same condition, but they do not happen in the
+      # same *release*: a session cookie outlives a deploy. An application that drops or renames its
+      # `:pubsub_server` still has cookies carrying the key, and every one of those sign-outs would
+      # raise if the broadcast trusted the write.
+      test "a cookie from before the pubsub server went away still signs out", ctx do
+        conn =
+          Ithibati.TestEndpointWithoutPubSub
+          |> build_conn_with_endpoint()
+          |> Plug.Conn.put_session(Gate.session_key(), Tokens.generate_session_token(ctx.account))
+          |> Plug.Conn.put_session("live_socket_id", "ithibati_sessions:left-over")
+
+        assert Gate.log_out(conn)
+      end
+    end
+
     # The *response*, not a request built from it: recycling it gives a fresh connection carrying the
     # session cookie, and it can be recycled more than once — which is what a stolen cookie is.
     defp signed_in(account), do: build_conn() |> get("/session/#{account.id}")
+
+    # `log_in/2` now asks the connection which endpoint it belongs to, which a bare `build_conn/0`
+    # does not say — only a request through one sets it.
+    defp build_conn_with_endpoint(endpoint) do
+      build_conn()
+      |> Plug.Conn.put_private(:phoenix_endpoint, endpoint)
+      |> Plug.Test.init_test_session(%{})
+    end
 
     defp socket, do: %Phoenix.LiveView.Socket{}
 
