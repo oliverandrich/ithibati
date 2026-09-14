@@ -148,6 +148,7 @@ defmodule IthibatiOpenWeb.HookFailuresTest do
     |> open("/")
     |> fill_in(css("input[name=username]"), with: "ada")
     |> click(button("Register"))
+    |> landed_on("/recovery-codes")
     |> assert_has(css("h1", text: "Your recovery codes"))
 
     # A second registration for the name that now exists. The reason travels from the handler through

@@ -13,6 +13,12 @@ defmodule IthibatiOpenWeb.FeatureCase do
   """
   use ExUnit.CaseTemplate
 
+  # The test modules get this through the `using` block below; this module needs it too, because
+  # `assert_has/2` is a macro that expands into `execute_query/2` and both have to be in scope here.
+  import Wallaby.Browser
+
+  alias Wallaby.Query
+
   using do
     quote do
       use Wallaby.Feature
@@ -35,7 +41,57 @@ defmodule IthibatiOpenWeb.FeatureCase do
   different test each time, which reads as flakiness rather than as the race it is.
   """
   def open(session, path) do
-    session |> Wallaby.Browser.visit(path) |> connected()
+    session |> visit(path) |> connected()
+  end
+
+  @doc """
+  Waits until the browser has actually arrived at a path, and answers the session.
+
+  For the moment after a ceremony, where the hook follows the handler's `%{redirect: …}` with a
+  full page load. Asserting on content across that swap is what produced the one failure this
+  suite could not explain: Wallaby finds the elements, then asks Chrome whether each is visible,
+  and if the document has been replaced in between Chrome answers *"Node with given id does not
+  belong to the document"*. Wallaby's `execute_query/2` rescues `StaleReferenceError` and would
+  have retried; this arrives as a bare `RuntimeError` from the HTTP client and escapes.
+
+  `current_path/1` holds no element references, so it is safe to ask across the swap; once it
+  answers, the document a later query finds is the new one. Where the redirect leads back to the
+  page the browser is already on, this cannot help — see `through_navigation/1`.
+  """
+  def landed_on(session, path) do
+    result =
+      retry(fn ->
+        case current_path(session) do
+          ^path -> {:ok, session}
+          other -> {:error, {:still_at, other}}
+        end
+      end)
+
+    case result do
+      {:ok, session} -> session
+      {:error, {:still_at, other}} -> flunk("never reached #{path}; still at #{other}")
+    end
+  end
+
+  @doc """
+  Runs an assertion, and runs it again if the document was swapped underneath it.
+
+  For the redirect `landed_on/2` cannot wait for: one that leads to the path the browser is already
+  on, where the poll is satisfied before the navigation has even started. Signing in is that —
+  the handler answers `%{redirect: "/"}` from a page already at `/`.
+
+  So this one does not predict the swap; it notices it happened. Matching on Chrome's message is
+  narrow, which is why it is confined to the single site that cannot be solved by waiting.
+  """
+  def through_navigation(session, query, attempts \\ 10) do
+    assert_has(session, query)
+  rescue
+    error in RuntimeError ->
+      if Exception.message(error) =~ "does not belong to the document" and attempts > 0 do
+        through_navigation(session, query, attempts - 1)
+      else
+        reraise(error, __STACKTRACE__)
+      end
   end
 
   @doc """
@@ -46,7 +102,7 @@ defmodule IthibatiOpenWeb.FeatureCase do
   """
   def connected(session) do
     # `find/2` blocks and raises if it never appears, which is the waiting and the check in one.
-    Wallaby.Browser.find(session, Wallaby.Query.css("[data-phx-main].phx-connected"))
+    find(session, Query.css("[data-phx-main].phx-connected"))
 
     session
   end

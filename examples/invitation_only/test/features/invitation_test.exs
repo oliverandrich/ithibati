@@ -17,6 +17,7 @@ defmodule IthibatiInvitesWeb.InvitationTest do
     |> open("/")
     |> fill_in(css("input[name=username]"), with: username)
     |> click(button("Claim this instance"))
+    |> landed_on("/recovery-codes")
     |> assert_has(css("h1", text: "Your recovery codes"))
   end
 
@@ -44,6 +45,7 @@ defmodule IthibatiInvitesWeb.InvitationTest do
     |> assert_has(css("p", text: "Nobody has claimed this instance yet"))
     |> fill_in(css("input[name=username]"), with: "ada")
     |> click(button("Claim this instance"))
+    |> landed_on("/recovery-codes")
     |> assert_has(css("h1", text: "Your recovery codes"))
 
     link = invite_link(session, "grace")
@@ -64,6 +66,7 @@ defmodule IthibatiInvitesWeb.InvitationTest do
     |> assert_has(css("p", text: "The account will be called"))
     |> refute_has(css("main input"))
     |> click(button("Accept with a passkey"))
+    |> landed_on("/recovery-codes")
     |> assert_has(css("h1", text: "Your recovery codes"))
 
     session
@@ -86,6 +89,7 @@ defmodule IthibatiInvitesWeb.InvitationTest do
     |> clear_cookies()
     |> open(link)
     |> click(button("Accept with a passkey"))
+    |> landed_on("/recovery-codes")
     |> assert_has(css("h1", text: "Your recovery codes"))
 
     spent = session |> clear_cookies() |> open(link) |> main_text()

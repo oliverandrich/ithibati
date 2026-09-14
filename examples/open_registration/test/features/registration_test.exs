@@ -14,6 +14,7 @@ defmodule IthibatiOpenWeb.RegistrationTest do
     |> open("/")
     |> fill_in(css("input[name=username]"), with: username)
     |> click(button("Register"))
+    |> landed_on("/recovery-codes")
     |> assert_has(css("h1", text: "Your recovery codes"))
   end
 
@@ -28,6 +29,7 @@ defmodule IthibatiOpenWeb.RegistrationTest do
     |> click(button("Register"))
     # The handler answers `%{redirect: "/recovery-codes"}` and the hook acts on it with a full page
     # load, which a sign-in needs anyway: renewing the session takes the CSRF token with it.
+    |> landed_on("/recovery-codes")
     |> assert_has(css("h1", text: "Your recovery codes"))
     |> assert_has(css("main li", count: 12))
 
@@ -55,9 +57,10 @@ defmodule IthibatiOpenWeb.RegistrationTest do
     # Usernameless: the sign-in names no credential at all, so this only works because the
     # credential is discoverable — the property `registration_options/3` refuses to leave to the
     # authenticator's discretion.
+    # This redirect leads back to `/`, where the browser already is.
     session
     |> click(button("Sign in with a passkey"))
-    |> assert_has(css(".alert-success", text: "Signed in as ada"))
+    |> through_navigation(css(".alert-success", text: "Signed in as ada"))
   end
 
   # The bug `Ithibati.Web.Gate` closes: a revoked token stops the *next* request and the next
