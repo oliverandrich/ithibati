@@ -20,7 +20,13 @@ defmodule Ithibati.Credo.ConfigTest do
       # sources rather than from the application manifest, which goes stale and keeps listing
       # modules whose beam is gone.
       shipped: Enum.flat_map(Path.wildcard("credo/**/*.ex"), &modules_in/1),
-      offered: Enum.flat_map(Path.wildcard("lib/ithibati/credo/**/*.ex"), &modules_in/1)
+      # Only the checks: `lib/ithibati/credo/` also holds what they share, and a helper is not
+      # something a consumer switches on.
+      offered:
+        "lib/ithibati/credo/**/*.ex"
+        |> Path.wildcard()
+        |> Enum.flat_map(&modules_in/1)
+        |> Enum.filter(&Credo.Check.defined?/1)
     }
   end
 

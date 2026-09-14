@@ -149,9 +149,43 @@ defmodule Ithibati.Credo.NoDirectTableAccessTest do
         |> assert_issue(fn issue -> assert issue.trigger == schema end)
       end
     end
+
+    # Came with the shared alias table rather than written here: a renamed alias resolves like
+    # any other.
+    test "an alias that renamed one of ours" do
+      """
+      defmodule App.Accounts do
+        import Ecto.Query
+        alias Ithibati.UserToken, as: Sessions
+
+        def all, do: from(t in Sessions)
+      end
+      """
+      |> check()
+      |> assert_issue(fn issue -> assert issue.message =~ "Ithibati.UserToken" end)
+    end
   end
 
   describe "it leaves alone" do
+    # Came with the shared alias table too: this rule used to guess.
+    test "a name that two modules in one file alias differently" do
+      """
+      defmodule App.A do
+        import Ecto.Query
+        alias Ithibati.UserToken
+        def a, do: from(t in UserToken)
+      end
+
+      defmodule App.B do
+        import Ecto.Query
+        alias App.UserToken
+        def b, do: from(t in UserToken)
+      end
+      """
+      |> check()
+      |> refute_issues()
+    end
+
     # The reason a consumer can switch this on at all: this library hands these structs out, and
     # handling one is the ordinary thing to do with it.
     test "a struct this library handed back" do

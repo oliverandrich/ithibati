@@ -71,9 +71,12 @@ it.
 
 ## Credo checks
 
-Two rules you can switch on in your own `.credo.exs`. They ship with this library and cost you
+Rules you can switch on in your own `.credo.exs`. They ship with this library and cost you
 nothing if you do not name them — they are only defined when Credo is there to define them
 against, so a release of yours does not carry them.
+
+Say plainly what they are: a rule you have to switch on is a hint for somebody already being
+careful, not a boundary. They report, and that is all they do.
 
 ```elixir
 # .credo.exs
@@ -86,7 +89,8 @@ against, so a release of yours does not carry them.
       checks: %{
         extra: [
           {Ithibati.Credo.NoDirectTableAccess, []},
-          {Ithibati.Credo.NoWaxConfiguration, []}
+          {Ithibati.Credo.NoWaxConfiguration, []},
+          {Ithibati.Credo.NoInternalCalls, []}
         ]
       }
     }
@@ -94,9 +98,20 @@ against, so a release of yours does not carry them.
 }
 ```
 
-`Ithibati.Credo.NoDirectTableAccess` keeps this library's tables behind this library, and
-`Ithibati.Credo.NoWaxConfiguration` reports the two `wax_` settings nothing here reads. Each
-module carries its own reasoning, published here and shown by `mix credo explain`.
+`Ithibati.Credo.NoDirectTableAccess` keeps this library's tables behind this library,
+`Ithibati.Credo.NoWaxConfiguration` reports the two `wax_` settings nothing here reads, and
+`Ithibati.Credo.NoInternalCalls` reports a call to something this library did not document —
+which is its way of saying it will change that without telling you. Each module carries its own
+reasoning, published here and shown by `mix credo explain`.
+
+Reflection you may legitimately call — `__schema__/1`,
+`__struct__/0` and their kind — is left alone; an underscored name this library marked itself is
+not, because the underscores say nothing about who marked it.
+
+Two things it cannot see. A module whose documentation chunk was stripped at build time answers
+nothing, and the rule then reports nothing about it — indistinguishable from a clean run. And a
+bare name that two modules in one file alias differently is dropped rather than guessed at, so
+that one file loses a finding instead of gaining a wrong one.
 
 `NoDirectTableAccess` recognises a schema of ours wherever it is being read — piped into a repo,
 joined into somebody else's query, passed to a repo called anything at all — and a table of ours

@@ -225,7 +225,13 @@ defmodule Ithibati.Schema.Invitation do
     put_change(changeset, :expires_at, DateTime.add(DateTime.utc_now(), days, :day))
   end
 
-  @doc false
+  @doc """
+  Whether a module carries what this macro injects.
+
+  The invitation half of `Ithibati.Schema.User.account_schema?/1`, and public for the same
+  reason: an application that configures an invitation schema can ask whether it is one, rather
+  than checking for the marker function by hand and finding out the next time it is renamed.
+  """
   def invitation_schema?(module),
     do: Code.ensure_loaded?(module) and function_exported?(module, :__ithibati_invitation__, 1)
 end

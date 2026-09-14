@@ -11,10 +11,8 @@ defmodule Ithibati.Identity.Steps do
 
   @default :account
 
-  @doc false
   def name(opts), do: Keyword.get(opts, :account, @default)
 
-  @doc false
   # Named rather than left to `Map.fetch!`'s own message, which reports a missing key against a map
   # of every step run so far — a wall of changesets in which the actual mistake, a step named
   # something else, is the one thing not shown. Which fragment asked is in the stack trace and is
@@ -34,7 +32,6 @@ defmodule Ithibati.Identity.Steps do
     end
   end
 
-  @doc false
   # For the one fragment that is allowed to run without an account: `Invitations.accept/3` composed
   # on its own has nothing to check an invitation's addressee against, and that is a shape an
   # application may want. A step that *is* there still has to hold an account.

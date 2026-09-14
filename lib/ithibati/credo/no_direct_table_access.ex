@@ -2,6 +2,8 @@
 
 if Code.ensure_loaded?(Credo.Check) do
   defmodule Ithibati.Credo.NoDirectTableAccess do
+    alias Ithibati.Credo.Aliases
+
     use Credo.Check,
       id: "ITH101",
       base_priority: :high,
@@ -27,14 +29,14 @@ if Code.ensure_loaded?(Credo.Check) do
 
     # The schemas, not the table names: the prefix is the application's to choose, so a name
     # written out here would be wrong for anybody who set one.
-    @owned [:UserKey, :RecoveryCode, :UserToken, :Bootstrap]
+    @owned [Ithibati.UserKey, Ithibati.RecoveryCode, Ithibati.UserToken, Ithibati.Bootstrap]
 
     @impl true
     def run(%SourceFile{} = source_file, params) do
       ast = SourceFile.ast(source_file)
 
       known = %{
-        aliased: aliased(ast),
+        aliased: Aliases.collect(ast),
         prefix: table_prefix(),
         issue_meta: IssueMeta.for(source_file, params)
       }
@@ -63,9 +65,9 @@ if Code.ensure_loaded?(Credo.Check) do
     defp source_of(_node), do: nil
 
     defp reading({:__aliases__, _meta, segments}, meta, acc, known) do
-      case owned(segments, known.aliased) do
+      case Aliases.resolve(segments, known.aliased) do
         nil -> acc
-        name -> [issue_for(known, meta[:line], name, List.last(segments)) | acc]
+        module -> owned(module, segments, meta, acc, known)
       end
     end
 
@@ -77,36 +79,13 @@ if Code.ensure_loaded?(Credo.Check) do
 
     defp reading(_source, _meta, acc, _known), do: acc
 
-    # A bare name counts only when this file aliased it from `Ithibati` — otherwise a consumer's
-    # own `MyApp.Bootstrap` would be reported as ours, with a message naming a module their source
-    # does not contain.
-    defp owned([:Ithibati, name], _aliased) when name in @owned, do: "Ithibati.#{name}"
-    defp owned([:"Elixir", :Ithibati, name], _aliased) when name in @owned, do: "Ithibati.#{name}"
-
-    defp owned([name], aliased) when name in @owned do
-      if MapSet.member?(aliased, name), do: "Ithibati.#{name}"
+    # Resolved to a module first, so a consumer's own `MyApp.Bootstrap` is not reported as
+    # ours with a message naming a module their source does not contain.
+    defp owned(module, segments, meta, acc, known) do
+      if module in @owned,
+        do: [issue_for(known, meta[:line], inspect(module), List.last(segments)) | acc],
+        else: acc
     end
-
-    defp owned(_segments, _aliased), do: nil
-
-    defp aliased(ast) do
-      ast
-      |> Credo.Code.prewalk(&{&1, alias_names(&1, &2)})
-      |> MapSet.new()
-    end
-
-    defp alias_names({:alias, _meta, [{:__aliases__, _, [:Ithibati, name]} | _opts]}, acc)
-         when name in @owned,
-         do: [name | acc]
-
-    # `alias Ithibati.{UserKey, UserToken}` does not nest: each name is its own node under a call.
-    defp alias_names({{:., _, [{:__aliases__, _, [:Ithibati]}, :{}]}, _meta, parts}, acc) do
-      for {:__aliases__, _, [name]} <- parts, name in @owned, reduce: acc do
-        names -> [name | names]
-      end
-    end
-
-    defp alias_names(_node, acc), do: acc
 
     # Read rather than assumed: an application that set a prefix has different table names, and
     # this check runs inside that application, where the setting is there to be read.

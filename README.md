@@ -69,7 +69,7 @@ range and both account-key types.
 
 Once it is installed, `mix ithibati.doctor` says whether this application got the rest of it
 right — the repo, the schema, the migration, the routes — in one pass rather than at whichever
-request happens to need each piece, and two Credo rules are there to switch on. See
+request happens to need each piece, and there are Credo rules to switch on beside it. See
 [tooling](docs/tooling.md).
 
 ## The routes
