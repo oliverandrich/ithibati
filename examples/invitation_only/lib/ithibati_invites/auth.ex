@@ -16,6 +16,7 @@ defmodule IthibatiInvites.Auth do
   alias Ithibati.Identity.Grant
   alias Ithibati.Identity.Instance
   alias Ithibati.Identity.Invitations
+  alias Ithibati.Schema
   alias Ithibati.Web.Gate
   alias IthibatiInvites.Accounts.User
   alias IthibatiInvites.Repo
@@ -113,17 +114,12 @@ defmodule IthibatiInvites.Auth do
     |> Grant.with_key_and_codes(key_attrs)
   end
 
-  # "Taken" and "not a name" come from different places — the unique index and the format — and only
-  # the index can answer the first, since two people may pick one name in the same second. Reading
-  # the constraint off the error is what keeps a malformed name from being reported as somebody
-  # else's.
+  # "Taken" and "not a name" come from different places — the unique index and the format — and
+  # only the index can answer the first, since two people may pick one name in the same second.
+  # Asked of the library rather than read off the changeset here: it declared that index and is the
+  # only party that knows which of this table's unique columns is the identifier.
   defp account_error(changeset) do
-    taken? =
-      Enum.any?(changeset.errors, fn {_field, {_message, opts}} ->
-        opts[:constraint] == :unique
-      end)
-
-    if taken?, do: :username_taken, else: :invalid_username
+    if Schema.User.identifier_taken?(changeset), do: :username_taken, else: :invalid_username
   end
 
   @impl true

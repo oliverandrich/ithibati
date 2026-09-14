@@ -18,6 +18,7 @@ defmodule Ithibati.TestUser do
     ithibati_account()
 
     field :nickname, :string
+    field :slug, :string
 
     timestamps(type: :utc_datetime_usec)
   end
@@ -25,7 +26,9 @@ defmodule Ithibati.TestUser do
   def changeset(user, attrs) do
     user
     |> identifier_changeset(attrs)
-    |> cast(attrs, [:nickname])
+    |> cast(attrs, [:nickname, :slug])
+    # The application's own unique column, which this library knows nothing about.
+    |> unique_constraint(:slug)
   end
 end
 

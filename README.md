@@ -331,6 +331,25 @@ def passkey_display_name(account), do: account.name
 No fallback is needed. An account that has not filled that in answers `nil`, and this library then
 shows the identifier.
 
+### Telling "that name is taken" from "that is not a name"
+
+A registration that the database refuses hands your handler an `Ecto.Changeset`, and the two
+reasons want different words. Ask which it was:
+
+```elixir
+if Ithibati.Schema.User.identifier_taken?(changeset),
+  do: {:error, :username_taken},
+  else: {:error, :invalid_username}
+```
+
+It looks only at the identifier field. Written by hand this is a scan of the changeset for
+`constraint: :unique`, which also finds *your* unique columns — a slug, a handle — and reports a
+collision on one of them as the name being taken. The library named that field, so it is the one
+that can tell them apart.
+
+It answers `false` for a changeset the database has never seen: a constraint error only exists
+once an insert has been refused.
+
 ## The first account
 
 An instance starts with nobody, and the first account cannot be invited — there is nobody to write

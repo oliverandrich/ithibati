@@ -179,6 +179,38 @@ defmodule Ithibati.Schema.User do
     do: Code.ensure_loaded?(module) and function_exported?(module, :__ithibati__, 1)
 
   @doc """
+  Whether the identifier is what a failed insert collided on.
+
+  A transaction that refuses an account hands back an `Ecto.Changeset`, and an application then has
+  to decide what to tell somebody. "That name is taken" and "that is not a name" come from
+  different places — a unique index and the format — and only this library knows which *field* is
+  the identifier, because `ithibati_account/0` is what declared it.
+
+  The field is what is matched, so a uniqueness error on it counts however the index is shaped: an
+  application that scopes the identifier to a tenant gets `true` for a collision inside that
+  tenant, which is what it means there.
+
+  Answered rather than said: whether this becomes `:username_taken`, an English sentence or an HTTP
+  status stays with the application, the same way `Ithibati.Web.Handler` leaves what a verified
+  assertion is worth to the application. A library that shipped the wording would be choosing the
+  tone of somebody else's product.
+
+  > #### Only after the database has seen it {: .warning}
+  >
+  > A constraint error exists on a changeset only once an insert has been attempted and refused. A
+  > changeset built and never given to the repo answers `false` however certainly the name is
+  > taken, which looks exactly like this function not working.
+
+  """
+  def identifier_taken?(%Ecto.Changeset{data: %module{}} = changeset) do
+    ensure_account_schema!(module)
+
+    changeset.errors
+    |> Keyword.get_values(module.__ithibati__(:identifier))
+    |> Enum.any?(fn {_message, opts} -> opts[:constraint] == :unique end)
+  end
+
+  @doc """
   The `name` and `displayName` a WebAuthn registration shows, for an account or for an identifier
   that does not have one yet.
 
@@ -187,8 +219,7 @@ defmodule Ithibati.Schema.User do
   instance has no account at all, which is why the second clause exists.
   """
   def credential_user(%module{} = account) do
-    account_schema?(module) ||
-      raise(ArgumentError, "#{inspect(module)} does not `use Ithibati.Schema.User`")
+    ensure_account_schema!(module)
 
     identifier = Map.fetch!(account, module.__ithibati__(:identifier))
 
@@ -197,4 +228,11 @@ defmodule Ithibati.Schema.User do
 
   def credential_user(identifier) when is_binary(identifier),
     do: %{name: identifier, display_name: identifier}
+
+  # One reaction to `account_schema?/1`, for the same reason there is one predicate: a message
+  # spelled twice is a message that gets edited once.
+  defp ensure_account_schema!(module) do
+    account_schema?(module) ||
+      raise(ArgumentError, "#{inspect(module)} does not `use Ithibati.Schema.User`")
+  end
 end

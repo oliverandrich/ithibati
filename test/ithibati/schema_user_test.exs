@@ -14,7 +14,7 @@ defmodule Ithibati.Schema.UserTest do
   # Every account schema the suite carries, with the field it is identified by and the fields it
   # declared itself. One list, so a fourth fixture is one line and no test forgets it.
   @fixtures [
-    {TestUser, :email, [:id, :nickname, :inserted_at, :updated_at]},
+    {TestUser, :email, [:id, :nickname, :slug, :inserted_at, :updated_at]},
     {MemberUser, :username, [:id, :inserted_at, :updated_at]},
     {GuestUser, :handle, [:id, :inserted_at, :updated_at]},
     {NamedUser, :email, [:id, :nickname, :inserted_at, :updated_at]}
@@ -231,6 +231,54 @@ defmodule Ithibati.Schema.UserTest do
                TestRepo.insert(MemberUser.changeset(%MemberUser{}, %{username: "AdaLovelace"}))
 
       assert %{username: ["has already been taken"]} = errors_on(changeset)
+    end
+
+    # Which collision it was is the application's next question, and answering it by hand means
+    # scanning the changeset for `constraint: :unique` — which finds the application's own
+    # constraints too. Both examples had that bug before this predicate existed.
+    test "and the library can say whether the identifier is the one that collided" do
+      {:ok, _} = insert("taken@example.test")
+
+      assert {:error, changeset} = insert("taken@example.test")
+      assert Schema.User.identifier_taken?(changeset)
+    end
+
+    test "and says no when a constraint of the application's own collided instead" do
+      {:ok, _} =
+        TestRepo.insert(
+          TestUser.changeset(%TestUser{}, %{email: "one@example.test", slug: "ada"})
+        )
+
+      assert {:error, changeset} =
+               TestRepo.insert(
+                 TestUser.changeset(%TestUser{}, %{email: "two@example.test", slug: "ada"})
+               )
+
+      assert %{slug: ["has already been taken"]} = errors_on(changeset)
+      refute Schema.User.identifier_taken?(changeset)
+    end
+
+    # The same guard `credential_user/1` carries, and pinned for the same reason: without it the
+    # answer is an `UndefinedFunctionError` from inside this library rather than a sentence naming
+    # what the caller passed.
+    test "and refuses a changeset over something that is not an account at all" do
+      changeset = Ecto.Changeset.change(%Ithibati.TestInvitation{})
+
+      assert_raise ArgumentError, ~r/does not `use Ithibati.Schema.User`/, fn ->
+        Schema.User.identifier_taken?(changeset)
+      end
+    end
+
+    # The caveat that belongs in the documentation, pinned so the documentation cannot drift from
+    # it: a changeset the database has never seen carries no constraint errors at all, however
+    # certainly the name is taken. The row below is for the reader rather than for the assertion —
+    # this function never asks the repository anything, so the answer is the same without it.
+    test "and answers no for a changeset that was never given to the database" do
+      {:ok, _} = insert("taken@example.test")
+
+      refute Schema.User.identifier_taken?(
+               TestUser.changeset(%TestUser{}, %{email: "taken@example.test"})
+             )
     end
 
     # Ecto derives `guests_handle_index` from the schema and the field; this application's index is
