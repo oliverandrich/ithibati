@@ -114,10 +114,16 @@ defmodule Ithibati.Identity.Tokens do
   # a token that no lookup can accept, and it would do so silently.
   defp known_context!(context), do: validity!(context)
 
-  # The whole setting is checked, not only the entry being asked for. Checking one entry would let
-  # `%{"device" => {3, :month}}` boot, serve every session request, and first raise inside the
-  # request that carries the first device token.
-  defp validity!(context) do
+  # The whole setting, checked and merged with the defaults. Every entry is validated, not only
+  # the one a caller is about to ask for: checking one would let `%{"device" => {3, :month}}`
+  # boot, serve every session request, and first raise inside the request that carries the first
+  # device token.
+  #
+  # Its own function because that is the question `Ithibati.Doctor` asks — is this setting
+  # readable — which is not a question about any one context, and answering it through
+  # `validity!/1` would need a context invented to stand in for none.
+  @doc false
+  def configured_validity! do
     configured = Application.get_env(:ithibati, :token_validity, %{})
 
     # A keyword list is the idiom every other setting here uses, so it is what a reader reaches for;
@@ -134,7 +140,11 @@ defmodule Ithibati.Identity.Tokens do
 
     Enum.each(validity, &valid_entry!/1)
 
-    case Map.fetch(validity, context) do
+    validity
+  end
+
+  defp validity!(context) do
+    case Map.fetch(configured_validity!(), context) do
       {:ok, entry} ->
         entry
 

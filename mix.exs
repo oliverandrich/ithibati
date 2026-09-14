@@ -147,7 +147,7 @@ defmodule Ithibati.MixProject do
     [
       main: "readme",
       source_ref: "v#{@version}",
-      extras: ["README.md", "docs/design.md", "CHANGELOG.md", "LICENSE"]
+      extras: ["README.md", "docs/design.md", "docs/tooling.md", "CHANGELOG.md", "LICENSE"]
     ]
   end
 

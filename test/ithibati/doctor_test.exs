@@ -1,0 +1,195 @@
+defmodule Ithibati.DoctorTest do
+  @moduledoc """
+  What the doctor says, and — the half that matters — that it says something when asked about a
+  broken application.
+
+  A check that has only ever been seen passing is not a check. Every question here is asked twice:
+  once of this suite's own application, which is set up correctly, and once of one broken on
+  purpose. The database questions are broken by dropping inside the test's own transaction, which
+  the sandbox rolls back.
+  """
+  use Ithibati.DataCase, async: false
+
+  alias Ecto.Adapters.SQL
+  alias Ithibati.Doctor
+  alias Ithibati.TestKey
+
+  # Configured, loadable, a real Ecto repo — and never started. The shape an application has when
+  # somebody names a repo they have not put in their supervision tree.
+  defmodule UnstartedRepo do
+    use Ecto.Repo, otp_app: :ithibati, adapter: Ecto.Adapters.Postgres
+  end
+
+  defp subjects(results, status),
+    do: for({subject, {^status, _detail}} <- results, do: subject)
+
+  defp detail(results, subject) do
+    {_subject, {_status, detail}} = List.keyfind!(results, subject, 0)
+    detail
+  end
+
+  describe "an application that is set up correctly" do
+    test "is told so, and nothing is reported wrong" do
+      results = Doctor.examine(:ithibati)
+
+      assert subjects(results, :error) == []
+      assert "config :ithibati, repo:" in subjects(results, :ok)
+      assert "the repo answers" in subjects(results, :ok)
+      assert "this library's tables" in subjects(results, :ok)
+      assert "config :ithibati, users_key_type:" in subjects(results, :ok)
+    end
+
+    # The subjects and not the statuses: the leg without the optional dependencies has no web
+    # half, so the routes question is skipped there and rightly.
+    test "and says nothing about wax_, which is what an application that set none looks like" do
+      delete_env(:wax_, :rp_id)
+      delete_env(:wax_, :origin)
+
+      assert "config :wax_" in subjects(Doctor.examine(:ithibati), :ok)
+    end
+
+    test "and every question is asked, so a silent omission cannot pass for health" do
+      assert Enum.map(Doctor.examine(:ithibati), &elem(&1, 0)) == [
+               "config :ithibati, repo:",
+               "the repo answers",
+               "config :ithibati, user_schema:",
+               "config :ithibati, invitation_schema:",
+               "config :ithibati, token_validity:",
+               "this library's tables",
+               "config :ithibati, users_key_type:",
+               "the identifier's unique index",
+               "config :wax_",
+               "the ceremony routes"
+             ]
+    end
+  end
+
+  describe "configuration it refuses" do
+    test "a repo nobody configured, and the questions that needed it are skipped, not crashed" do
+      delete_env(:ithibati, :repo)
+
+      results = Doctor.examine(:ithibati)
+
+      assert detail(results, "config :ithibati, repo:") =~ "config :ithibati, repo: MyApp.Repo"
+      assert "the repo answers" in subjects(results, :skip)
+      assert "this library's tables" in subjects(results, :skip)
+      assert "config :ithibati, users_key_type:" in subjects(results, :skip)
+    end
+
+    test "a user schema that does not use the macro" do
+      put_env(:ithibati, :user_schema, Ithibati.DoctorTest)
+
+      assert detail(Doctor.examine(:ithibati), "config :ithibati, user_schema:") =~
+               "does not `use Ithibati.Schema.User`"
+    end
+
+    test "a token validity nobody can read" do
+      put_env(:ithibati, :token_validity, %{"session" => {0, :fortnight}})
+
+      assert detail(Doctor.examine(:ithibati), "config :ithibati, token_validity:") =~
+               "expected {count, unit}"
+    end
+
+    # The one that looks like configuration and is not: `wax_` reads these as its own defaults, and
+    # this library passes both per call, so whatever is set here is never consulted.
+    test "a wax_ relying party, which this library never reads" do
+      put_env(:wax_, :rp_id, "example.test")
+
+      assert detail(Doctor.examine(:ithibati), "config :wax_") =~ "rp_id"
+    end
+  end
+
+  describe "a repo that is configured and does not answer" do
+    # The whole list is built before a line of it is printed, so an exception here costs the
+    # reader every other answer — including the one that says what is wrong.
+    test "is reported, and the questions that needed it are skipped rather than raising" do
+      put_env(:ithibati, :repo, UnstartedRepo)
+
+      results = Doctor.examine(:ithibati)
+
+      assert "the repo answers" in subjects(results, :error)
+      assert detail(results, "this library's tables") == "the repo did not answer"
+      assert detail(results, "config :ithibati, users_key_type:") == "the repo did not answer"
+    end
+  end
+
+  describe "the database" do
+    # Dropped inside the test's own transaction: the sandbox rolls it back, so this is a real
+    # missing table rather than a stubbed answer about one.
+    test "a table the migration should have created and did not" do
+      SQL.query!(Ithibati.TestRepo, "DROP TABLE ithibati_bootstrap CASCADE", [])
+
+      detail = detail(Doctor.examine(:ithibati), "this library's tables")
+
+      assert detail =~ "ithibati_bootstrap"
+      assert detail =~ "migration"
+    end
+
+    test "an account table whose key is not the configured type" do
+      SQL.query!(
+        Ithibati.TestRepo,
+        "CREATE TABLE wrong_key (id text PRIMARY KEY)",
+        []
+      )
+
+      assert {:error, message} = Doctor.key_type(Ithibati.TestRepo, nil, "wrong_key")
+      assert message =~ "users_key_type"
+      assert message =~ "text"
+    end
+
+    # The column has to carry the type this suite is configured for, or the type branch answers
+    # first and this test passes while measuring the wrong refusal.
+    # A table that is there but has no such column is a different mistake from one that is not
+    # there.
+    test "an account table without the column the foreign keys point at" do
+      SQL.query!(Ithibati.TestRepo, "CREATE TABLE odd_key (user_id bigint PRIMARY KEY)", [])
+
+      assert {:error, message} = Doctor.key_type(Ithibati.TestRepo, nil, "odd_key")
+      assert message =~ "has no column id"
+      refute message =~ "there is no table"
+    end
+
+    # `:migration_foreign_key` holds options, not a name. Read as a bare name it is a keyword
+    # list, which reaches Postgres as a column and raises on the way — taking the whole run with
+    # it, because the list is built before anything is printed.
+    test "an account whose foreign keys point at a column the repo renamed" do
+      put_env(
+        :ithibati,
+        Ithibati.TestRepo,
+        Keyword.put(
+          Application.get_env(:ithibati, Ithibati.TestRepo),
+          :migration_foreign_key,
+          column: :user_id
+        )
+      )
+
+      SQL.query!(
+        Ithibati.TestRepo,
+        "CREATE TABLE renamed_key (user_id #{TestKey.postgres_type()} PRIMARY KEY)",
+        []
+      )
+
+      assert {:ok, detail} = Doctor.key_type(Ithibati.TestRepo, nil, "renamed_key")
+      assert detail =~ "renamed_key.user_id"
+    end
+
+    # Dropped inside the transaction, so this is the real index gone rather than a stubbed answer.
+    # Nothing but the doctor asks this after the migration has run.
+    test "an identifier column whose unique index somebody dropped" do
+      SQL.query!(Ithibati.TestRepo, "DROP INDEX users_email_index", [])
+
+      detail = detail(Doctor.examine(:ithibati), "the identifier's unique index")
+
+      assert detail =~ "users.email carries no unique index"
+      assert detail =~ "MultipleResultsError"
+    end
+
+    test "an account table with no unique index on the column the keys point at" do
+      SQL.query!(Ithibati.TestRepo, "CREATE TABLE no_unique (id #{TestKey.postgres_type()})", [])
+
+      assert {:error, message} = Doctor.key_type(Ithibati.TestRepo, nil, "no_unique")
+      assert message =~ "carries no unique index"
+      refute message =~ "users_key_type"
+    end
+  end
+end

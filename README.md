@@ -67,6 +67,10 @@ migration reads the account table's own catalogue entries to check what it is ab
 foreign key at, and no other adapter answers those questions. CI builds both ends of the Elixir
 range and both account-key types.
 
+Once it is installed, `mix ithibati.doctor` says whether this application got the rest of it
+right — the repo, the schema, the migration, the routes — in one pass rather than at whichever
+request happens to need each piece. See [tooling](docs/tooling.md).
+
 ## The routes
 
 Four endpoints drive the two ceremonies, wired in one call:

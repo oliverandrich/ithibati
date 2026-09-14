@@ -29,6 +29,7 @@ defmodule Ithibati.Migration do
   use Ecto.Migration
 
   alias Ithibati.Bootstrap
+  alias Ithibati.Catalogue
   alias Ithibati.Config
   alias Ithibati.RecoveryCode
   alias Ithibati.UserKey
@@ -221,27 +222,16 @@ defmodule Ithibati.Migration do
     # this runs, and this one stays anyway: a check that depends on a flush somewhere else is a check
     # that breaks when two lines are swapped, and flushing an empty queue costs nothing.
     #
-    # `indpred IS NULL` rules out a partial index, and it is the one a consumer is most likely to
-    # have: `UNIQUE (email) WHERE deleted_at IS NULL` looks like a unique index and lets two rows
-    # share the value, which is the `Ecto.MultipleResultsError` this check exists to prevent. Same
-    # condition `referenced_column/2` puts on the account key, for the same reason.
+    # A partial index is the one a consumer is most likely to have: `UNIQUE (email) WHERE
+    # deleted_at IS NULL` looks like a unique index and lets two rows share the value, which is
+    # the `Ecto.MultipleResultsError` this check exists to prevent. `Ithibati.Catalogue` rules it
+    # out along with the rest, which is why this asks the same question the account key is asked.
     flush()
 
-    %{rows: rows} =
-      repo().query!(
-        """
-        SELECT 1
-        FROM pg_index x
-        JOIN pg_attribute a ON a.attrelid = x.indrelid AND a.attnum = x.indkey[0]
-        WHERE x.indisunique AND x.indnkeyatts = 1 AND x.indpred IS NULL
-          AND x.indrelid = $1::oid AND a.attname = $2
-        LIMIT 1
-        """,
-        [table_oid!(index.table), to_string(index.column)],
-        log: false
-      )
-
-    rows != [] ||
+    match?(
+      {_type, true},
+      Catalogue.column(repo(), table_oid!(index.table), index.column)
+    ) ||
       raise(
         ArgumentError,
         "#{inspect(index.schema)} passes `unique_index: false`, so this library expects the " <>
@@ -253,7 +243,6 @@ defmodule Ithibati.Migration do
   # What Postgres calls the column a foreign key of this type can point at. An `:id` account table
   # is `bigserial` by default but `serial` is a legal choice, and Postgres references across the
   # integer widths happily — they share an operator family.
-  @key_columns %{binary_id: ["uuid"], bigint: ["smallint", "integer", "bigint"]}
 
   # What `references/2` will demand of the account table, asked before anything is built rather than
   # discovered from inside it: the column it points at has to exist, be a type this foreign key can
@@ -279,11 +268,11 @@ defmodule Ithibati.Migration do
   end
 
   defp confirm_account_key!(opts) do
-    column = account_key_column(opts)
+    oid = table_oid!(opts.users_table)
 
-    case referenced_column(table_oid!(opts.users_table), column) do
-      nil -> refuse_missing_column!(column, opts)
-      [type, unique?] -> confirm_key!(type, unique?, column, opts)
+    case Catalogue.key_column(repo(), oid, opts.users_table, account_key_column(opts)) do
+      {:ok, _described} -> :ok
+      {:error, message} -> raise ArgumentError, message
     end
   end
 
@@ -294,19 +283,8 @@ defmodule Ithibati.Migration do
     references(opts.users_table, type: key_type()).column
   end
 
-  # Resolved the way Ecto resolves the `REFERENCES` clause it is about to emit: qualified when the
-  # migrator has a prefix, through the search path when it has not. Quoted by Postgres rather than
-  # by us, so a table whose name is not lower case answers for itself instead of being downcased
-  # into a different one.
   defp table_oid!(table) do
-    %{rows: [[oid]]} =
-      repo().query!(
-        "SELECT to_regclass(coalesce(quote_ident($2) || '.', '') || quote_ident($1))::oid",
-        [table, schema_prefix()],
-        log: false
-      )
-
-    oid ||
+    Catalogue.table_oid(repo(), schema_prefix(), table) ||
       raise(
         ArgumentError,
         "there is no table #{qualified(table)} — this library's migration reads and references " <>
@@ -314,65 +292,7 @@ defmodule Ithibati.Migration do
       )
   end
 
-  # A domain resolves to what it is built on, because that is what the foreign key compares against.
-  # The index has to cover that column and nothing else (`indnkeyatts`, which counts key columns
-  # only, so `PRIMARY KEY (id) INCLUDE (email)` still qualifies) and must not be partial, which
-  # Postgres refuses as a reference target.
-  defp referenced_column(oid, column) do
-    %{rows: rows} =
-      repo().query!(
-        """
-        SELECT format_type(
-                 CASE WHEN ty.typtype = 'd' THEN ty.typbasetype ELSE a.atttypid END,
-                 CASE WHEN ty.typtype = 'd' THEN ty.typtypmod ELSE a.atttypmod END
-               ),
-               EXISTS (
-                 SELECT 1 FROM pg_index x
-                 WHERE x.indrelid = a.attrelid AND x.indisunique AND x.indnkeyatts = 1
-                   AND x.indkey[0] = a.attnum AND x.indpred IS NULL
-               )
-        FROM pg_attribute a
-        JOIN pg_type ty ON ty.oid = a.atttypid
-        WHERE a.attrelid = $1::oid AND a.attname = $2 AND a.attnum > 0 AND NOT a.attisdropped
-        """,
-        [oid, to_string(column)],
-        log: false
-      )
-
-    List.first(rows)
-  end
-
-  defp confirm_key!(type, unique?, column, opts) do
-    type in Map.fetch!(@key_columns, key_type()) ||
-      raise(
-        ArgumentError,
-        "config :ithibati, users_key_type: #{inspect(Config.users_key_type())} — but " <>
-          "#{opts.users_table}.#{column} is #{type}. Configure the type that column has, or give " <>
-          "it the type you configured; a foreign key cannot bridge the two."
-      )
-
-    unique? ||
-      raise(
-        ArgumentError,
-        "#{opts.users_table}.#{column} carries no unique index, and Postgres will not let a " <>
-          "foreign key point at a column that does not. A primary key, a unique constraint or a " <>
-          "unique index on that column will do — beside a composite primary key if you have one."
-      )
-  end
-
-  defp refuse_missing_column!(column, opts) do
-    raise ArgumentError,
-          "#{opts.users_table} has no column #{column}, which is where this library's foreign " <>
-            "keys point. Ecto takes that name from the repo's `:migration_foreign_key` setting " <>
-            "and defaults it to `id`."
-  end
-
-  defp qualified(table) do
-    case schema_prefix() do
-      nil -> table
-      prefix -> "#{prefix}.#{table}"
-    end
-  end
+  defp qualified(table), do: Catalogue.qualified(schema_prefix(), table)
 
   # The migrator's prefix, or the one the repo migrates into by default — which is what
   # `Ecto.Migration` itself falls back to when it creates a table.
