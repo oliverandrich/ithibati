@@ -57,12 +57,28 @@ defmodule IthibatiOpenWeb.HookFailuresTest do
       [attribute, value]
     )
 
-    # Read back rather than assumed, because a test that spoiled nothing tests nothing — and it
-    # would fail on the message assertion instead, which says nothing about why.
-    if value do
-      assert_has(session, css("#passkey[#{attribute}='#{value}']"))
-    else
-      refute_has(session, css("#passkey[#{attribute}]"))
+    # Read back off the element rather than through a CSS query, because `Wallaby.Query.css/2`
+    # filters on *visibility* by default and this element is deliberately empty — it renders
+    # nothing and exists only to carry the hook and these four paths. Locally it measures 672×0 and
+    # counts as displayed anyway; on CI the same query found nothing while the attribute was set,
+    # which cost a red build and a wrong diagnosis. What the test means is "the element carries
+    # this", and that is a question with no visibility in it.
+    assert attribute_of(session, attribute) == value,
+           "#{attribute} is #{inspect(attribute_of(session, attribute))}, expected #{inspect(value)}"
+
+    session
+  end
+
+  defp attribute_of(session, attribute) do
+    execute_script(
+      session,
+      "return document.getElementById('passkey').getAttribute(arguments[0])",
+      [attribute],
+      &send(self(), {:attribute, &1})
+    )
+
+    receive do
+      {:attribute, value} -> value
     end
   end
 
