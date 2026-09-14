@@ -33,11 +33,11 @@ defmodule Ithibati.Schema.Invitation do
         end
       end
 
-  The options are the account macro's: `identifier:` (required), `format:` — for which
-  `Ithibati.Schema.Identifier.email_format/0` offers a pattern, and which may equally be a module
-  attribute standing above the `use` line — `constraint_name:` and
-  `unique_index:`, the last two naming the unique index on the token digest rather than on the
-  identifier.
+  The options are the account macro's: `identifier:` (required, and the one that has to be written
+  out), `format:` — for which `Ithibati.Schema.Identifier.email_format/0` offers a pattern — and
+  `constraint_name:` and `unique_index:`, the last two naming the unique index on the token digest
+  rather than on the identifier. Each of the three value options may be written inline or named
+  with a module attribute standing above the `use` line.
 
   `identifier:` names the field the invitee is addressed by. It has to be the same
   field the account schema uses, and `Ithibati.Config.invitation_schema/0` refuses the pair when it
@@ -84,28 +84,19 @@ defmodule Ithibati.Schema.Invitation do
   end
 
   defmacro __using__(opts) do
-    is_list(opts) ||
-      raise(
-        ArgumentError,
-        "use Ithibati.Schema.Invitation takes a literal keyword list, got: #{Macro.to_string(opts)}"
-      )
-
-    field = Identifier.identifier!(opts, __MODULE__)
-    format_call = Identifier.format_call(opts)
-    constraint = Identifier.constraint_name!(opts)
-    unique_index = Identifier.unique_index!(opts)
+    given = Identifier.options!(opts, __MODULE__)
 
     quote do
       import Ithibati.Schema.Invitation, only: [ithibati_invitation: 0]
 
       @before_compile Ithibati.Schema.Invitation
 
-      @ithibati_identifier unquote(field)
-      # No `Macro.escape`, unlike its three siblings: this one is a call, and it is the consumer's
-      # module body that evaluates it.
-      @ithibati_format unquote(format_call)
-      @ithibati_constraint unquote(Macro.escape(constraint))
-      @ithibati_unique_index unquote(unique_index)
+      # Three of these may be a checking call rather than a value, so that an option written as
+      # `@name` resolves here; see `Ithibati.Schema.Identifier.options!/2`.
+      @ithibati_identifier unquote(given.identifier)
+      @ithibati_format unquote(given.format)
+      @ithibati_constraint unquote(given.constraint)
+      @ithibati_unique_index unquote(given.unique_index)
     end
   end
 

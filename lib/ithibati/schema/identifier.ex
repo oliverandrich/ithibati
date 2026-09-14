@@ -125,7 +125,8 @@ defmodule Ithibati.Schema.Identifier do
         raise ArgumentError,
               "`identifier:` must be a literal atom, got: #{Macro.to_string(other)}. " <>
                 "It is the field your schema declares, and this library wants it readable at the " <>
-                "`use` line rather than named elsewhere. (`format:` may be a module attribute.)"
+                "`use` line rather than named elsewhere. (The other options may be module " <>
+                "attributes.)"
 
       :error ->
         raise ArgumentError,
@@ -135,19 +136,34 @@ defmodule Ithibati.Schema.Identifier do
     end
   end
 
-  # A call rather than a value, because `format: @address` is still an unresolved `@` in the AST
-  # here: asking for its value where the macro expands is what the compiler refuses with "undefined
-  # module attribute". The macro assigns the call to an attribute instead, and the consumer's module
-  # body evaluates it — by then every attribute they wrote exists.
-  #
-  # Absence is decided here, where the key can still be seen, because `format:` left out and
-  # `format: nil` are not the same thing. The second is almost always a misspelled attribute, which
-  # evaluates to `nil` with nothing but a warning, and would silently mean no pattern at all.
   @doc false
-  def format_call(opts) do
-    case Keyword.fetch(opts, :format) do
-      {:ok, format} -> quote(do: unquote(__MODULE__).validated_format!(unquote(format)))
-      :error -> nil
+  def options!(opts, macro) do
+    is_list(opts) ||
+      raise ArgumentError,
+            "use #{inspect(macro)} takes a literal keyword list, got: #{Macro.to_string(opts)}"
+
+    %{
+      identifier: identifier!(opts, macro),
+      format: deferred(opts, :format, :validated_format!),
+      constraint: deferred(opts, :constraint_name, :validated_constraint_name!),
+      unique_index: deferred(opts, :unique_index, :validated_unique_index!, true)
+    }
+  end
+
+  # A call rather than a value, because `constraint_name: @index_name` is still an unresolved `@`
+  # in the AST here: asking for its value where the macro expands is what the compiler refuses with
+  # "undefined module attribute". The macro assigns the call to an attribute instead, and the
+  # consumer's module body evaluates it — by then every attribute they wrote exists.
+  #
+  # Absence is decided here, where the key can still be seen, and that is the whole reason for
+  # `default`. An option left out and an option written as `nil` are not the same thing: the second
+  # is almost always a misspelled attribute, which evaluates to `nil` with nothing but a warning.
+  # `unique_index:` is where that distinction has to be made rather than merely kept — absent means
+  # `true`, and `true` is also a legal value, so absence cannot be represented by the checked call.
+  defp deferred(opts, key, checker, default \\ nil) do
+    case Keyword.fetch(opts, key) do
+      {:ok, value} -> quote(do: unquote(__MODULE__).unquote(checker)(unquote(value)))
+      :error -> default
     end
   end
 
@@ -157,51 +173,34 @@ defmodule Ithibati.Schema.Identifier do
   # `"x^[a-z]+$y"`.
   @doc false
   def validated_format!(%Regex{} = format), do: format
+  def validated_format!(other), do: refuse!(:format, other, "a regular expression")
 
-  def validated_format!(other) do
+  # `true`/`false` are atoms too, and a constraint named "true" matches no index — every duplicate
+  # would then surface as the `Ecto.ConstraintError` this option exists to prevent.
+  @doc false
+  def validated_constraint_name!(name) when is_atom(name) and name not in [nil, true, false],
+    do: name
+
+  def validated_constraint_name!(other), do: refuse!(:constraint_name, other, "an atom")
+
+  # Nothing else, and `nil` least of all: `Ithibati.Migration` branches on this value being truthy,
+  # so a `nil` here is not a missing answer but a silent switch to checking for an index that
+  # nobody is going to create.
+  @doc false
+  def validated_unique_index!(value) when is_boolean(value), do: value
+  def validated_unique_index!(other), do: refuse!(:unique_index, other, "true or false")
+
+  defp refuse!(key, value, expected) do
     raise ArgumentError,
-          "`format:` must be a regular expression, got: #{inspect(other)}" <> hint(other)
+          "`#{key}:` must be #{expected}, got: #{inspect(value)}" <> hint(key, value)
   end
 
-  defp hint(other) when is_binary(other), do: " — did you mean ~r/#{other}/?"
+  defp hint(:format, other) when is_binary(other), do: " — did you mean ~r/#{other}/?"
 
-  defp hint(nil) do
+  defp hint(key, nil) do
     " — a misspelled module attribute is `nil` with only a warning. " <>
-      "Leave `format:` out to ask for no pattern."
+      "Leave `#{key}:` out to take the default."
   end
 
-  defp hint(_other), do: ""
-
-  # The bare name: the changeset turns it into an option list, and the migration names the index it
-  # creates.
-  @doc false
-  def constraint_name!(opts) do
-    case Keyword.fetch(opts, :constraint_name) do
-      :error ->
-        nil
-
-      # `true`/`false` are atoms too, and a constraint named "true" matches no index — every
-      # duplicate would then surface as the `Ecto.ConstraintError` this option exists to prevent.
-      {:ok, name} when is_atom(name) and name not in [nil, true, false] ->
-        name
-
-      {:ok, other} ->
-        raise ArgumentError, "`constraint_name:` must be an atom, got: #{Macro.to_string(other)}"
-    end
-  end
-
-  @doc false
-  def unique_index!(opts) do
-    case Keyword.fetch(opts, :unique_index) do
-      :error ->
-        true
-
-      {:ok, value} when is_boolean(value) ->
-        value
-
-      {:ok, other} ->
-        raise ArgumentError,
-              "`unique_index:` must be true or false, got: #{Macro.to_string(other)}"
-    end
-  end
+  defp hint(_key, _other), do: ""
 end

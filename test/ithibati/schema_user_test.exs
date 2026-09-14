@@ -52,6 +52,13 @@ defmodule Ithibati.Schema.UserTest do
     # Against a schema that does *not* use the macro, so an injected function nobody asked for shows
     # up as a difference. Filtering down to the expected names first would throw the evidence away
     # before asserting, and the test could then only notice a disappearance.
+    # `== true` rather than a bare assertion, because this value is also what `__ithibati__/1`
+    # hands an application: anything else truthy is wrong there and invisible here.
+    test "and the defaults, for an application that named no index options" do
+      assert TestUser.__ithibati__(:constraint) == nil
+      assert TestUser.__ithibati__(:unique_index) == true
+    end
+
     test "three functions, and a fourth would have to be a decision" do
       plain = probe("Plain", "")
 
@@ -254,6 +261,68 @@ defmodule Ithibati.Schema.UserTest do
           "BoolConstraint",
           "use Ithibati.Schema.User, identifier: :email, constraint_name: true"
         )
+      end
+    end
+
+    test "and one that is not an atom at all is refused too" do
+      assert_raise ArgumentError, ~r/`constraint_name:` must be an atom/, fn ->
+        probe(
+          "StringConstraint",
+          ~s|use Ithibati.Schema.User, identifier: :email, constraint_name: "users_email_house"|
+        )
+      end
+    end
+
+    test "a name given as a module attribute arrives" do
+      body = """
+      @index_name :users_email_house
+      use Ithibati.Schema.User, identifier: :email, constraint_name: @index_name
+      """
+
+      module = probe("AttributeConstraint", body, inside: "ithibati_account()")
+
+      assert module.__ithibati__(:constraint) == :users_email_house
+    end
+
+    # The accident the attribute makes reachable: a misspelled one is `nil` with only a warning,
+    # and a constraint of `nil` is the same as never having named one.
+    test "and one that arrived as nil says where to look" do
+      assert_raise ArgumentError, ~r/misspelled module attribute/, fn ->
+        probe(
+          "NilConstraint",
+          "use Ithibati.Schema.User, identifier: :email, constraint_name: nil"
+        )
+      end
+    end
+  end
+
+  describe "the index this library creates, unless the application says it has one" do
+    test "an opt-out given as a module attribute arrives" do
+      body = """
+      @make_it false
+      use Ithibati.Schema.User, identifier: :email, unique_index: @make_it
+      """
+
+      module = probe("AttributeOptOut", body, inside: "ithibati_account()")
+
+      refute module.__ithibati__(:unique_index)
+    end
+
+    test "anything that is not a boolean is refused" do
+      assert_raise ArgumentError, ~r/`unique_index:` must be true or false/, fn ->
+        probe(
+          "StringlyIndex",
+          ~s|use Ithibati.Schema.User, identifier: :email, unique_index: "false"|
+        )
+      end
+    end
+
+    # `nil` is the one that has to raise rather than default, because the migration branches on
+    # this value being truthy: a misspelled attribute would otherwise switch it, in silence, to
+    # checking for an index nobody creates.
+    test "and one that arrived as nil says where to look" do
+      assert_raise ArgumentError, ~r/misspelled module attribute/, fn ->
+        probe("NilIndex", "use Ithibati.Schema.User, identifier: :email, unique_index: nil")
       end
     end
   end

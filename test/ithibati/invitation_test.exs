@@ -140,6 +140,50 @@ defmodule Ithibati.Schema.InvitationTest do
     end
   end
 
+  describe "the index options" do
+    test "a constraint name arrives" do
+      body = """
+      @index_name :invitations_token_hash_house
+      use Ithibati.Schema.Invitation, identifier: :email, constraint_name: @index_name
+      """
+
+      module = probe("AttributeConstraintInvitation", body, inside: "ithibati_invitation()")
+
+      assert module.__ithibati_invitation__(:constraint) == :invitations_token_hash_house
+    end
+
+    test "and so does an opt-out" do
+      body = """
+      @make_it false
+      use Ithibati.Schema.Invitation, identifier: :email, unique_index: @make_it
+      """
+
+      module = probe("AttributeOptOutInvitation", body, inside: "ithibati_invitation()")
+
+      refute module.__ithibati_invitation__(:unique_index)
+    end
+
+    # Both accidents the attribute form makes reachable, on this macro too: a misspelled name is
+    # `nil` with only a warning.
+    test "one that arrived as nil says where to look, for either option" do
+      assert_raise ArgumentError, ~r/misspelled module attribute/, fn ->
+        probe(
+          "NilConstraintInvitation",
+          "use Ithibati.Schema.Invitation, identifier: :email, constraint_name: nil",
+          inside: "ithibati_invitation()"
+        )
+      end
+
+      assert_raise ArgumentError, ~r/misspelled module attribute/, fn ->
+        probe(
+          "NilIndexInvitation",
+          "use Ithibati.Schema.Invitation, identifier: :email, unique_index: nil",
+          inside: "ithibati_invitation()"
+        )
+      end
+    end
+  end
+
   # An invitation reads `format:` through the same module an account does, so it takes the same
   # shapes — a named pattern among them.
   describe "a format given as a module attribute" do

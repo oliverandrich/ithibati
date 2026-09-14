@@ -27,15 +27,19 @@ defmodule Ithibati.Schema.User do
 
   ## Options
 
-    * `identifier:` — required, a literal atom: the field an account is known by.
-    * `format:` — optional, a regular expression, evaluated once when your module compiles. Write
-      it inline or name it with a module attribute standing above the `use` line.
+    * `identifier:` — required, a literal atom: the field an account is known by. The one option
+      that has to be written out here, because it is the field your schema declares.
+    * `format:` — optional, a regular expression, evaluated once when your module compiles.
       `Ithibati.Schema.Identifier.email_format/0` offers one for addresses.
     * `constraint_name:` — optional, the name of the unique index on that column. Say it when your
       naming convention is not the one Ecto derives; this library then creates it under that name,
       and the changeset's constraint matches it.
     * `unique_index: false` — optional, an opt-out: say it when your application creates that index
       itself, and this library will check that one exists rather than create it.
+
+  The three value options may each be written inline or named with a module attribute standing
+  above the `use` line. An option written as `nil` is refused, because that is what a misspelled
+  attribute looks like.
 
   Whatever the field is called, values written through `identifier_changeset/2` are trimmed and
   lowercased.
@@ -80,28 +84,19 @@ defmodule Ithibati.Schema.User do
   end
 
   defmacro __using__(opts) do
-    is_list(opts) ||
-      raise(
-        ArgumentError,
-        "use Ithibati.Schema.User takes a literal keyword list, got: #{Macro.to_string(opts)}"
-      )
-
-    field = Identifier.identifier!(opts, __MODULE__)
-    format_call = Identifier.format_call(opts)
-    constraint = Identifier.constraint_name!(opts)
-    unique_index = Identifier.unique_index!(opts)
+    given = Identifier.options!(opts, __MODULE__)
 
     quote do
       import Ithibati.Schema.User, only: [ithibati_account: 0]
 
       @before_compile Ithibati.Schema.User
 
-      @ithibati_identifier unquote(field)
-      # No `Macro.escape`, unlike its three siblings: this one is a call, and it is the consumer's
-      # module body that evaluates it.
-      @ithibati_format unquote(format_call)
-      @ithibati_constraint unquote(Macro.escape(constraint))
-      @ithibati_unique_index unquote(unique_index)
+      # Three of these may be a checking call rather than a value, so that an option written as
+      # `@name` resolves here; see `Ithibati.Schema.Identifier.options!/2`.
+      @ithibati_identifier unquote(given.identifier)
+      @ithibati_format unquote(given.format)
+      @ithibati_constraint unquote(given.constraint)
+      @ithibati_unique_index unquote(given.unique_index)
 
       @doc """
       A name for this account that a passkey dialog can show, or `nil`.

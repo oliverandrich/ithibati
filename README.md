@@ -323,9 +323,10 @@ use User, identifier: :handle, format: @handle
 ```
 
 The attribute has to stand above the `use` line — it is read where your module body reaches it. A
-name that is not there yet, or one that is misspelled, is `nil`, and `format: nil` is refused
-rather than quietly taken to mean no pattern. `format:` is the only option that takes an attribute;
-the three below are read while the macro expands and have to be written out.
+name that is not there yet, or one that is misspelled, is `nil`, and an option written as `nil` is
+refused rather than quietly taken to mean the default. The same goes for `constraint_name:` and
+`unique_index:` below. Only `identifier:` has to be written out: it is the field your schema
+declares, and it belongs where you can read it.
 
 `constraint_name:` and `unique_index:` concern the index on that column — see the migration below.
 Values written through `identifier_changeset/2` are trimmed and lowercased, so a plain unique index refuses `AdaLovelace`
