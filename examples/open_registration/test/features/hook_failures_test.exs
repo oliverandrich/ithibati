@@ -23,25 +23,47 @@ defmodule IthibatiOpenWeb.HookFailuresTest do
     )
   end
 
-  defp spoil(session, attribute, nil) do
-    execute_script(session, "document.getElementById('passkey').removeAttribute(arguments[0])", [
-      attribute
-    ])
-
-    refute_has(session, css("#passkey[#{attribute}]"))
-  end
-
+  # Spoiled, and kept spoiled.
+  #
+  # A `data-` attribute set from the outside is the template's to put back: any patch LiveView
+  # applies to this container restores it, and the hook reads the attribute when the event fires,
+  # not when the page loaded. Waiting is not a fix — `phx-connected` is already set *after* the
+  # join patch (`hideLoader/0` is the last thing `applyJoinPatch/4` does, one call site), so a
+  # single wait cannot cover a later patch or a reconnect, and this failed on CI while every local
+  # run was green.
+  #
+  # An observer that re-applies has no window at all, where a retry loop only narrows one. It is
+  # also honest about what the test needs: the hook still reads a real attribute off a real
+  # element, exactly as it would in a browser somebody is using.
   defp spoil(session, attribute, value) do
     execute_script(
       session,
-      "document.getElementById('passkey').setAttribute(arguments[0], arguments[1])",
+      """
+      const element = document.getElementById('passkey')
+      const [attribute, value] = [arguments[0], arguments[1]]
+
+      // Compared before writing, or the observer's own change wakes it again, forever.
+      const apply = () => {
+        if (value === null) {
+          if (element.hasAttribute(attribute)) element.removeAttribute(attribute)
+        } else if (element.getAttribute(attribute) !== value) {
+          element.setAttribute(attribute, value)
+        }
+      }
+
+      apply()
+      new MutationObserver(apply).observe(element, {attributes: true, attributeFilter: [attribute]})
+      """,
       [attribute, value]
     )
 
-    # Read back rather than assumed: these tests are about what the hook does when the element is
-    # wrong, and an element a LiveView patch quietly put right again tests nothing — it would fail
-    # on the message assertion instead, which says nothing about why.
-    assert_has(session, css("#passkey[#{attribute}='#{value}']"))
+    # Read back rather than assumed, because a test that spoiled nothing tests nothing — and it
+    # would fail on the message assertion instead, which says nothing about why.
+    if value do
+      assert_has(session, css("#passkey[#{attribute}='#{value}']"))
+    else
+      refute_has(session, css("#passkey[#{attribute}]"))
+    end
   end
 
   feature "a missing data attribute is named, not reported as a failed ceremony", %{
