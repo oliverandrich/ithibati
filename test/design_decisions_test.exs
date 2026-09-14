@@ -19,6 +19,15 @@ defmodule Ithibati.DesignDecisionsTest do
   @linked Regex.scan(~r/^\d+\. \[[^\]]+\]\(docs\/design\.md#([\w-]+)\)$/m, @readme)
           |> Enum.map(fn [_, anchor] -> anchor end)
 
+  # Every anchor that points into the document, wherever it is written from — the numbered list is
+  # only one of three places. The document links to itself now, and `CLAUDE.md` links in too; a
+  # renamed heading would leave all of them looking like links and reaching nothing.
+  @pointing (Regex.scan(~r/\]\(#([\w-]+)\)/, @design) ++
+               Regex.scan(~r/\]\(docs\/design\.md#([\w-]+)\)/, @readme) ++
+               Regex.scan(~r/\]\(docs\/design\.md#([\w-]+)\)/, File.read!("CLAUDE.md")))
+            |> Enum.map(fn [_, anchor] -> anchor end)
+            |> Enum.uniq()
+
   # A decision written without a number is invisible to everything below.
   test "the decisions are numbered, and numbered without gaps" do
     numbers = Enum.map(@headings, fn {number, _text} -> String.to_integer(number) end)
@@ -40,8 +49,11 @@ defmodule Ithibati.DesignDecisionsTest do
   test "every link into the document reaches a heading that exists" do
     anchors = MapSet.new(@headings, fn {number, text} -> anchor("#{number}. #{text}") end)
 
-    for link <- @linked do
-      assert link in anchors, "README links to ##{link}, which no heading in docs/design.md makes"
+    refute @pointing == [], "no links found at all — this test would pass vacuously"
+
+    for link <- @pointing do
+      assert link in anchors,
+             "something links to ##{link}, which no heading in docs/design.md makes"
     end
   end
 

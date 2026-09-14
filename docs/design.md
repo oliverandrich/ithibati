@@ -44,8 +44,8 @@ nothing stops an application from naming a type its own accounts table does not 
 migration verifies the configuration against the database before it builds anything, and refuses
 rather than leaving half a schema behind.
 
-Four questions followed from this decision. Three are settled, and the answers belong here rather
-than in the code that implements them.
+Four questions followed from this decision, and all four are settled. Three of the answers belong
+here rather than in the code that implements them.
 
 **The tables this library owns are `ithibati_keys`, `ithibati_recovery_codes`, `ithibati_tokens` and
 `ithibati_bootstrap`** — not the ones beside them in the reference implementation's accounts
@@ -116,13 +116,9 @@ correctness in a sentence of documentation instead, which is where it was first 
 very first registration on an instance has no account to call anything on, so the derivation takes
 an identifier directly in that case.
 
-One question remains open, and it will otherwise be settled by accident while the code is being
-moved:
-
-- **How the library announces a change.** The code being moved broadcasts over `Phoenix.PubSub`
-  with a hardcoded server name, while Phoenix here is an optional dependency — so the core would
-  not compile without it. Following decision 3, notification should become the consumer's step, the
-  way the content and media calls already did.
+How the library announces a change was the one question left open here. It is settled, in
+[decision 4](#4-a-grant-is-ectomulti-composition-not-an-event), and the answer is that it does
+not.
 
 ## 3. `Ithibati.Identity.*` may not name another context
 
@@ -159,6 +155,41 @@ the step it reads the account from are part of the contract, because an applicat
 which step holds the account is an option, so a consumer's own naming does not have to bend to
 this library's. Publish/subscribe events are for *notification* after the fact, never
 for carrying a step of the grant. An event can be missed; a transaction cannot be half-applied.
+
+### The core announces nothing, and that was not a choice between mechanisms
+
+This was left open on the reading that the code being moved broadcasts over `Phoenix.PubSub` with
+a hardcoded server name while Phoenix here is optional — so the core would not compile without it.
+Counted rather than reasoned about, the premise does not hold for the code that moves.
+
+`Chapisho.Accounts.Identity` broadcasts from eight functions: the three preference writes, the
+three profile and avatar writes, the email change, and releasing a handle reservation. Every one
+of them stays with the consumer — none of the profile comes across, and the handle reservation is
+the consumer's by name. Nothing that does move announces anything: not enrolling or revoking a
+passkey, not minting or revoking a token, not redeeming or regenerating a recovery code, not
+claiming the instance.
+
+So the library says nothing, and the consumer announces its own writes — which is where the
+content and media calls arrived too. Nothing is hidden from them either: a write hands its result
+back, so there is no change only this library can see. `delete_token/2` is the one that answers
+`:ok` whatever it found, and deliberately — revoking a token that was never minted is not an
+error, and the caller knows which token it asked about.
+
+Declining to offer one is the part that is a decision. A topic and an event vocabulary become API
+the moment they ship: adding them later is additive, removing them is a major version, and a
+consumer who wants to tell other tabs that a device was revoked already has everything needed —
+`delete_key/3` answered them.
+
+**The web half does broadcast, and it is not this.**
+[Decision 11](#11-the-gate-ends-the-sockets-a-session-opened-when-it-can) has the gate send
+`"disconnect"` when a session ends, and three things make it a different kind of thing. The topic
+and the event are *Phoenix's*, not ours — `Phoenix.LiveView.Socket.id/1` reads the literal
+`"live_socket_id"` out of the session, and `Phoenix.Socket`'s own documentation gives
+`Endpoint.broadcast(topic, "disconnect", %{})` as the way to end a socket. It travels through the
+endpoint the consumer configured rather than a server this library names, and writes nothing at
+all when that endpoint has no `pubsub_server`. And it is a control signal to Phoenix's own
+machinery — stop this socket, the token behind it is gone — rather than a statement to an
+application that something changed.
 
 ## 5. Non-browser clients: the token is the boundary, not OAuth2
 
@@ -491,6 +522,7 @@ And signing in again does not end the sockets of the session it replaces: `log_i
 cookie, which is the only record of the previous token, so that token lives out its window with its
 sockets attached. Both belong with whatever adds bulk revocation.
 
-This does not settle the open question in decision 4. That one is about the **core** announcing
-changes over `Phoenix.PubSub` while Phoenix is optional to it; the gate lives in
-`lib/ithibati/web/`, where Phoenix is mandatory, and a running pubsub server still is not.
+This is not the core announcing a change.
+[Decision 4](#4-a-grant-is-ectomulti-composition-not-an-event) sets out why the two are different
+kinds of thing; what matters here is that the gate lives in `lib/ithibati/web/`, where Phoenix is
+mandatory — and a running pubsub server still is not.
