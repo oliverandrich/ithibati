@@ -59,16 +59,15 @@ defmodule IthibatiInvitesWeb.InsideLive do
         refuses an acceptance whose account carries a different one.
       </p>
 
-      <form phx-change="validate" phx-submit="invite" class="mt-4 flex gap-2">
-        <input
-          type="text"
+      <form phx-change="validate" phx-submit="invite" class="mt-4">
+        <.input
           name="username"
           value={@username}
+          label="Their username"
           required
           pattern={Layouts.username_pattern()}
           title="Letters, digits and underscores, up to thirty"
-          placeholder="their username"
-          class="input flex-1"
+          placeholder="grace_hopper"
         />
         <.button variant="primary">Create a link</.button>
       </form>

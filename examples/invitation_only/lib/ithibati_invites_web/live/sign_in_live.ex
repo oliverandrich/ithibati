@@ -67,28 +67,22 @@ defmodule IthibatiInvitesWeb.SignInLive do
 
       <div :if={@error} class="alert alert-error mt-6"><span>{@error}</span></div>
 
-      <form
-        :if={@needs_setup?}
-        phx-change="validate"
-        phx-submit="register"
-        class="mt-6 flex gap-2"
-      >
-        <input
-          type="text"
+      <form :if={@needs_setup?} phx-change="validate" phx-submit="register" class="mt-6">
+        <.input
           name="username"
           value={@username}
+          label="Username"
           required
           pattern={Layouts.username_pattern()}
           title="Letters, digits and underscores, up to thirty"
-          placeholder="a username"
-          class="input flex-1"
+          placeholder="ada_lovelace"
         />
         <.button variant="primary">Claim this instance</.button>
       </form>
 
-      <p class="mt-4">
+      <div class="mt-4">
         <.button phx-click="sign-in" class="btn">Sign in with a passkey</.button>
-      </p>
+      </div>
 
       <Layouts.passkey_ceremony />
     </Layouts.app>

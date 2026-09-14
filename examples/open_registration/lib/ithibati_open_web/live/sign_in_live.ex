@@ -69,23 +69,22 @@ defmodule IthibatiOpenWeb.SignInLive do
 
       <div :if={@error} class="alert alert-error mt-6"><span>{@error}</span></div>
 
-      <form phx-change="validate" phx-submit="register" class="mt-6 flex gap-2">
-        <input
-          type="text"
+      <form phx-change="validate" phx-submit="register" class="mt-6">
+        <.input
           name="username"
           value={@username}
+          label="Username"
           required
           pattern={Layouts.username_pattern()}
           title="Letters, digits and underscores, up to thirty"
-          placeholder="a username"
-          class="input flex-1"
+          placeholder="ada_lovelace"
         />
         <.button variant="primary">Register</.button>
       </form>
 
-      <p class="mt-4">
+      <div class="mt-4">
         <.button phx-click="sign-in" class="btn">Sign in with a passkey</.button>
-      </p>
+      </div>
 
       <%!-- The hook reads the paths off this element, because you chose the scope they are
       mounted under. It is empty on purpose: it drives the ceremony and renders nothing. --%>
