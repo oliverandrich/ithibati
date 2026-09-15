@@ -6,8 +6,9 @@ defmodule IthibatiOpenWeb.BrowserDriver do
   Chrome and point `CHROMEWEBDRIVER` at it, which is one version fewer to keep in step; everywhere
   else mise provides one, installed per machine because it has to match the Chrome that is here.
 
-  Failing loudly is deliberate. The reference implementation excludes its browser tests when no
-  driver is found, and a suite that quietly stops covering anything is worse than one that stops.
+  Failing loudly is deliberate. Skipping the browser tests when no driver is found is the
+  tempting alternative, and a suite that quietly stops covering anything is worse than one that
+  stops.
   """
 
   @doc "The driver's path, or a raise that says how to get one."

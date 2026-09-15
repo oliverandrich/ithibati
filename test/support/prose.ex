@@ -5,8 +5,9 @@ defmodule Ithibati.Prose do
   # three chances to add a page that two of them then never read.
   #
   # `package(files:)` is the source for what ships, because shipping is what makes a file worth
-  # holding to a rule; `CLAUDE.md` is added on top, since it is prose that links into the same
-  # documents and is deliberately not in the package.
+  # holding to a rule; `AGENTS.md` is added on top, since it is prose that links into the same
+  # documents and is deliberately not in the package. `CLAUDE.md` is three lines pointing at it,
+  # and the one link in them is to a file beside it.
 
   @doc "Every file the package ships that is not Elixir source."
   def shipped do
@@ -17,5 +18,5 @@ defmodule Ithibati.Prose do
   end
 
   @doc "Every Markdown page a reader is sent to, shipped or not."
-  def pages, do: Enum.filter(shipped(), &(Path.extname(&1) == ".md")) ++ ["CLAUDE.md"]
+  def pages, do: Enum.filter(shipped(), &(Path.extname(&1) == ".md")) ++ ["AGENTS.md"]
 end

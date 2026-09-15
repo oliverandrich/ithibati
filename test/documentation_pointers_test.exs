@@ -13,7 +13,7 @@ defmodule Ithibati.DocumentationPointersTest do
   Which renderer resolves a link depends on where it is written, because the two slug a heading
   differently: a full stop or an apostrophe inside a word becomes a hyphen under ExDoc and
   vanishes under GitHub. Pages under `docs/` and doc comments under `lib/` are read on the
-  documentation site; the README and `CLAUDE.md` are read on GitHub. An absolute `hexdocs.pm` link
+  documentation site; the README and `AGENTS.md` are read on GitHub. An absolute `hexdocs.pm` link
   is the site's wherever it was written.
   """
   use ExUnit.Case, async: true

@@ -12,10 +12,10 @@ defmodule Ithibati.Credo.IdentityIsPortable do
 
       `Ithibati.Identity` is the module that knows who someone is and how they prove it — the
       account row, passkeys, recovery codes, tokens. It may name only the few modules listed as its
-      own, so that a consuming application's ideas about roles and tenancy cannot creep into it. In
-      the reference implementation this stopped being true twice: deleting an account reached into
-      the content context to rewrite the author's posts, and removing an avatar reached into the
-      media context to drop a file. Both became the caller's step.
+      own, so that a consuming application's ideas about roles and tenancy cannot creep into it.
+      What it reports is an `Ithibati.` sibling outside that list: an identity function reaching
+      into `Ithibati.Content` to rewrite an author's posts, say. A name rooted anywhere else is
+      left to review, because a consumer's own contexts are not this check's to judge.
 
       Separately, and for every core module rather than that one: `phoenix`, `phoenix_live_view`
       and `plug` are optional dependencies, so a consumer who does not want them must still get a

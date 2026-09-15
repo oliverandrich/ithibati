@@ -2,10 +2,12 @@ defmodule Ithibati.SchemaTimestampsTest do
   @moduledoc """
   Every datetime this library stores keeps microseconds, in the schema *and* in the column.
 
-  Two halves, because either alone is silent. Ecto's migration default is `:naive_datetime` and the
-  reference implementation's first migration said `:utc_datetime`, which Postgres reads as
-  `timestamp(0)` — while its schemas said microseconds, so every write was rounded to the second and
-  nobody noticed until a sort came out wrong. A schema-only check would have agreed with itself.
+  Two halves, because each is blind to the other's mistake. A schema field of `:utc_datetime`
+  truncates on write even where the column keeps microseconds, so every value is rounded to the
+  second and nothing notices until a sort comes out wrong — the schema half catches that. The
+  column half catches a column written with an explicit precision, which Ecto's own migrations
+  never emit (the Postgres adapter maps every datetime type to a bare `timestamp`) but a
+  hand-written one can.
 
   The schemas are discovered rather than listed: a fourth table has to be classified here before it
   can pass.

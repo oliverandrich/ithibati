@@ -7,7 +7,7 @@ defmodule Ithibati.Credo.NoBeanIds do
     category: :warning,
     explanations: [
       check: """
-      Bean ids belong in the beans and in CLAUDE.md, which live and die with the tracker.
+      Bean ids belong in the beans and in AGENTS.md, which live and die with the tracker.
 
       The backlog may not outlive the release. An id left in the tree then points at nothing while
       still reading as authoritative, and it sends the next reader looking for a file that is not
