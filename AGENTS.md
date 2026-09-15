@@ -84,8 +84,3 @@ is safe, because the backlog lives on one machine and `git push` does not back i
   defaulting to `postgres`/`postgres` on `localhost:5432`, so a local role named anything else
   has to be passed in: `PGUSER=oa PGPASSWORD= mise run check`.
 
-## Scope
-
-Nothing is released yet, so there is nothing to migrate and no backwards compatibility to keep:
-if the data or the API contradicts the intended design, the design wins. **Delete this section
-with the `v0.1.0` tag.**
