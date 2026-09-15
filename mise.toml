@@ -16,7 +16,12 @@ zizmor = "1.30.0"
 [tasks.check]
 description = "Everything that has to be green before a change is done"
 # Named so that CI can run the task instead of a second copy of what it contains.
-run = ["zizmor .github/", "mix precommit"]
+#
+# `mix docs` is here rather than in `mix precommit` because ex_doc is a `dev` dependency and the
+# alias runs in `test`. It earns its place: the documentation is eight cross-linked pages plus
+# every moduledoc, and a reference that no longer resolves — a renamed function, a moved page — is
+# a warning ExDoc prints and nobody reads. `--warnings-as-errors` is what makes it a check.
+run = ["zizmor .github/", "mix precommit", "mix docs --warnings-as-errors"]
 
 # What a CI leg runs when its question is only "does this build and behave here". Not `check`:
 # that one's formatter and Credo judge style against the toolchain the tree was written with, so a
@@ -34,7 +39,7 @@ description = "Compile and test as a consumer without the optional Phoenix depen
 run = [
   "rm -rf tmp/without-optional",
   "mkdir -p tmp/without-optional",
-  "rsync -a --exclude _build --exclude deps --exclude .git --exclude .beans --exclude tmp . tmp/without-optional/",
+  "rsync -a --exclude _build --exclude deps --exclude .git --exclude .beans --exclude tmp --exclude doc . tmp/without-optional/",
   "cd tmp/without-optional && ITHIBATI_WITHOUT_OPTIONAL=1 mix deps.get && ITHIBATI_WITHOUT_OPTIONAL=1 mix build_and_test",
 ]
 

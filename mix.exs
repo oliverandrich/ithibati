@@ -89,6 +89,9 @@ defmodule Ithibati.MixProject do
       # consumer's own `MIX_ENV=prod` build.
       {:credo, "~> 1.7", optional: true, runtime: false},
       {:ex_doc, "~> 0.34", only: :dev, runtime: false},
+      # HEEX in the guides is otherwise rendered unhighlighted beside the Elixir around it.
+      {:makeup_eex, "~> 2.0", only: :dev, runtime: false},
+      {:makeup_html, "~> 0.2", only: :dev, runtime: false},
       {:mix_audit, "~> 2.1", only: [:dev, :test], runtime: false}
     ] ++ optional_deps()
   end
@@ -117,8 +120,8 @@ defmodule Ithibati.MixProject do
   end
 
   # One reading for both build switches. A named value rather than "anything non-empty", because
-  # `ITHIBATI_COLOCATED_HOOKS` is documented in the README: a consumer who writes `=0` to turn it off
-  # means it, and the loose test would have turned it on. An unrecognised value raises rather than
+  # `ITHIBATI_COLOCATED_HOOKS` is documented in `docs/ceremonies.md`: a consumer who writes `=0`
+  # to turn it off means it, and the loose test would have turned it on. An unrecognised value raises rather than
   # falling back, for the reason config/config.exs gives about the other variable it reads — a typo
   # would otherwise make a CI leg an exact copy of another one, green and saying nothing.
   defp enabled?(variable) do
@@ -144,16 +147,59 @@ defmodule Ithibati.MixProject do
   defp package do
     [
       licenses: ["MIT"],
-      links: %{"GitHub" => @source_url},
-      files: ~w(lib priv docs .formatter.exs mix.exs package.json README.md LICENSE CHANGELOG.md)
+      links: %{
+        "GitHub" => @source_url,
+        "Changelog" => "https://hexdocs.pm/ithibati/changelog.html"
+      },
+      files:
+        ~w(lib priv docs assets .formatter.exs mix.exs package.json README.md LICENSE CHANGELOG.md)
     ]
   end
 
+  # The pages of the site, in the order they are read. One list rather than two: ExDoc orders the
+  # extras by their group, so naming each page again under `extras:` would add nothing but the
+  # chance of listing one in a group it is not in — which renders as a page under no group at all,
+  # without erroring.
+  @guides ~w(docs/overview.md docs/getting_started.md docs/ceremonies.md docs/passkeys.md
+             docs/invitations.md docs/recovery.md)
+  @tooling ~w(docs/doctor.md docs/credo.md)
+  @about ["CHANGELOG.md", "LICENSE"]
+
   defp docs do
     [
-      main: "readme",
+      # Not the README, on either count. It is the repository's front page: it opens by making the
+      # case for the library, which a reader who has arrived here has already heard, and its
+      # quickstart is what `docs/getting_started.md` writes out in full.
+      main: "overview",
       source_ref: "v#{@version}",
-      extras: ["README.md", "docs/design.md", "docs/tooling.md", "CHANGELOG.md", "LICENSE"]
+      # Copied into the build under the same name the pages reference, so `assets/logo.png`
+      # resolves both on GitHub, which reads the repository, and on hexdocs, which reads this.
+      assets: %{"assets" => "assets"},
+      extra_section: "GUIDES",
+      extras: @guides ++ @tooling ++ ["CHANGELOG.md", {"LICENSE", title: "Licence"}],
+      groups_for_extras: [Guides: @guides, Tooling: @tooling, About: @about],
+      # Grouped by who calls them, which is the question a reader arrives with — the flat list put
+      # `Ithibati.Catalogue` beside `Ithibati.Identity.Passkeys` and said nothing about which is
+      # the API and which is plumbing.
+      groups_for_modules: [
+        Identity: [~r/^Ithibati\.Identity\./],
+        Schemas: [~r/^Ithibati\.Schema\./],
+        Phoenix: [~r/^Ithibati\.Web\./],
+        "Rows this library owns": [
+          Ithibati.Bootstrap,
+          Ithibati.RecoveryCode,
+          Ithibati.Session,
+          Ithibati.UserKey
+        ],
+        "Setup and tooling": [
+          Ithibati.Catalogue,
+          Ithibati.Config,
+          Ithibati.Doctor,
+          Ithibati.Migration,
+          Mix.Tasks.Ithibati.Doctor
+        ],
+        "Credo checks": [~r/^Ithibati\.Credo\./]
+      ]
     ]
   end
 

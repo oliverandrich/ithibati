@@ -1,8 +1,6 @@
 # Ithibati — working rules
 
-Ithibati is an Elixir passkey-authentication library. **Read `docs/design.md` before changing
-anything structural** — it carries the decisions this project is built on, with the reasoning,
-and a change that contradicts one of them is a change to that document first.
+Ithibati is an Elixir passkey-authentication library.
 
 ## The reference implementation
 
@@ -28,10 +26,9 @@ Each of these is the enforceable form of a decision; the reasoning is behind the
   Credo check walking its AST against an allow-list — **the check is not here yet** and bringing it
   across is the first piece of work. If new code genuinely needs something else, it belongs above
   this, in the consumer.
-  ([decision 3](docs/design.md#3-ithibatiidentity-may-not-name-another-context))
 - **The application owns the `users` table.** The library contributes a schema macro, the fields it
   reads and the changeset pieces that validate them. It never assumes a column the macro did not put
-  there. ([decision 2](docs/design.md#2-the-application-owns-the-users-table))
+  there.
 - **The web half is taken or left as one piece, and LiveView is part of it.** `phoenix`,
   `phoenix_live_view` and `plug` are optional together: every module under `lib/ithibati/web/` is
   guarded by the one sentinel `Code.ensure_loaded?(Phoenix.Component)`, and that guard belongs in
@@ -46,7 +43,6 @@ Each of these is the enforceable form of a decision; the reasoning is behind the
   Consolidating them into a config key looks like tidying up and rules out every non-browser client.
   Note that `wax_` itself reads `config :wax_, origin:`/`rp_id:` as defaults, so this rule rests on
   always passing both explicitly.
-  ([decision 5](docs/design.md#5-non-browser-clients-the-token-is-the-boundary-not-oauth2))
 - **Verification does not mint a credential.** What is issued after a successful assertion is the
   caller's separate decision.
 - No `util`/`common`/`helpers`/`shared`/`misc` modules.
@@ -70,11 +66,36 @@ stronger here than it looks: nothing in this repository can resolve one.
   that belongs in the tracker and the commit message.
 - Write out technical terms; do not invent pictures for them. *Foreign key*, *write path*,
   *constraint*, *boundary* — not doors, shelves or seams.
+- **Write like a developer explaining the thing, not like an essayist.** Documentation, moduledocs
+  and comments are all covered. Plain declarative sentences: subject, verb, object. Name the
+  subject — *Ithibati*, *the migration*, *you* — rather than circling it with *this library* in
+  every other sentence. One idea per sentence, and a verb rather than a noun built from one.
+
+  Six habits to avoid, each of which has had to be undone here:
+
+  1. Inversion for emphasis. *Yours to write, and this library fills it in* → *You write the
+     migration, Ithibati fills it in.*
+  2. An em-dash apposition doing the work of a main clause. Use a full stop or a colon.
+  3. Antithesis and parallel construction. *With a username there is nothing to prove; with an
+     address there is.*
+  4. The aphoristic closing sentence. A paragraph may simply end.
+  5. Nominalisation. *makes a choice that belongs to its consumer* → *the consumer chooses.*
+  6. Withholding the subject for effect. *Not the README: that one is written for…*
+
+  The reason is not taste. Prose in this shape reads as though it were generated, a reader
+  discounts it, and the content is what pays for the style.
 - **Bean IDs (`ithibati-xxxx`) never appear in `lib/`, `test/`, `docs/`, `priv/` or `README.md`** — only in
   the beans themselves and in this file, which both live with the tracker. The tracker may not
   outlive the repository, and a dead ID looks authoritative and sends the next reader nowhere. This
   matters more here than in an application: these files ship to strangers. Write the *why* out and
   leave the reference off. Chapisho enforces this with a Credo check that should come across too.
+- **A comment that sends a reader to documentation names the file, never "the README".** Pages
+  move — this library's did, and five comments in `lib/`, `test/` and `priv/` went on naming a
+  README that no longer carried what they described. A filename is checkable and a prose reference
+  is not: `test/documentation_pointers_test.exs` fails on a `docs/…md` that does not exist. The
+  same goes for a link inside a published moduledoc, which must be written `page.md#anchor` rather
+  than `page.html#anchor` — ExDoc rewrites the extension itself, and a `.html` target it never
+  resolves is a link `mix docs --warnings-as-errors` cannot check.
 - Every timestamp is `:utc_datetime_usec`, in the schema and in the migration both.
 - Tests first, and **every new test gets a control check**: break the thing it guards, watch *that
   assertion* go red, restore from a copy. A test that does not go red is not evidence.

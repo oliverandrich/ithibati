@@ -44,8 +44,8 @@ function decodeRequestOptions(options) {
   return decoded
 }
 
-// `toJSON` is what decision 7 in docs/design.md settles on: the verifications take exactly what it
-// produces, so there is no encoding left for a consumer to get wrong. It arrived in Chrome 128 and
+// The verifications take exactly what `toJSON` produces, so there is no encoding left for a
+// consumer to get wrong. It arrived in Chrome 128 and
 // Safari 18; anything older raises here rather than posting a body the server cannot read.
 function serialise(credential) {
   if (typeof credential.toJSON !== "function") {
@@ -71,8 +71,8 @@ export async function authenticate(options) {
 async function post(url, body) {
   // Just JSON, deliberately. Adding `*/*` would make a `:browser` pipeline negotiate silently to
   // HTML and hand this code error pages it cannot read; refusing outright gives a 406 that names
-  // the mistake. The README asks for a pipeline that accepts `json` for exactly this reason, and a
-  // 406 is how that instruction was found to be missing in the first place.
+  // the mistake. `docs/ceremonies.md` asks for a pipeline that accepts `json` for exactly this
+  // reason, and a 406 is how that instruction was found to be missing in the first place.
   const headers = {"content-type": "application/json", accept: "application/json"}
 
   // `protect_from_forgery` guards everything that is not a GET and reads the token from this
@@ -107,6 +107,23 @@ export const PasskeyCeremony = {
   mounted() {
     this.handleEvent("ithibati:register", (identity) => this.run("registration", identity))
     this.handleEvent("ithibati:authenticate", () => this.run("authentication", {}))
+    this.handleEvent("ithibati:recover", (payload) => this.recover(payload))
+  },
+
+  // One request and no authenticator: a recovery code is typed, not signed. It goes through the
+  // hook anyway because the endpoint answers JSON and sets a session cookie, which is a `fetch`
+  // from a page rather than anything a LiveView can do.
+  async recover({code}) {
+    try {
+      const answer = await post(this.requiredUrl("recovery-url"), {code})
+      if (!answer.ok) return this.failed(answer.body.error, answer.status)
+
+      this.done(answer.body)
+    } catch (error) {
+      if (error.name === "IthibatiMissingUrl") return this.failed(error.message)
+
+      this.failed("recovery_failed")
+    }
   },
 
   async run(ceremony, identity) {
@@ -122,13 +139,7 @@ export const PasskeyCeremony = {
       const finished = await post(verifyUrl, {...identity, credential})
       if (!finished.ok) return this.failed(finished.body.error, finished.status)
 
-      // A handler that answered with somewhere to go is obeyed; anything else is the page's to
-      // decide, so it goes back to the LiveView rather than being acted on here.
-      if (finished.body.redirect) {
-        window.location.href = finished.body.redirect
-      } else {
-        this.pushEvent("ithibati:done", finished.body)
-      }
+      this.done(finished.body)
     } catch (error) {
       // A cancelled or failed ceremony is a `DOMException`, which the server never hears about —
       // the person closed the dialog. A missing URL is the one reported by name, because it is a
@@ -136,6 +147,16 @@ export const PasskeyCeremony = {
       if (error.name === "IthibatiMissingUrl") return this.failed(error.message)
 
       this.failed(error.name === "NotAllowedError" ? "ceremony_cancelled" : "ceremony_failed")
+    }
+  },
+
+  // A handler that answered with somewhere to go is obeyed; anything else is the page's to
+  // decide, so it goes back to the LiveView rather than being acted on here.
+  done(body) {
+    if (body.redirect) {
+      window.location.href = body.redirect
+    } else {
+      this.pushEvent("ithibati:done", body)
     }
   },
 

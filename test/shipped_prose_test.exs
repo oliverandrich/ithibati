@@ -2,8 +2,9 @@ defmodule Ithibati.ShippedProseTest do
   @moduledoc """
   The half of the no-bean-ids rule that Credo cannot hold: it reads Elixir sources, and the rule also
   covers the prose. What makes prose worth covering is that it ships — so the list of files comes
-  from `package(files:)` rather than from a second hand-written copy of it, and a directory added to
-  the package is under the rule without anybody remembering this file.
+  from `package(files:)`, through `Ithibati.Prose`, rather than from a second hand-written copy of
+  it, and a directory added to the package is under the rule without anybody remembering this
+  file.
 
   Held against the check's own pattern for the same reason: two patterns drift, and the one that
   drifts is the one nobody runs.
@@ -13,10 +14,7 @@ defmodule Ithibati.ShippedProseTest do
   alias Ithibati.Credo.NoBeanIds
 
   # Credo already reads every `.ex`/`.exs`, so scanning them again here would only slow the suite.
-  @shipped Mix.Project.config()[:package][:files]
-           |> Enum.flat_map(&[&1 | Path.wildcard(&1 <> "/**/*")])
-           |> Enum.filter(&File.regular?/1)
-           |> Enum.reject(&(Path.extname(&1) in [".ex", ".exs"]))
+  @shipped Ithibati.Prose.shipped()
 
   test "the files this reads are the ones that ship" do
     assert "README.md" in @shipped

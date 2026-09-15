@@ -60,7 +60,7 @@ if Code.ensure_loaded?(Credo.Check) do
       end
     end
 
-    # `alias Ithibati.Identity.{Secrets, Tokens}` does not nest: each name is its own node, and
+    # `alias Ithibati.Identity.{Secrets, Sessions}` does not nest: each name is its own node, and
     # the prefix stands alone in front of them.
     defp pairs({{:., _, [{:__aliases__, _, prefix}, :{}]}, _meta, parts}, acc) do
       for {:__aliases__, _, segments} <- parts, reduce: acc do

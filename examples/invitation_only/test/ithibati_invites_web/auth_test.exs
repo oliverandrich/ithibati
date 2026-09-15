@@ -1,4 +1,4 @@
-defmodule IthibatiInvites.AuthTest do
+defmodule IthibatiInvitesWeb.AuthTest do
   @moduledoc """
   The one function this example exists for, driven directly.
 
@@ -12,7 +12,7 @@ defmodule IthibatiInvites.AuthTest do
   alias Ithibati.Identity.Invitations
   alias IthibatiInvites.Accounts.Invitation
   alias IthibatiInvites.Accounts.User
-  alias IthibatiInvites.Auth
+  alias IthibatiInvitesWeb.Auth
 
   # What `Ithibati.Identity.Passkeys.verify_registration/2` hands the handler, reduced to the two
   # keys `Grant.with_key_and_codes/3` reads. A real credential would prove something about the

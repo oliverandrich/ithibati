@@ -204,8 +204,9 @@ defmodule Ithibati.Schema.InvitationTest do
   end
 
   describe "what it refuses at compile time" do
-    # The same accident as a forgotten sigil, and reachable from the shape the README now shows: a
-    # misspelled attribute is `nil` with only a warning, and would mean no pattern at all.
+    # The same accident as a forgotten sigil, and reachable from the shape `docs/invitations.md`
+    # shows: a misspelled attribute is `nil` with only a warning, and would mean no pattern at
+    # all.
     test "a format: that arrived as nil, where leaving it out is fine" do
       assert_raise ArgumentError, ~r/misspelled module attribute/, fn ->
         probe("NilFormat", "use Ithibati.Schema.Invitation, identifier: :email, format: nil",

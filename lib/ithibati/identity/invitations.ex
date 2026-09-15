@@ -2,10 +2,10 @@ defmodule Ithibati.Identity.Invitations do
   @moduledoc """
   Opening an invitation, and accepting one.
 
-  The invitation itself is the application's row — `Ithibati.Schema.Invitation` says why — so what
-  is here is the half that would otherwise be written by hand and written slightly wrong: finding an
-  invitation by the secret in a link, and marking it accepted in a way two people opening that link
-  at once cannot both get through.
+  The invitation itself is the application's row, and `Ithibati.Schema.Invitation` says why. This
+  module holds the half that would otherwise be written by hand and written slightly wrong: finding
+  an invitation by the secret in a link, and marking it accepted in a way two people opening that
+  link at once cannot both get through.
 
   Accepting composes into the caller's own transaction, beside the grant:
 
@@ -16,9 +16,9 @@ defmodule Ithibati.Identity.Invitations do
       |> Ecto.Multi.insert(:membership, fn %{account: account, invitation: invitation} -> … end)
       |> MyApp.Repo.transaction()
 
-  Before the grant, for the reason `Ithibati.Identity.Grant.with_key_and_codes/3` warns about. Two
-  people opening one link is exactly the race this step's refusal exists for, so it is not a rare
-  path here.
+  Accept before the grant, for the reason `Ithibati.Identity.Grant.with_key_and_codes/3` warns
+  about. Two people opening one link is the race this step's refusal exists for, so it is not a
+  rare path here.
   """
 
   import Ecto.Query
@@ -32,8 +32,8 @@ defmodule Ithibati.Identity.Invitations do
   @doc """
   The pending invitation this token opens, or `nil`.
 
-  Pending means not yet accepted and not past its expiry. One that is neither is answered the same
-  way as a token nobody holds, deliberately.
+  Pending means not yet accepted and not past its expiry. An invitation that is not pending is
+  answered the same way as a token nobody holds, deliberately.
   """
   def fetch(token) when is_binary(token) do
     Config.repo().one(
@@ -49,8 +49,8 @@ defmodule Ithibati.Identity.Invitations do
   @doc """
   The attributes an account created from this invitation starts with.
 
-  Just the identifier, under the name the schemas agreed on — so a consumer composing the acceptance
-  does not have to reach into this library to learn what that name is.
+  Only the identifier, under the name the schemas agreed on. An application composing the acceptance
+  therefore does not have to reach into Ithibati to learn what that name is.
   """
   def account_attrs(invitation) do
     field = addressed_by(invitation)
@@ -67,12 +67,12 @@ defmodule Ithibati.Identity.Invitations do
   Marks the invitation accepted, as a step named `:invitation` in the caller's transaction.
 
   The step answers `{:error, :invalid_invitation}` when the invitation was accepted or expired in
-  the meantime, which rolls the whole transaction back — so the account, its passkey and its codes
-  go with it.
+  the meantime, and that rolls the whole transaction back. The account, its passkey and its codes go
+  with it.
 
-  It also refuses, with `{:error, :identifier_mismatch}`, an account being created under a different
-  identifier from the one the invitation was addressed to. `account:` names the step that account
-  comes from and defaults to `:account`, the name every fragment in this library uses; a transaction
+  It also refuses an account being created under a different identifier from the one the invitation
+  was addressed to, with `{:error, :identifier_mismatch}`. `account:` names the step that account
+  comes from and defaults to `:account`, the name every fragment in Ithibati uses. A transaction
   with no such step is not checked, because there is nothing to check it against.
   """
   def accept(multi, invitation, opts \\ []) do
@@ -104,10 +104,10 @@ defmodule Ithibati.Identity.Invitations do
   @doc """
   Invitations that ran out without being accepted.
 
-  Nothing here sweeps them: what schedules a job is the application's business, and `fetch/1`
-  refuses an expired invitation anyway, so one left lying is inert. The *query* is this library's,
-  though, which is why both halves are offered — this one for a sweeper that wants to say what it is
-  about to remove, `delete_expired/0` for one that does not.
+  Ithibati does not sweep them. Scheduling a job is the application's business, and `fetch/1`
+  refuses an expired invitation anyway, so one left lying is inert. The *query* is Ithibati's,
+  though, which is why both halves are offered. Use this one for a sweeper that wants to say what
+  it is about to remove, and `delete_expired/0` for one that does not.
   """
   def expired do
     Config.repo().all(expired_query())
@@ -122,8 +122,9 @@ defmodule Ithibati.Identity.Invitations do
 
   # "Unaccepted" rides the `WHERE` of the update that accepts it, and the row comes back from the
   # same statement — so two people opening one link cannot both get through. Both aim at the same
-  # row, so the second waits on its lock and re-reads the committed version; `docs/design.md`
-  # decision 8 sets out when that is enough and when it is not.
+  # row, so the second waits on its lock and re-reads the committed version.
+  # `Ithibati.Identity.Concurrency` covers the case where two writers aim at different rows, where
+  # this is not enough.
   defp claim(repo, invitation) do
     now = DateTime.utc_now()
 

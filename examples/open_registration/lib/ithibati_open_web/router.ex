@@ -27,7 +27,7 @@ defmodule IthibatiOpenWeb.Router do
     # The name the passkey dialog shows, and the only thing separating this example's credentials
     # from the other's: a relying-party id is a *host*, so both examples on localhost share one
     # scope however different their databases are.
-    ithibati_routes handler: IthibatiOpen.Auth, rp_name: "Ithibati, open registration"
+    ithibati_routes handler: IthibatiOpenWeb.Auth, rp_name: "Ithibati, open registration"
   end
 
   scope "/", IthibatiOpenWeb do

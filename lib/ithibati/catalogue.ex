@@ -2,14 +2,14 @@ defmodule Ithibati.Catalogue do
   @moduledoc """
   What Postgres says about the tables an application owns.
 
-  Two questions, asked by two callers that must not be allowed to disagree:
+  Two callers ask these two questions, and they must not be allowed to disagree.
   `Ithibati.Migration` asks them before it points a foreign key at somebody's account table, and
   `Ithibati.Doctor` asks them afterwards, to say whether what was built still matches what is
   configured. A second copy of either query would answer the same question differently the first
-  time one of them was corrected.
+  time somebody corrected one of them.
 
   Everything here takes its repo and prefix as arguments. The migration has `Ecto.Migration`'s
-  `repo/0` and `prefix/0` to hand; nothing outside a migration does.
+  `repo/0` and `prefix/0` to hand, and nothing outside a migration does.
   """
 
   alias Ithibati.Config
@@ -20,10 +20,10 @@ defmodule Ithibati.Catalogue do
   @doc """
   The oid of a table, or `nil` when there is none under that prefix.
 
-  Resolved the way Ecto resolves the `REFERENCES` clause it emits: qualified when there is a
-  prefix, through the search path when there is not. Quoted by Postgres rather than by us, so a
-  table whose name is not lower case answers for itself instead of being downcased into a
-  different one.
+  This resolves the name the way Ecto resolves the `REFERENCES` clause it emits: qualified when
+  there is a prefix, and through the search path when there is not. Postgres does the quoting
+  rather than Ithibati, so a table whose name is not lower case answers for itself instead of
+  being downcased into a different one.
   """
   def table_oid(repo, prefix, table) do
     %{rows: [[oid]]} =
@@ -41,9 +41,9 @@ defmodule Ithibati.Catalogue do
   column.
 
   A domain resolves to what it is built on, because that is what a foreign key compares against.
-  The index has to cover that column and nothing else — `indnkeyatts` counts key columns only, so
-  `PRIMARY KEY (id) INCLUDE (email)` still qualifies — and must not be partial, which Postgres
-  refuses as a reference target.
+  The index has to cover that column and nothing else, and it must not be partial, which Postgres
+  refuses as a reference target. `indnkeyatts` counts key columns only, so
+  `PRIMARY KEY (id) INCLUDE (email)` still qualifies.
   """
   def column(repo, oid, column) do
     %{rows: rows} =
@@ -77,12 +77,12 @@ defmodule Ithibati.Catalogue do
   def qualified(prefix, table), do: "#{prefix}.#{table}"
 
   @doc """
-  Whether a table's key column can carry this library's foreign keys — `{:ok, description}`, or a
-  sentence saying what is wrong.
+  Whether a table's key column can carry Ithibati's foreign keys. It answers
+  `{:ok, description}`, or a sentence saying what is wrong.
 
-  The judgement travels with the query for the reason the query travelled here: the migration
+  The judgement travels with the query for the reason the query travelled here. The migration
   decides this before it builds and the doctor decides it afterwards, and the two disagreeing is
-  worse than either being wrong. A wrong answer out of the SQL is loud; a disagreement about
+  worse than either being wrong. A wrong answer out of the SQL is loud. A disagreement about
   *which types are acceptable* means one of them blesses a database the other refuses.
   """
   def key_column(repo, oid, table, column) do

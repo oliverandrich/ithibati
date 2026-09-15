@@ -152,7 +152,7 @@ defmodule Ithibati.Credo.NoInternalCallsTest do
       """
       defmodule App.Accounts do
         def format, do: Ithibati.Schema.Identifier.email_format()
-        def mint(account), do: Ithibati.Identity.Tokens.generate_session_token(account)
+        def mint(account), do: Ithibati.Identity.Sessions.generate_session_token(account)
         def claim(attrs), do: Ithibati.Bootstrap.changeset(%Ithibati.Bootstrap{}, attrs)
       end
       """

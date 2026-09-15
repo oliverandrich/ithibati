@@ -6,7 +6,7 @@ defmodule Mix.Tasks.Ithibati.Doctor do
 
       mix ithibati.doctor
 
-  The application is started first, and that is not incidental — several of the questions are
+  The task starts the application first, and that is not incidental. Several of the questions are
   about modules the application owns, and an unstarted application answers "no such thing" for
   every one of them.
   """

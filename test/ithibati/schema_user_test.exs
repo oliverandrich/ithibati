@@ -32,7 +32,7 @@ defmodule Ithibati.Schema.UserTest do
 
     test "one association per table this library owns, and no others" do
       for {schema, _identifier, _own} <- @fixtures do
-        assert schema.__schema__(:associations) == [:passkeys, :recovery_codes, :auth_tokens]
+        assert schema.__schema__(:associations) == [:passkeys, :recovery_codes, :sessions]
       end
     end
 
@@ -40,7 +40,7 @@ defmodule Ithibati.Schema.UserTest do
       for {name, related} <- [
             passkeys: Ithibati.UserKey,
             recovery_codes: Ithibati.RecoveryCode,
-            auth_tokens: Ithibati.UserToken
+            sessions: Ithibati.Session
           ] do
         assoc = TestUser.__schema__(:association, name)
 
@@ -178,8 +178,9 @@ defmodule Ithibati.Schema.UserTest do
     end
   end
 
-  # The README invites a format of one's own, and naming the pattern is how a person writes one
-  # worth naming. The macro has to hand the option on rather than ask for its value, because a
+  # `docs/getting_started.md` invites a format of one's own, and naming the pattern is how a
+  # person writes one worth naming. The macro has to hand the option on rather than ask for its
+  # value, because a
   # module attribute of the consumer does not exist where the macro expands.
   describe "a format given as a module attribute" do
     test "is applied, and is the attribute's own pattern rather than some default" do

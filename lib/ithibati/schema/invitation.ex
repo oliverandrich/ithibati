@@ -1,11 +1,12 @@
 defmodule Ithibati.Schema.Invitation do
   @moduledoc """
-  What an invitation owes this library, and what this library puts on it.
+  What Ithibati puts on an invitation, and what an invitation owes Ithibati.
 
-  The table is the application's, like the accounts table and for the same reason: an invitation
-  says what somebody is being invited *to* — a role, a site, a team — and that is exactly what
-  decision 3 keeps out of here. So the schema is declared in the application, and this macro adds
-  the half that is this library's:
+  The table belongs to the application, like the accounts table and for the same reason. An
+  invitation says what somebody is being invited *to*, such as a role, a site or a team, and
+  that is exactly what this library keeps out of itself. So you declare the schema in your
+  application, and
+  this macro adds Ithibati's half of it:
 
       defmodule MyApp.Accounts.Invitation do
         use Ecto.Schema
@@ -33,16 +34,16 @@ defmodule Ithibati.Schema.Invitation do
         end
       end
 
-  The options are the account macro's: `identifier:` (required, and the one that has to be written
-  out), `format:` — for which `Ithibati.Schema.Identifier.email_format/0` offers a pattern — and
-  `constraint_name:` and `unique_index:`, the last two naming the unique index on the token digest
-  rather than on the identifier. Each of the three value options may be written inline or named
-  with a module attribute standing above the `use` line.
+  The options are the account macro's. `identifier:` is required, and it is the one you have to
+  write out. `format:` takes a regular expression, and `Ithibati.Schema.Identifier.email_format/0`
+  offers a pattern for addresses. `constraint_name:` and `unique_index:` name the unique index on
+  the token digest rather than on the identifier. You may write each of the three value options
+  inline, or name a module attribute standing above the `use` line.
 
-  `identifier:` names the field the invitee is addressed by. It has to be the same
-  field the account schema uses, and `Ithibati.Config.invitation_schema/0` refuses the pair when it
-  is not — it cannot be read from there instead, because a schema's fields are fixed when the module
-  compiles and which schema is the account's is read at runtime.
+  `identifier:` names the field the invitee is addressed by. It has to be the same field the
+  account schema uses, and `Ithibati.Config.invitation_schema/0` refuses the pair when it is not.
+  Ithibati cannot read the field from the account schema instead, because a schema's fields are
+  fixed when the module compiles, and which schema is the account's is read at runtime.
   """
 
   import Ecto.Changeset
@@ -55,11 +56,12 @@ defmodule Ithibati.Schema.Invitation do
   alias Ithibati.Schema.Identifier
 
   @doc """
-  Declares the fields this library owns, inside the schema block.
+  Declares the fields Ithibati owns, inside the schema block.
 
-  Four columns and one virtual field: the invitee's identifier, the token's digest, when the
-  invitation stops being acceptable, when it was accepted — and `:token`, which is not stored. The
-  plaintext is put there when the invitation is built and is the only copy there will ever be.
+  Four columns and one virtual field. The columns are the invitee's identifier, the token's
+  digest, when the invitation stops being acceptable, and when it was accepted. The virtual field
+  is `:token`, which is not stored. Ithibati puts the plaintext there when the invitation is
+  built, and that is the only copy there will ever be.
   """
   defmacro ithibati_invitation do
     quote do
@@ -115,8 +117,8 @@ defmodule Ithibati.Schema.Invitation do
 
     quote do
       @doc """
-      What this library was told about this schema: `:identifier` is the field an invitee is
-      addressed by, `:constraint` the unique index name on the token digest the application said it
+      What Ithibati was told about this schema. `:identifier` is the field an invitee is addressed
+      by. `:constraint` is the unique index name on the token digest that the application said it
       maintains itself, or `nil`.
       """
       def __ithibati_invitation__(:identifier), do: unquote(field)
@@ -126,11 +128,11 @@ defmodule Ithibati.Schema.Invitation do
       @doc """
       Casts the invitee's identifier, mints the token and sets the expiry.
 
-      Takes a struct or a changeset and answers a changeset, so you compose it into your own. `days:`
-      says how long the invitation stays acceptable; it defaults to seven for a new invitation, and
-      passing it to an existing one moves the expiry, which is how an invitation is extended. The
-      token is never minted twice, so an extended invitation is still opened by the link that was
-      sent.
+      It takes a struct or a changeset and answers a changeset, so you compose it into your own.
+      `days:` says how long the invitation stays acceptable. It defaults to seven for a new
+      invitation, and passing it to an existing one moves the expiry, which is how you extend an
+      invitation. Ithibati never mints the token twice, so the link that was already sent still
+      opens an extended invitation.
       """
       def invitation_changeset(invitation_or_changeset, attrs, opts \\ []) do
         # Written out because this is a quote: Elixir resolves aliases where the code is *written*,
@@ -228,9 +230,10 @@ defmodule Ithibati.Schema.Invitation do
   @doc """
   Whether a module carries what this macro injects.
 
-  The invitation half of `Ithibati.Schema.User.account_schema?/1`, and public for the same
-  reason: an application that configures an invitation schema can ask whether it is one, rather
-  than checking for the marker function by hand and finding out the next time it is renamed.
+  This is the invitation half of `Ithibati.Schema.User.account_schema?/1`, and it is public for
+  the same reason. An application that configures an invitation schema can ask whether the module
+  is one, rather than checking for the marker function by hand and finding out the next time it
+  is renamed.
   """
   def invitation_schema?(module),
     do: Code.ensure_loaded?(module) and function_exported?(module, :__ithibati_invitation__, 1)

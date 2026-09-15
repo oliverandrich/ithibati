@@ -8,7 +8,14 @@ defmodule Ithibati.DataCase do
   """
   use ExUnit.CaseTemplate
 
+  # In the module as well as in `using`: the helpers below are compiled here, not in the test
+  # that calls them.
+  import Ecto.Query, only: [from: 2]
+
   alias Ecto.Adapters.SQL.Sandbox
+  alias Ithibati.Identity.Secrets
+  alias Ithibati.Session
+  alias Ithibati.TestRepo
 
   using do
     quote do
@@ -79,6 +86,28 @@ defmodule Ithibati.DataCase do
       Ithibati.UserKey.changeset(%Ithibati.UserKey{}, Map.merge(defaults, attrs))
     )
   end
+
+  @doc """
+  Moves a session's `inserted_at` back by `seconds` and answers the token, so it can be piped.
+
+  Backdating the row rather than sleeping: the expiry is a comparison against `inserted_at`, and
+  a test that waits for it is either slow or lying about how long it waited. Two files were
+  writing this out, with two names and two return conventions.
+  """
+  def backdated(token, seconds) do
+    then = DateTime.add(DateTime.utc_now(), -seconds, :second)
+
+    {1, _} =
+      TestRepo.update_all(
+        from(s in Session, where: s.token_hash == ^Secrets.digest(token)),
+        set: [inserted_at: then]
+      )
+
+    token
+  end
+
+  @doc "Seconds in `n` days, for a validity written in days."
+  def days(n), do: n * 86_400
 
   @doc """
   Stand-in credential material: random bytes that verify nothing.

@@ -13,7 +13,7 @@ if Code.ensure_loaded?(Phoenix.Component) do
 
     import Phoenix.ConnTest
 
-    alias Ithibati.Identity.Tokens
+    alias Ithibati.Identity.Sessions
     alias Ithibati.Web.Gate
 
     @endpoint Ithibati.TestEndpoint
@@ -59,7 +59,7 @@ if Code.ensure_loaded?(Phoenix.Component) do
     # as a page that behaves differently after a refresh.
     describe "the same session, read from a LiveView" do
       test "current_account assigns whoever the session names", ctx do
-        token = Tokens.generate_session_token(ctx.account)
+        token = Sessions.generate_session_token(ctx.account)
 
         assert {:cont, socket} = Gate.on_mount(:current_account, %{}, session(token), socket())
         assert socket.assigns.current_account.id == ctx.account.id
@@ -79,7 +79,7 @@ if Code.ensure_loaded?(Phoenix.Component) do
 
       test "require_account lets an account through", ctx do
         mode = {:require_account, to: "/sign-in"}
-        token = Tokens.generate_session_token(ctx.account)
+        token = Sessions.generate_session_token(ctx.account)
 
         assert {:cont, _socket} = Gate.on_mount(mode, %{}, session(token), socket())
       end
@@ -95,7 +95,7 @@ if Code.ensure_loaded?(Phoenix.Component) do
       # The one that matters: checked only on the anonymous path, a missing `:to` would mount
       # perfectly for everybody who is signed in and blow up in front of the first stranger.
       test "and refuses it for a visitor who is signed in, too", ctx do
-        token = Tokens.generate_session_token(ctx.account)
+        token = Sessions.generate_session_token(ctx.account)
 
         assert_raise ArgumentError, ~r/nowhere to send/, fn ->
           Gate.on_mount(:require_account, %{}, session(token), socket())
@@ -168,7 +168,7 @@ if Code.ensure_loaded?(Phoenix.Component) do
     # The half a revoked token does not reach: a LiveView that is already connected holds its
     # account in assigns and keeps accepting events, because nothing re-reads the session until the
     # socket reconnects. Phoenix answers this with a topic named in the session and a `"disconnect"`
-    # broadcast on it; `docs/design.md` decision 11 says why this library sends that itself.
+    # broadcast on it, and this library sends that itself rather than asking the consumer to.
     describe "the sockets a session opened" do
       test "log_in names the live socket, so something can be said to it later", ctx do
         signed_in = Gate.log_in(build_conn_with_endpoint(Ithibati.TestEndpoint), ctx.account)
@@ -183,8 +183,8 @@ if Code.ensure_loaded?(Phoenix.Component) do
       # Per token rather than per account: the same person signed in on a phone is a different
       # session, and signing out here must not reach it.
       test "the topic is a different one for every session of the same account", ctx do
-        one = Tokens.generate_session_token(ctx.account)
-        two = Tokens.generate_session_token(ctx.account)
+        one = Sessions.generate_session_token(ctx.account)
+        two = Sessions.generate_session_token(ctx.account)
 
         refute Gate.live_socket_id(one) == Gate.live_socket_id(two)
       end
@@ -192,7 +192,7 @@ if Code.ensure_loaded?(Phoenix.Component) do
       # The token is a live credential. Topics reach logs and telemetry, so what goes in one is the
       # digest — `phx.gen.auth` puts the token itself there and this library deliberately does not.
       test "and carries no part of the token that opens anything", ctx do
-        token = Tokens.generate_session_token(ctx.account)
+        token = Sessions.generate_session_token(ctx.account)
 
         # The token first, because `Secrets.token/0` already answers base64url *text* — encoding it
         # again produces a string it can never appear in, so the encoded forms alone let the
@@ -237,7 +237,10 @@ if Code.ensure_loaded?(Phoenix.Component) do
         conn =
           Ithibati.TestEndpointWithoutPubSub
           |> build_conn_with_endpoint()
-          |> Plug.Conn.put_session(Gate.session_key(), Tokens.generate_session_token(ctx.account))
+          |> Plug.Conn.put_session(
+            Gate.session_key(),
+            Sessions.generate_session_token(ctx.account)
+          )
           |> Plug.Conn.put_session("live_socket_id", "ithibati_sessions:left-over")
 
         assert Gate.log_out(conn)

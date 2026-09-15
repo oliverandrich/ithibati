@@ -139,7 +139,7 @@ defmodule Ithibati.TestCredentials do
   end
 
   # An all-zero AAGUID is what an authenticator sends when it declines to identify its model, and it
-  # is all this library ever wants: see decision 6.
+  # is all this library ever wants.
   defp attested_credential_data(credential) do
     <<0::128>> <>
       <<byte_size(credential.key_id)::unsigned-big-16>> <>

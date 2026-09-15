@@ -60,9 +60,9 @@ defmodule Ithibati.Credo.IdentityIsPortableTest do
     test "the offending name on the first line after defmodule is reported at line two" do
       """
       defmodule Ithibati.Identity do
-        alias Ithibati.Sessions
+        alias Ithibati.Audit
         @doc "Something."
-        def x, do: Sessions.y()
+        def x, do: Audit.y()
       end
       """
       |> check()
@@ -72,12 +72,12 @@ defmodule Ithibati.Credo.IdentityIsPortableTest do
     test "what the core may name is left alone" do
       """
       defmodule Ithibati.Identity do
-        alias Ithibati.{RecoveryCode, UserKey, UserToken}
+        alias Ithibati.{RecoveryCode, Session, UserKey}
         alias Ithibati.Bootstrap
         alias Ithibati.Config
 
         def get(id), do: Config.repo().get(UserKey, id)
-        def codes, do: {RecoveryCode, UserToken, Bootstrap}
+        def codes, do: {RecoveryCode, Session, Bootstrap}
       end
       """
       |> check()
@@ -124,11 +124,11 @@ defmodule Ithibati.Credo.IdentityIsPortableTest do
 
     test "another core module may name whatever it likes" do
       """
-      defmodule Ithibati.UserToken do
+      defmodule Ithibati.Session do
         def x, do: Ithibati.Components.button()
       end
       """
-      |> check("lib/ithibati/user_token.ex")
+      |> check("lib/ithibati/session.ex")
       |> refute_issues()
     end
   end
@@ -148,11 +148,11 @@ defmodule Ithibati.Credo.IdentityIsPortableTest do
     # core, and the core is more than one file.
     test "so may no other core module" do
       """
-      defmodule Ithibati.UserToken do
+      defmodule Ithibati.Session do
         def conn(c), do: Plug.Conn.put_status(c, 200)
       end
       """
-      |> check("lib/ithibati/user_token.ex")
+      |> check("lib/ithibati/session.ex")
       |> assert_issue(&assert(&1.trigger == "Plug.Conn"))
     end
 

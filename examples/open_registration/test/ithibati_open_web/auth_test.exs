@@ -1,4 +1,4 @@
-defmodule IthibatiOpen.AuthTest do
+defmodule IthibatiOpenWeb.AuthTest do
   @moduledoc """
   The two answers this handler gives, and the difference between them.
 
@@ -9,7 +9,7 @@ defmodule IthibatiOpen.AuthTest do
   use IthibatiOpen.DataCase, async: true
 
   alias IthibatiOpen.Accounts.User
-  alias IthibatiOpen.Auth
+  alias IthibatiOpenWeb.Auth
 
   defp key_attrs do
     %{key_id: :crypto.strong_rand_bytes(16), public_key: :crypto.strong_rand_bytes(64)}

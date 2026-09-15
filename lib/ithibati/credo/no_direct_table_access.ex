@@ -10,26 +10,28 @@ if Code.ensure_loaded?(Credo.Check) do
       category: :warning,
       explanations: [
         check: """
-        This library's tables are reached through this library, not queried directly.
+        Reach Ithibati's tables through Ithibati, rather than querying them directly.
 
-        Not a matter of taste. A token row is only meaningful with its context: `Ithibati.Identity`
-        matches on it, so a hand-written query against the tokens table accepts a session token
-        where a device token was meant. A recovery code is single-use, and that is enforced where
-        it is spent, not by the row — a query that reads one directly can spend it twice. The same
-        applies to the keys table, where a credential is only valid for the account it was
-        enrolled against.
+        This is not a matter of taste. A session row is only a sign-in for as long as its
+        validity allows, which `Ithibati.Identity` checks on every lookup, so a hand-written
+        query against the sessions table signs somebody in months after they stopped. A recovery
+        code is single-use, and the
+        code that spends it enforces that, not the row: a query that reads one directly can spend
+        it twice. The same applies to the keys table, where a credential is only valid for the
+        account it was enrolled against.
 
-        Read them through `Ithibati.Identity` instead. If something you need is not reachable from
-        there, that is worth reporting rather than working around: the gap is in this library.
+        Read the tables through `Ithibati.Identity` instead. If something you need is not
+        reachable from there, report it rather than working around it, because the gap is in
+        Ithibati.
 
-        Matching on a struct this library handed you — `%Ithibati.UserKey{} = key` — is not this,
-        and neither is an `alias`; only using one as the thing being read is.
+        Matching on a struct Ithibati handed you, such as `%Ithibati.UserKey{} = key`, is not
+        this, and neither is an `alias`. Only using one as the thing being read is.
         """
       ]
 
     # The schemas, not the table names: the prefix is the application's to choose, so a name
     # written out here would be wrong for anybody who set one.
-    @owned [Ithibati.UserKey, Ithibati.RecoveryCode, Ithibati.UserToken, Ithibati.Bootstrap]
+    @owned [Ithibati.UserKey, Ithibati.RecoveryCode, Ithibati.Session, Ithibati.Bootstrap]
 
     @impl true
     def run(%SourceFile{} = source_file, params) do

@@ -2,8 +2,8 @@ defmodule Ithibati.RecoveryCode do
   @moduledoc """
   One single-use code, stored as a hash, for the day a passkey is gone.
 
-  A spent code is marked rather than deleted: the row is what makes a second use refusable, and how
-  many are left is a question the holder gets asked.
+  Ithibati marks a spent code rather than deleting it. The row is what makes a second use
+  refusable, and how many are left is a question the holder gets asked.
   """
   use Ecto.Schema
 

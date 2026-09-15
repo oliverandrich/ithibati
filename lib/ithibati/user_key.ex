@@ -31,10 +31,13 @@ defmodule Ithibati.UserKey do
   # ever reach, because the lookup short-circuits before it queries.
   @credential_id_max 1023
 
-  @doc "How much of a label is kept. A longer one is cut, not refused; the column has no limit."
+  @doc """
+  How much of a label is kept. Ithibati cuts a longer one rather than refusing it, and the column
+  itself has no limit.
+  """
   def label_max, do: @label_max
 
-  @doc "The longest credential id this library stores."
+  @doc "The longest credential id Ithibati stores."
   def credential_id_max, do: @credential_id_max
 
   @doc false
@@ -51,7 +54,7 @@ defmodule Ithibati.UserKey do
   # Every write path goes through here, which is why the fallback lives here rather than at the one
   # caller that happens to assemble a credential: a person who leaves the nickname box alone sends a
   # blank string, not an absent one, and a nameless row in the passkey list is the case a fallback
-  # exists for. There is deliberately no third source for the name — see decision 6.
+  # exists for. There is deliberately no third source for the name.
   @fallback "Passkey"
 
   # `put_change/3` rather than `update_change/3`, which only fires for a field the changeset already

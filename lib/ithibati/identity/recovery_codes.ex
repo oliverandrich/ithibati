@@ -3,9 +3,9 @@ defmodule Ithibati.Identity.RecoveryCodes do
   Single-use codes, for the day a passkey is gone.
 
   A passkey-only account has one credential set, and one lost keychain would otherwise be the end of
-  it. These are the second set: twelve codes by default, shown once, each good for exactly one
-  sign-in. How many, and whether spending the last one brings a fresh batch, are the application's
-  to set — `docs/design.md` decision 8.
+  it. Recovery codes are the second set: twelve codes by default, shown once, each good for exactly
+  one sign-in. The application sets how many, and whether spending the last one brings a fresh
+  batch.
   """
 
   import Ecto.Query
@@ -30,10 +30,10 @@ defmodule Ithibati.Identity.RecoveryCodes do
   end
 
   @doc """
-  Issues a fresh batch, and invalidates every code the account already had — spent or not.
+  Issues a fresh batch, and invalidates every code the account already had, spent or not.
 
-  This is also how an account gets its first batch: there is nothing to invalidate yet. What comes
-  back is the plaintext, once; the rows hold digests and nothing can recover it afterwards.
+  An account gets its first batch the same way, with nothing to invalidate yet. What comes back is
+  the plaintext, once. The rows hold digests, and nothing can recover the plaintext afterwards.
 
   `:count` says how many, and defaults to twelve.
   """
@@ -55,17 +55,18 @@ defmodule Ithibati.Identity.RecoveryCodes do
   @doc """
   Redeems a code: marks it spent and answers the account that held it.
 
-  Answers `{:ok, account, codes}`, where `codes` is a fresh batch when this was the account's **last**
-  unused code and `nil` otherwise — three elements rather than an optional key, so a caller cannot
-  match the common case and silently drop the batch in the one case it exists for.
+  It answers `{:ok, account, codes}`, where `codes` is a fresh batch when this was the account's
+  **last** unused code and `nil` otherwise. The result has three elements rather than an optional
+  key, so a caller cannot match the common case and silently drop the batch in the one case it
+  exists for.
 
-  That refill happens in the same transaction, and `refill: false` turns it off. On by default
-  because of the shape of the failure: an account with no passkey and no codes left is locked out of
+  That refill happens in the same transaction, and `refill: false` turns it off. It is on by default
+  because of the shape of the failure. An account with no passkey and no codes left is locked out of
   a self-hosted instance for good, and the only moment anybody can write down a new batch is the one
   where they have just used the last old one.
 
-  `{:error, :invalid}` covers a code nobody holds and one already spent — told apart by nothing,
-  deliberately.
+  `{:error, :invalid}` covers a code nobody holds and one already spent. Nothing tells the two
+  apart, deliberately.
   """
   def redeem(code, opts \\ [])
 
@@ -97,8 +98,8 @@ defmodule Ithibati.Identity.RecoveryCodes do
   def redeem(nil, _opts), do: {:error, :invalid}
 
   # "Unused" rides the `WHERE` of the update that spends the code, and the row comes back from the
-  # same statement — so a second caller cannot find it unused. `docs/design.md` decision 8 explains
-  # why the predicate alone is enough here and not for the count below.
+  # same statement — so a second caller cannot find it unused. The predicate alone is enough
+  # here and not for the count below, which is what `Ithibati.Identity.Concurrency` is for.
   defp spend(digest) do
     query =
       from(r in RecoveryCode, where: r.code_hash == ^digest and is_nil(r.used_at), select: r)

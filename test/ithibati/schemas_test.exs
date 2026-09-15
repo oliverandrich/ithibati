@@ -12,8 +12,8 @@ defmodule Ithibati.SchemasTest do
   alias Ithibati.Bootstrap
   alias Ithibati.Config
   alias Ithibati.RecoveryCode
+  alias Ithibati.Session
   alias Ithibati.UserKey
-  alias Ithibati.UserToken
 
   setup do
     %{user: user_fixture(%{email: "holder@example.test"})}
@@ -84,28 +84,28 @@ defmodule Ithibati.SchemasTest do
     assert key.label == "Oliver's phone"
   end
 
-  test "a token round-trips and carries its context", %{user: user} do
-    {:ok, token} =
-      %UserToken{}
-      |> UserToken.changeset(%{token_hash: <<10, 11>>, context: "session", user_id: user.id})
+  test "a session round-trips, carrying the digest it was given", %{user: user} do
+    {:ok, session} =
+      %Session{}
+      |> Session.changeset(%{token_hash: <<10, 11>>, user_id: user.id})
       |> TestRepo.insert()
 
-    assert %UserToken{context: "session"} = TestRepo.get!(UserToken, token.id)
+    assert %Session{token_hash: <<10, 11>>} = TestRepo.get!(Session, session.id)
   end
 
-  # A token is never updated — its age is its expiry — so the table has no such column and the
+  # A session is never updated — its age is its expiry — so the table has no such column and the
   # schema must not claim one.
-  test "a token has no updated_at" do
-    refute :updated_at in UserToken.__schema__(:fields)
-    assert :inserted_at in UserToken.__schema__(:fields)
+  test "a session has no updated_at" do
+    refute :updated_at in Session.__schema__(:fields)
+    assert :inserted_at in Session.__schema__(:fields)
   end
 
   # `Bootstrap` is absent on purpose: its foreign key is nilified rather than cascaded, because a
   # deleted founder must not make a second setup possible. `Ithibati.BootstrapTest` holds that.
   test "the rows die with the account they belong to", %{user: user} do
     {:ok, _} =
-      %UserToken{}
-      |> UserToken.changeset(%{token_hash: <<12>>, context: "s", user_id: user.id})
+      %Session{}
+      |> Session.changeset(%{token_hash: <<12>>, user_id: user.id})
       |> TestRepo.insert()
 
     {:ok, _} =
@@ -118,27 +118,27 @@ defmodule Ithibati.SchemasTest do
       |> RecoveryCode.changeset(%{code_hash: <<15>>, user_id: user.id})
       |> TestRepo.insert()
 
-    assert Enum.all?([UserKey, RecoveryCode, UserToken], &(TestRepo.aggregate(&1, :count) == 1))
+    assert Enum.all?([UserKey, RecoveryCode, Session], &(TestRepo.aggregate(&1, :count) == 1))
 
     {:ok, _} = TestRepo.delete(user)
 
-    assert Enum.all?([UserKey, RecoveryCode, UserToken], &(TestRepo.aggregate(&1, :count) == 0))
+    assert Enum.all?([UserKey, RecoveryCode, Session], &(TestRepo.aggregate(&1, :count) == 0))
   end
 
   # Written out rather than derived from `Config`: both sides of a derived assertion move together,
   # so it would hold for any prefix and prove only that the convention was applied to itself. These
-  # are the names the README promises and the migration builds.
-  test "the tables are the ones the README names" do
+  # are the names `docs/getting_started.md` promises and the migration builds.
+  test "the tables are the ones the documentation names" do
     assert UserKey.__schema__(:source) == "ithibati_keys"
     assert RecoveryCode.__schema__(:source) == "ithibati_recovery_codes"
-    assert UserToken.__schema__(:source) == "ithibati_tokens"
+    assert Session.__schema__(:source) == "ithibati_sessions"
     assert Bootstrap.__schema__(:source) == "ithibati_bootstrap"
   end
 
   # The migration declares the same kind of foreign key for every table, reading the type off
   # `UserKey`. It may do that only while they all agree.
   test "every table takes the same kind of account key" do
-    tables = [UserKey, RecoveryCode, UserToken, Bootstrap]
+    tables = [UserKey, RecoveryCode, Session, Bootstrap]
     types = Enum.map(tables, & &1.__schema__(:type, :user_id))
 
     assert types == List.duplicate(Config.users_key_type(), length(tables))

@@ -26,12 +26,19 @@ defmodule Ithibati.Credo.IdentityIsPortable do
       """
     ]
 
+  # After the `use` and not before it, which is the whole trick: `Credo.Check` writes a moduledoc
+  # from its `explanations:` block, so an attribute set first is overwritten and one set afterwards
+  # wins. Hidden because this check guards this repository and is not in the package — `mix docs`
+  # runs in `dev`, where `elixirc_paths` includes `credo/`, so without this it gets a page on
+  # hexdocs describing a rule nobody reading it can switch on.
+  @moduledoc false
+
   alias Credo.Code.Name
 
   # Allowed rather than forbidden: a module added next year is refused without anyone remembering
   # this file exists, which forces a conscious decision instead of a silent one. `Identity` is on the
   # list because the guarded module's own `defmodule` line is an alias node too.
-  @allowed [:Bootstrap, :Config, :Identity, :RecoveryCode, :UserKey, :UserToken]
+  @allowed [:Bootstrap, :Config, :Identity, :RecoveryCode, :Session, :UserKey]
 
   @optional_deps [:Phoenix, :Plug]
 
@@ -41,7 +48,7 @@ defmodule Ithibati.Credo.IdentityIsPortable do
   # module actually is, by hand and by a test; `defmodule` cannot drift from the module it declares.
   #
   # A prefix, not one name: the portable half is `Ithibati.Identity.Passkeys`,
-  # `Ithibati.Identity.Tokens` and whatever joins them, and a list of exact names would leave the
+  # `Ithibati.Identity.Sessions` and whatever joins them, and a list of exact names would leave the
   # next one unguarded until somebody remembered this file — which is the failure that is silent and
   # points the wrong way. `Ithibati.Identity` itself is covered in case it ever exists again.
   @guarded [:Ithibati, :Identity]

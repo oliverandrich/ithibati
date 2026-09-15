@@ -11,7 +11,8 @@ if Code.ensure_loaded?(Phoenix.Component) do
       {"POST", "/auth/registration/challenge", :registration_challenge},
       {"POST", "/auth/registration", :registration},
       {"POST", "/auth/authentication/challenge", :authentication_challenge},
-      {"POST", "/auth/authentication", :authentication}
+      {"POST", "/auth/authentication", :authentication},
+      {"POST", "/auth/recovery", :recovery}
     ]
 
     # Filtered to one mount: the test estate mounts twice, and what is being pinned is the four

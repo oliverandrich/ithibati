@@ -2,7 +2,7 @@ defmodule IthibatiInvitesWeb.CeremonyMessages do
   @moduledoc """
   One sentence per reason a ceremony can fail, in one place.
 
-  The reasons arrive as the codes `IthibatiInvites.Auth` returned, plus the ones the library
+  The reasons arrive as the codes `IthibatiInvitesWeb.Auth` returned, plus the ones the library
   produces. Turning them into sentences is the application's job — a library that shipped the
   wording would be deciding the tone of somebody else's product — and both pages that can start a
   ceremony ask here, because the same code answered two ways is how a vocabulary drifts.

@@ -53,7 +53,8 @@ defmodule Ithibati.Identity.RecoveryCodesTest do
       assert RecoveryCodes.remaining(user) == 6
     end
 
-    # On by default, and the default is the whole argument of decision 8 — but an application that
+    # On by default, because an account with no passkey and no codes left is locked out for
+    # good — but an application that
     # would rather force a re-enrolment says so here.
     test "and whether the last one brings a fresh batch", %{user: user} do
       [only] = RecoveryCodes.regenerate(user, count: 1)

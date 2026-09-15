@@ -63,6 +63,41 @@ defmodule IthibatiOpenWeb.RegistrationTest do
     |> through_navigation(css(".alert-success", text: "Signed in as ada"))
   end
 
+  # The day the passkey is gone. Everything else here needs an authenticator; this is the one
+  # path that must work without one, and it is the reason the codes exist at all.
+  feature "a recovery code signs somebody in when the passkey cannot", %{session: session} do
+    virtual_authenticator(session)
+
+    codes =
+      session
+      |> register("grace")
+      |> all(css("main li"))
+      |> Enum.map(&Wallaby.Element.text/1)
+
+    assert length(codes) == 12
+    [code | _rest] = codes
+
+    session
+    |> open("/")
+    |> click(link("sign out"))
+    |> connected()
+    |> fill_in(css("input[name=code]"), with: code)
+    |> click(button("Sign in with a code"))
+    |> through_navigation(css(".alert-success", text: "Signed in as grace"))
+
+    # Spent, not merely unmatched: the row is what makes a second use refusable.
+    account = Repo.get_by(User, username: "grace")
+    assert Ithibati.Identity.RecoveryCodes.remaining(account) == 11
+
+    session
+    |> open("/")
+    |> click(link("sign out"))
+    |> connected()
+    |> fill_in(css("input[name=code]"), with: code)
+    |> click(button("Sign in with a code"))
+    |> assert_has(css(".alert-error", text: "recovery code"))
+  end
+
   # The bug `Ithibati.Web.Gate` closes: a revoked token stops the *next* request and the next
   # mount, while a LiveView already connected holds its account in assigns and goes on accepting
   # events as that account until something tells its socket to go away.

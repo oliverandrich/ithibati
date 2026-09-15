@@ -37,7 +37,7 @@ defmodule Ithibati.Identity.PasskeysRegistrationTest do
 
     # `Wax.Challenge.new/1` merges `Application.get_all_env(:wax_)` over what it is passed, so a
     # consumer who configures the library it depends on would otherwise silently decide the relying
-    # party for every call — which is the one thing decision 5 says must stay per-call.
+    # party for every call, which is the property that must not be consolidated into a setting.
     test "is not overruled by wax_'s own application environment" do
       put_env(:wax_, rp_id: "attacker.example", origin: "https://attacker.example")
 

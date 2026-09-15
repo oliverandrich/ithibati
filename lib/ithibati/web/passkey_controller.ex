@@ -2,25 +2,27 @@
 if Code.ensure_loaded?(Phoenix.Component) do
   defmodule Ithibati.Web.PasskeyController do
     @moduledoc """
-    The two ceremonies, four actions, as JSON.
+    The two ceremonies and the recovery route, five actions, as JSON.
 
-    A challenge is minted in one request and verified in the next, so it waits in the session
-    between them. It is deleted the first time a verification is attempted, whether that succeeded
-    or not: a challenge is single-use, and nothing in `Ithibati.Identity.Passkeys` can hold that
-    property — it lives wherever the caller put it, and a replayed assertion is indistinguishable
-    from a first one there. This is the caller, so this is where it happens.
+    The controller mints a challenge in one request and verifies it in the next, so the challenge
+    waits in the session between them. It deletes the challenge the first time something attempts
+    a verification, whether that attempt succeeded or not. A challenge is single-use, and nothing
+    in `Ithibati.Identity.Passkeys` can hold that property: the challenge lives wherever the caller
+    put it, and a replayed assertion looks the same as a first one there. This controller is the
+    caller, so this is where it happens.
 
     The two ceremonies keep their challenges in separate places. `Wax` checks the type the *client*
-    wrote into the client data, not the type of the challenge it verifies against, so one shared
-    slot would let a challenge taken from the ungated sign-in endpoint be spent on a registration —
-    and `c:Ithibati.Web.Handler.registration_subject/2` is the only place an instance can refuse
-    someone.
+    wrote into the client data, not the type of the challenge it verifies against. One shared slot
+    would therefore let a challenge taken from the ungated sign-in endpoint be spent on a
+    registration, and `c:Ithibati.Web.Handler.registration_subject/2` is the only place an instance
+    can refuse someone.
 
-    What follows a verification belongs to the application; see `Ithibati.Web.Handler`.
+    What follows a verification belongs to the application. See `Ithibati.Web.Handler`.
     """
     use Phoenix.Controller, formats: [:json]
 
     alias Ithibati.Identity.Passkeys
+    alias Ithibati.Identity.RecoveryCodes
 
     @registration :ithibati_registration_challenge
     @authentication :ithibati_authentication_challenge
@@ -96,6 +98,27 @@ if Code.ensure_loaded?(Phoenix.Component) do
     # session still holds two slots however many mounts an application has, and a challenge offered
     # to the wrong mount is spent there all the same.
     defp keep(conn, key, held), do: put_session(conn, key, {settings(conn), held})
+
+    # No challenge, no session, no ceremony: a code is a secret somebody types, and the whole
+    # exchange is this one request. What it shares with the four above is where it ends.
+    def recovery(conn, %{"code" => code}) when is_binary(code) do
+      with {:ok, account, fresh} <- RecoveryCodes.redeem(code),
+           {:ok, conn} <- handler(conn).recovered(conn, account, fresh) do
+        answered(conn, "recovered")
+      else
+        # `redeem/2` answers `:invalid` for a code nobody holds and one already spent alike. Named
+        # for the wire here, where `invalid` on its own says nothing about what was.
+        {:error, :invalid} -> refuse(conn, :invalid_code)
+        {:error, reason} -> refuse(conn, reason)
+      end
+    end
+
+    # A body with no `code` in it, in a clause of its own rather than as a catch-all in the `else`
+    # above. A catch-all there also swallows a handler that answers `recovered/3` with a bare
+    # `Plug.Conn` instead of `{:ok, conn}` — and by then the code is spent, so the person is told
+    # `invalid_code` about a code that worked and is now gone. The other four actions let that
+    # mistake raise, and so does this one.
+    def recovery(conn, _params), do: refuse(conn, :invalid_code)
 
     defp taken({settings, held}, settings), do: {:ok, held}
     defp taken(_held, _settings), do: {:error, :no_challenge}

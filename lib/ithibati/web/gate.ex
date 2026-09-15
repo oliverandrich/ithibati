@@ -13,20 +13,23 @@ if Code.ensure_loaded?(Phoenix.Component) do
           live "/admin", AdminLive
         end
 
-    Two modes and no others. `:current_account` assigns whoever the session names, or `nil`, and
-    always continues; `:require_account` refuses when there is nobody. A gate that listed its modes
-    and let anything else through would turn a typo into a page that refuses nobody — protection
-    that never fails visibly — so an unrecognised mode raises where it is written rather than
-    answering at the first request.
+    The gate has two modes and no others. `:current_account` assigns whoever the session names, or
+    `nil`, and always continues. `:require_account` refuses when there is nobody.
 
-    This gates *authentication* and stops there. What an account may do is the application's
-    question, and `docs/design.md` says why this library does not have an opinion about it.
+    An unrecognised mode raises rather than being ignored. The plug raises from `init/1`, which
+    Phoenix runs at compile time under `init_mode: :compile` and at the first request otherwise;
+    the `on_mount` raises at the mount either way. A gate that listed its modes and let anything
+    else through would turn a typo into a page that refuses nobody, and nothing would report
+    it.
+
+    The gate covers authentication and stops there. What an account may *do* is the
+    application's, and Ithibati has no opinion about it.
     """
     import Plug.Conn
     import Phoenix.Controller, only: [redirect: 2]
 
     alias Ithibati.Identity.Secrets
-    alias Ithibati.Identity.Tokens
+    alias Ithibati.Identity.Sessions
 
     @session "ithibati_account_token"
 
@@ -37,25 +40,25 @@ if Code.ensure_loaded?(Phoenix.Component) do
     @modes [:current_account, :require_account]
     @options [:to]
 
-    @doc "The session key this library stores its token under."
+    @doc "The session key Ithibati stores its token under."
     def session_key, do: @session
 
     @doc """
-    Signs an account in: a session token, stored under this library's key.
+    Signs an account in by storing a session token under Ithibati's session key.
 
-    Offered rather than imposed. `Ithibati.Web.Handler` is where an application decides what a
-    verified assertion is worth, and one that issues a bearer token for an extension instead simply
-    never calls this — the gate then finds nothing, which is the right answer. But a gate that read
-    a key nothing here ever wrote would leave every consumer guessing the convention.
+    Ithibati offers this rather than imposing it. An application decides in `Ithibati.Web.Handler`
+    what a verified assertion is worth, and one that issues a bearer token for an extension instead
+    simply never calls this. The gate then finds nothing, which is the right answer. But a gate
+    that read a key nothing here ever wrote would leave every application guessing the convention.
 
-    The session is renewed first: a fixed session id handed to someone before they sign in is a
-    session an attacker already holds afterwards. That clears the CSRF token with everything else,
-    so **a sign-in has to end in a full page load** — the hook does that when a handler answers with
-    `%{redirect: …}`. A page that stays put after signing in holds a token the new session has never
-    heard of, and its next form post is refused.
+    `log_in/2` renews the session first, because a fixed session id handed to someone before they
+    sign in is a session an attacker already holds afterwards. Renewing clears the CSRF token along
+    with everything else, so **a sign-in has to end in a full page load**. The hook does that when
+    a handler answers with `%{redirect: …}`. A page that stays put after signing in holds a token
+    the new session has never heard of, and its next form post is refused.
     """
     def log_in(conn, account) do
-      token = Tokens.generate_session_token(account)
+      token = Sessions.generate_session_token(account)
 
       conn
       |> renew_session()
@@ -66,13 +69,14 @@ if Code.ensure_loaded?(Phoenix.Component) do
     @doc """
     The topic the sockets of one session answer on.
 
-    Derived from the token's *digest*: a topic reaches logs, telemetry and everything subscribed to
-    the pubsub server, and `phx.gen.auth` puts the live token itself in there. Per token rather than
-    per account, so signing out in one browser leaves the same person's other devices alone.
+    Ithibati derives the topic from the token's *digest*. A topic reaches logs, telemetry and
+    everything subscribed to the pubsub server, and `phx.gen.auth` puts the live token itself in
+    there. The topic is per token rather than per account, so signing out in one browser leaves the
+    same person's other devices alone.
 
-    Public for an application that ends a session somewhere other than `log_out/1` and holds the
-    raw token while doing it. It cannot serve "sign out my other devices": that starts from what the
-    database has, which is digests — see decision 11.
+    This function is public for an application that ends a session somewhere other than
+    `log_out/1` and holds the raw token while doing it. It cannot serve "sign out my other
+    devices": that starts from what the database has, which is digests.
     """
     def live_socket_id(token) when is_binary(token) do
       "ithibati_sessions:" <> Secrets.url64(Secrets.digest(token))
@@ -89,13 +93,13 @@ if Code.ensure_loaded?(Phoenix.Component) do
     end
 
     @doc """
-    Signs out: the token is revoked, not merely forgotten.
+    Signs out and revokes the token rather than merely forgetting it.
 
-    A session dropped on the client alone leaves a token that still resolves, which is the sign-out
-    counterpart of a replayed assertion and fails just as quietly.
+    A session dropped on the client alone leaves a token that still resolves. That is the sign-out
+    counterpart of a replayed assertion, and it fails just as quietly.
     """
     def log_out(conn) do
-      conn |> get_session(@session) |> Tokens.delete_session_token()
+      conn |> get_session(@session) |> Sessions.delete_session_token()
       disconnect_live_sockets(conn)
 
       renew_session(conn)
@@ -133,7 +137,7 @@ if Code.ensure_loaded?(Phoenix.Component) do
     # give the option check below two homes.
     @doc false
     def call(conn, {mode, opts}) do
-      account = Tokens.get_user_by_session_token(get_session(conn, @session))
+      account = Sessions.get_user_by_session_token(get_session(conn, @session))
       conn = assign(conn, :current_account, account)
 
       case {mode, account} do
@@ -144,9 +148,9 @@ if Code.ensure_loaded?(Phoenix.Component) do
     end
 
     @doc """
-    The same two modes for LiveView.
+    The same two modes, for LiveView.
 
-    `:require_account` takes `:to` here and has no default: a LiveView that halts with nowhere to
+    `:require_account` takes `:to` here and has no default. A LiveView that halts with nowhere to
     send a person is a dead end, and the path belongs to the application.
     """
     def on_mount(mode, _params, session, socket) do
@@ -161,7 +165,7 @@ if Code.ensure_loaded?(Phoenix.Component) do
       # LiveView nested under one that already answered inherits instead of asking again.
       socket =
         Phoenix.Component.assign_new(socket, :current_account, fn ->
-          Tokens.get_user_by_session_token(session[@session])
+          Sessions.get_user_by_session_token(session[@session])
         end)
 
       case {mode, socket.assigns.current_account} do

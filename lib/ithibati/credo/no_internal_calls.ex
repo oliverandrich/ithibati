@@ -10,21 +10,21 @@ if Code.ensure_loaded?(Credo.Check) do
       category: :warning,
       explanations: [
         check: """
-        Some of this library's functions are public only so that the library can assemble its own
-        flows across modules. Elixir has no way to say that: `defp` does not reach across a
-        module, and nothing in the language hides a function from a caller. So they are marked
-        `@doc false`, or live in a module marked `@moduledoc false`, and this reports a call to
-        one.
+        Some of Ithibati's functions are public only so that Ithibati can assemble its own flows
+        across modules. Elixir has no way to say that: `defp` does not reach across a module, and
+        nothing in the language hides a function from a caller. So Ithibati marks those functions
+        `@doc false`, or puts them in a module marked `@moduledoc false`, and this check reports
+        a call to one.
 
-        What is marked is not a matter of taste — it is what this library will change without
-        telling you. A release that is careful about its public surface is careless about the
-        rest, by definition.
+        What is marked is not a matter of taste. It is what Ithibati will change without telling
+        you, because a release that is careful about its public surface is careless about the
+        rest.
 
-        If something you need is only reachable past that line, say so rather than reaching: the
-        gap is in this library, and a function somebody depends on is one worth documenting.
+        If something you need is only reachable past that line, say so rather than reaching for
+        it. The gap is in Ithibati, and a function somebody depends on is one worth documenting.
 
-        The list is not kept here. It is read from the compiled modules, so it is whatever the
-        code says today and cannot drift from it.
+        The list is not kept here. The check reads it from the compiled modules, so it is
+        whatever the code says today and cannot drift from it.
         """
       ]
 
@@ -102,11 +102,8 @@ if Code.ensure_loaded?(Credo.Check) do
       {:__info__, 1}
     ]
 
-    # The arity the function is published under, or `nil` — which is also what says "not hidden".
-    # The call may be written at a lower one, and naming that in the message would name a
-    # function the library does not have.
-    # The arity the function is published under, or `nil` — which is also what says "not
-    # hidden". A call may be written at a lower one, and naming that would name a function the
+    # The arity the function is published under, or `nil`, which is also what says "not hidden".
+    # A call may be written at a lower arity, and naming that one would name a function the
     # library does not have.
     defp published_arity(_docs, fun, arity) when {fun, arity} in @reflection, do: nil
 
@@ -127,7 +124,7 @@ if Code.ensure_loaded?(Credo.Check) do
     defp published_arity(_other, _fun, _arity), do: nil
 
     # A module whose documentation chunk was stripped answers nothing, and this check then reports
-    # nothing about it — which reads exactly like a clean run. Said out loud in `docs/tooling.md`
+    # nothing about it — which reads exactly like a clean run. Said out loud in `docs/credo.md`
     # rather than guessed at here, because a rule that invented an issue out of a missing chunk
     # would be worse.
     defp docs(module) do

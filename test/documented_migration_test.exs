@@ -1,16 +1,17 @@
 defmodule Ithibati.DocumentedMigrationTest do
   @moduledoc """
-  Every call the suite's own migrations make is a call the README shows.
+  Every call the suite's own migrations make is a call the documentation shows.
 
-  The support migrations exist to exercise the documented path; that is worth nothing the moment the
-  two drift.
+  The support migrations exist to exercise the documented path; that is worth nothing the moment
+  the two drift. It reads `docs/getting_started.md`, which is where the migration is written out
+  — the README quotes touchpoints now and no longer carries one.
   """
   use ExUnit.Case, async: true
 
   @support Path.wildcard("test/support/migrations/*.exs")
 
-  test "every call the support migrations make appears in the README verbatim" do
-    readme = File.read!("README.md")
+  test "every call the support migrations make appears in the guide verbatim" do
+    guide = File.read!("docs/getting_started.md")
 
     calls =
       @support
@@ -27,7 +28,8 @@ defmodule Ithibati.DocumentedMigrationTest do
            "expected an up and a down call, found: #{inspect(calls)}"
 
     for call <- calls do
-      assert String.contains?(readme, call), "the README does not show `#{call}`"
+      assert String.contains?(guide, call),
+             "docs/getting_started.md does not show `#{call}`"
     end
   end
 end

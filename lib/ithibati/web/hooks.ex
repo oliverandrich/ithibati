@@ -2,15 +2,16 @@
 if Code.ensure_loaded?(Phoenix.Component) do
   defmodule Ithibati.Web.Hooks do
     @moduledoc """
-    The colocated route for this library's JavaScript.
+    The colocated route for Ithibati's JavaScript.
 
-    A consumer whose bundler resolves `phoenix-colocated` imports the hooks from
+    An application whose bundler resolves `phoenix-colocated` imports the hooks from
     `phoenix-colocated/ithibati` and needs no path into `deps/`. The alternative is to import
-    `priv/static/ithibati.js` directly; see the README.
+    `priv/static/ithibati.js` directly; [Registering and signing
+    in](ceremonies.md#the-javascript) shows both.
 
-    The hook body re-exports rather than repeating the client code, so the two routes cannot
-    disagree about what a ceremony does — a test reads both files and holds them to the same name,
-    because a hook registered under the wrong one does not fail, it never mounts.
+    The hook body re-exports the client code rather than repeating it, so the two routes cannot
+    disagree about what a ceremony does. A test reads both files and holds them to the same name,
+    because a hook registered under the wrong name does not fail, it never mounts.
     """
     use Phoenix.Component
 

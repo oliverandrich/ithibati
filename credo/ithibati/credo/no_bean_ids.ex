@@ -19,6 +19,13 @@ defmodule Ithibati.Credo.NoBeanIds do
       """
     ]
 
+  # After the `use` and not before it, which is the whole trick: `Credo.Check` writes a moduledoc
+  # from its `explanations:` block, so an attribute set first is overwritten and one set afterwards
+  # wins. Hidden because this check guards this repository and is not in the package — `mix docs`
+  # runs in `dev`, where `elixirc_paths` includes `credo/`, so without this it gets a page on
+  # hexdocs describing a rule nobody reading it can switch on.
+  @moduledoc false
+
   # Assembled rather than written out, so this check does not report itself: what stands in the
   # source is the prefix followed by a quote, not by four more characters.
   @prefix "ithi" <> "bati-"

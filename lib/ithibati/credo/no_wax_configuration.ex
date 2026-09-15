@@ -8,19 +8,20 @@ if Code.ensure_loaded?(Credo.Check) do
       category: :warning,
       explanations: [
         check: """
-        `config :wax_, rp_id:` and `origin:` configure nothing this library does.
+        `config :wax_, rp_id:` and `origin:` configure nothing that Ithibati does.
 
-        `wax_` reads them as its own defaults, and this library never lets them be reached: both
-        are passed on every call, so one application can serve a browser and a native client with
-        different answers. What you set here is not what a ceremony uses — and this is exactly
+        `wax_` reads them as its own defaults, and Ithibati never lets them be reached. It passes
+        both on every call, so one application can serve a browser and a native client with
+        different answers. What you set here is not what a ceremony uses. This is also exactly
         where somebody looks for the setting, which is why it is worth a warning rather than
         silence.
 
-        The relying party and the origin come from the mount instead: `ithibati_routes/1` takes a
-        handler, and the handler answers for the request in front of it.
+        Ithibati passes the relying party and the origin per call instead. The routes derive them
+        from your endpoint's configured `:url`, and `c:Ithibati.Web.Handler.relying_party/2` is
+        where an application answers differently for a client whose origin is not that URL.
 
         This check reads `config/*.exs`, which Credo does not include by default. Add `config/`
-        to `files.included` in your `.credo.exs` or it has nothing to look at.
+        to `files.included` in your `.credo.exs`, or the check has nothing to look at.
         """
       ]
 

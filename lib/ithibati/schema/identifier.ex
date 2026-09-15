@@ -1,15 +1,15 @@
 defmodule Ithibati.Schema.Identifier do
   @moduledoc """
-  What an identifier is, for every schema this library injects one into.
+  What an identifier is, for every schema Ithibati injects one into.
 
-  An account is known by one — `Ithibati.Schema.User` — and so is an invitation, which is addressed
-  to one before the account exists — `Ithibati.Schema.Invitation`. Both let the application name the
-  field and both hand the value through the same steps, and that agreement is not decoration: an
-  invitation addressed to something an account could never be called is one nobody can accept. So
-  the steps live here, once, rather than in whichever macro was written first.
+  An account is known by an identifier, through `Ithibati.Schema.User`. So is an invitation, which
+  is addressed to one before the account exists, through `Ithibati.Schema.Invitation`. Both let
+  the application name the field, and both hand the value through the same steps. That agreement
+  matters: an invitation addressed to something an account could never be called is one nobody can
+  accept. So the steps live here, once, rather than in whichever macro was written first.
 
-  Only `email_format/0`, `username_format/0` and `normalize/1` are meant to be called from an
-  application; the rest is what the two macros use to read their own options.
+  Call `email_format/0`, `username_format/0` and `normalize/1` from an application. The rest is
+  what the two macros use to read their own options.
   """
 
   import Ecto.Changeset
@@ -23,11 +23,13 @@ defmodule Ithibati.Schema.Identifier do
   @email_format ~r"\A[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*\z"
 
   @doc """
-  The pattern to use when the identifier is an email address — offered, not imposed.
+  The pattern to use when the identifier is an email address. Ithibati offers it rather than
+  imposing it.
 
-  It is the one the HTML specification publishes for `<input type=email>` rather than RFC 5322: an
-  identifier here is a credential, not a mailbox, so the full grammar's quoted local parts with
-  spaces in them would be a hazard. It accepts `you@localhost`; it refuses `"a b"@example.com`.
+  It is the pattern the HTML specification publishes for `<input type=email>`, not RFC 5322. An
+  identifier here is a credential rather than a mailbox, so the full grammar's quoted local parts
+  with spaces in them would be a hazard. The pattern accepts `you@localhost` and refuses
+  `"a b"@example.com`.
   """
   def email_format, do: @email_format
 
@@ -37,18 +39,20 @@ defmodule Ithibati.Schema.Identifier do
   @username_format ~r/\A[a-z0-9_]{1,30}\z/
 
   @doc """
-  The pattern to use when the identifier is a username — offered, not imposed.
+  The pattern to use when the identifier is a username. Ithibati offers it rather than imposing
+  it.
 
-  Borrowed rather than invented: it is what Mastodon allows a local account, which is a rule that
-  has survived a large number of people trying to impersonate each other. Letters, digits and
-  underscores only, at most thirty characters.
+  The pattern is borrowed rather than invented: it is what Mastodon allows a local account, and
+  that rule has survived a large number of people trying to impersonate each other. It allows
+  letters, digits and underscores only, at most thirty characters.
 
   What it leaves out is the point. Dots and hyphens let `alice.smith` and `alice-smith` stand
-  beside `alicesmith`, and anything beyond ASCII lets a Cyrillic `а` stand beside a Latin `a` —
-  three ways to be told you are talking to someone you are not. A username is a credential here,
-  and the display name people actually read is a separate field this library knows nothing about.
+  beside `alicesmith`, and anything beyond ASCII lets a Cyrillic `а` stand beside a Latin `a`.
+  Each of those is a way to be told you are talking to someone you are not. A username is a
+  credential here, and the display name people actually read is a separate field Ithibati knows
+  nothing about.
 
-  No case folding is needed in the pattern: `normalize/1` has already lowercased the value, which
+  The pattern needs no case folding, because `normalize/1` has already lowercased the value. That
   is also why `Alice` and `alice` cannot become two accounts.
   """
   def username_format, do: @username_format

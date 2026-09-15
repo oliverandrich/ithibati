@@ -1,4 +1,4 @@
-defmodule IthibatiInvites.Auth do
+defmodule IthibatiInvitesWeb.Auth do
   @moduledoc """
   The three decisions Ithibati does not make, made here — and this instance makes them narrowly.
 
@@ -125,4 +125,16 @@ defmodule IthibatiInvites.Auth do
   @impl true
   def authenticate(conn, account),
     do: {:ok, conn |> Gate.log_in(account) |> json(%{redirect: "/"})}
+
+  # The same three lines as the open example, for the same reason: a batch shown once or never.
+  @impl true
+  def recovered(conn, account, nil), do: authenticate(conn, account)
+
+  def recovered(conn, account, fresh) do
+    {:ok,
+     conn
+     |> Gate.log_in(account)
+     |> put_session(:recovery_codes, fresh)
+     |> json(%{redirect: "/recovery-codes"})}
+  end
 end

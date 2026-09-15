@@ -1,21 +1,22 @@
 defmodule Ithibati.Config do
   @moduledoc """
-  The handful of things a consuming application decides and this library is told.
+  The handful of things the application decides and tells Ithibati.
 
-  What a schema is *built* from is read at compile time, because a table name and a field's type are
-  fixed when the module is compiled. `Application.compile_env/3` is what makes that safe: Elixir
-  records the value it saw and refuses to boot against a different one rather than running with a
+  Ithibati reads what a schema is *built* from at compile time, because a table name and a field's
+  type are fixed when the module is compiled. `Application.compile_env/3` makes that safe: Elixir
+  records the value it saw and refuses to boot against a different one, rather than running with a
   table name nobody meant.
 
-  What the library is *handed* — the account schema, the repo — is read at runtime, because a
-  consuming application's modules compile after the dependencies they use.
+  Ithibati reads what it is *handed* at runtime: the account schema and the repo. The
+  application's modules compile after the dependencies they use.
 
-  Settings that are a rule rather than a value live with the rule: `config :ithibati,
-  token_validity:` is read by `Ithibati.Identity.Tokens`, which is also what decides that a validity
-  is a count and a unit.
+  A setting that is a rule rather than a value lives with the rule. `Ithibati.Identity.Sessions`
+  reads `config :ithibati, session_validity:`, and it is also what decides that a validity is a
+  count and a unit.
 
-  `account!/1` is here for the same reason in reverse: what counts as an account is a *setting* —
-  `user_schema` — so the guard that refuses everything else belongs beside the setting it reads.
+  `account!/1` is here for the same reason in reverse. What counts as an account is the
+  `user_schema` setting, so the guard that refuses everything else belongs beside the setting it
+  reads.
   """
 
   # Not `:prefix`: in Ecto that already means the Postgres schema, which is a separate thing this
@@ -38,11 +39,11 @@ defmodule Ithibati.Config do
       "config :ithibati, users_key_type: must be :binary_id or :id, got: #{inspect(@users_key_type)}"
     )
 
-  @doc "The prefix every table this library owns carries."
+  @doc "The prefix every table Ithibati owns carries."
   def table_prefix, do: @table_prefix
 
   @doc """
-  A table this library owns — `table("keys")` is `"ithibati_keys"` under the default prefix.
+  A table Ithibati owns. `table("keys")` is `"ithibati_keys"` under the default prefix.
   """
   def table(suffix) when is_binary(suffix), do: "#{@table_prefix}_#{suffix}"
 
@@ -52,10 +53,10 @@ defmodule Ithibati.Config do
   @doc """
   The account schema an application owns, as a module.
 
-  Read at runtime, and not because a migration runs at runtime — that is true of the compile-time
-  settings too. A consuming application's schema module compiles *after* the dependencies it uses,
-  so at the moment this library is compiled there is nothing to read out of it: `compile_env` would
-  pin an atom from which nothing was derived, forcing a recompile that protects nothing.
+  Ithibati reads this at runtime, and not because a migration runs at runtime: that is true of the
+  compile-time settings too. The application's schema module compiles *after* the dependencies it
+  uses, so there is nothing to read out of it while Ithibati is compiling. `compile_env` would pin
+  an atom from which nothing was derived, and force a recompile that protects nothing.
   """
   def user_schema do
     schema =
@@ -81,13 +82,13 @@ defmodule Ithibati.Config do
   @doc """
   The invitation schema an application owns, as a module, or `nil` when it invites nobody.
 
-  Optional, unlike the account schema: a library that also answers "who may be invited" has to be
-  told, but a consumer with no invitations configures nothing and never reaches the module that
-  reads this.
+  This setting is optional, unlike the account schema. Ithibati has to be told which schema holds
+  invitations before it can answer "who may be invited", but an application with no invitations
+  configures nothing and never reaches the module that reads this.
 
-  The identifier is checked against the account schema's here rather than read from it: a schema's
-  fields are fixed when its module compiles, and which module is the account's is read at runtime —
-  so the two are stated separately and this is the first moment both are known.
+  Ithibati checks the identifier against the account schema's here rather than reading it from
+  there. A schema's fields are fixed when its module compiles, and which module is the account's
+  is read at runtime, so you state the two separately and this is the first moment both are known.
   """
   def invitation_schema do
     case Application.get_env(:ithibati, :invitation_schema) do
@@ -99,9 +100,9 @@ defmodule Ithibati.Config do
   @doc """
   The same, for a caller that cannot do anything without one.
 
-  `invitation_schema/0` answers `nil` because the migration has to know when there is no invitation
-  table to index. Everything else needs the module, and says so here rather than each in its own
-  words.
+  `invitation_schema/0` answers `nil` because the migration has to know when there is no
+  invitation table to index. Everything else needs the module, and says so here rather than each
+  caller saying it in its own words.
   """
   def invitation_schema! do
     invitation_schema() ||
@@ -136,11 +137,12 @@ defmodule Ithibati.Config do
   end
 
   @doc """
-  The repo this library reads and writes through.
+  The repo Ithibati reads and writes through.
 
-  Read at runtime for the same reason `user_schema/0` is: a consuming application's repo module
-  compiles after the dependencies it uses. Rejected alternative — a repo argument on every public
-  function, which makes every call site louder for a value that never varies.
+  Ithibati reads this at runtime for the same reason it reads `user_schema/0` at runtime: the
+  application's repo module compiles after the dependencies it uses. The rejected alternative was
+  a repo argument on every public function, which makes every call site louder for a value that
+  never varies.
   """
   def repo do
     repo =
@@ -170,10 +172,10 @@ defmodule Ithibati.Config do
   @doc """
   An account struct, refused unless it is the configured schema.
 
-  Every function that takes an account goes through this rather than matching `%{id: id}`: with
-  `users_key_type: :id` a struct from somewhere else whose `id` happens to be 1 would otherwise be
-  accepted as account 1, and with `:binary_id` the foreign key catches it only afterwards and in the
-  database's words.
+  Every function that takes an account goes through this rather than matching `%{id: id}`. With
+  `users_key_type: :id`, a struct from somewhere else whose `id` happens to be 1 would otherwise
+  be accepted as account 1. With `:binary_id`, the foreign key catches it only afterwards and in
+  the database's words.
   """
   def account!(account)
 

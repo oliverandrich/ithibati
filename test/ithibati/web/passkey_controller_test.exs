@@ -11,6 +11,7 @@ if Code.ensure_loaded?(Phoenix.Component) do
 
     import Phoenix.ConnTest
 
+    alias Ithibati.Identity.RecoveryCodes
     alias Ithibati.TestCredentials
 
     @endpoint Ithibati.TestEndpoint
@@ -103,7 +104,7 @@ if Code.ensure_loaded?(Phoenix.Component) do
         assert challenge.origin == "https://example.test"
       end
 
-      # Decision 5 names two clients whose origin is not the server's own URL: a native app's
+      # Two clients whose origin is not the server's own URL: a native app's
       # associated domain, and an extension's. They post to these same four routes, so the endpoint
       # derivation has to be a default rather than the only answer.
       test "a handler that says so decides the relying party, and may name several origins" do
@@ -190,6 +191,65 @@ if Code.ensure_loaded?(Phoenix.Component) do
         refused = request("/auth/authentication", %{}, started)
         assert refused.status == 422
         assert Plug.Conn.get_session(refused, :ithibati_authentication_challenge) == nil
+      end
+    end
+
+    # A redeemed recovery code reaches the same place a verified assertion does: an account whose
+    # holder has proved who they are, handed to the application to act on. The separate callback
+    # exists because this one carries a third thing — the batch a spent last code produces, which
+    # `authenticate/2` has nowhere to put and which nobody can be shown twice.
+    describe "recovery" do
+      test "a valid code signs the account in through the handler" do
+        user = user_fixture()
+        [code | _rest] = RecoveryCodes.regenerate(user)
+
+        conn = request("/auth/recovery", %{"code" => code})
+
+        assert conn.assigns.account.id == user.id
+        assert conn.assigns.fresh == nil
+        assert json_response(conn, 200)
+      end
+
+      test "spending the last code hands the fresh batch to the handler" do
+        user = user_fixture()
+        [code] = RecoveryCodes.regenerate(user, count: 1)
+
+        conn = request("/auth/recovery", %{"code" => code})
+
+        assert conn.assigns.account.id == user.id
+        assert length(conn.assigns.fresh) == 12
+      end
+
+      test "a code that was already spent is refused, and says nothing about which" do
+        user = user_fixture()
+        [code | _rest] = RecoveryCodes.regenerate(user)
+        request("/auth/recovery", %{"code" => code})
+
+        conn = request("/auth/recovery", %{"code" => code})
+
+        assert json_response(conn, 422) == %{"error" => "invalid_code"}
+      end
+
+      test "a code nobody holds is refused the same way" do
+        conn = request("/auth/recovery", %{"code" => "not-a-code"})
+
+        assert json_response(conn, 422) == %{"error" => "invalid_code"}
+      end
+
+      test "no code at all is refused without reaching the database" do
+        conn = request("/auth/recovery", %{})
+
+        assert json_response(conn, 422) == %{"error" => "invalid_code"}
+      end
+
+      # The code is spent by the time the handler answers, so a handler that answers the wrong
+      # shape must not be reported as an invalid code: that sends somebody looking for a sheet of
+      # paper which is now one line shorter. The other four actions let this mistake raise, and
+      # `Ithibati.TestSloppyHandler` proves this one does too.
+      test "a handler that answers recovered/3 with a bare conn raises rather than blaming the code" do
+        code = List.first(RecoveryCodes.regenerate(user_fixture()))
+
+        assert_raise WithClauseError, fn -> request("/sloppy/recovery", %{"code" => code}) end
       end
     end
 

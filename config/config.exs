@@ -32,11 +32,7 @@ if config_env() == :test do
     user_schema: Ithibati.TestUser,
     invitation_schema: Ithibati.TestInvitation,
     users_key_type: key_type,
-    repo: Ithibati.TestRepo,
-    # Two contexts beyond the built-in "session", so the token tests can prove that validity is
-    # resolved per context and that the unit is read — without moving application environment,
-    # which would cost them their `async: true`.
-    token_validity: %{"device" => {90, :day}, "brief" => {5, :second}}
+    repo: Ithibati.TestRepo
 
   config :ithibati, Ithibati.TestRepo,
     username: env.("PGUSER", "postgres"),
@@ -72,6 +68,10 @@ if config_env() == :test do
     # What a `mix phx.new` application always has, and what `Ithibati.Web.Gate` needs before it will
     # name a live socket at all.
     pubsub_server: Ithibati.TestPubSub,
+    # Without this the endpoint derives `Ithibati.ErrorView`, which does not exist, and every
+    # exception raised inside a request is replaced by the `ArgumentError` from failing to render
+    # a 500 — so a test asserting what a controller raises sees the rendering error instead.
+    render_errors: [formats: [json: Ithibati.TestErrorJSON], layout: false],
     server: false
 
   # The other kind of consumer: Phoenix without a pubsub server. Its whole content is the key that

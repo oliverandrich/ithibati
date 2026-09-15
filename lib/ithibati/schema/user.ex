@@ -1,6 +1,6 @@
 defmodule Ithibati.Schema.User do
   @moduledoc """
-  What an account owes this library, added to the schema an application already owns.
+  What Ithibati adds to the account schema an application already owns.
 
       defmodule MyApp.Accounts.User do
         use Ecto.Schema
@@ -27,35 +27,38 @@ defmodule Ithibati.Schema.User do
 
   ## Options
 
-    * `identifier:` — required, a literal atom: the field an account is known by. The one option
-      that has to be written out here, because it is the field your schema declares.
+    * `identifier:` — required, a literal atom: the field an account is known by. You have to
+      write this one out here, because it is the field your schema declares.
     * `format:` — optional, a regular expression, evaluated once when your module compiles.
       `Ithibati.Schema.Identifier.email_format/0` offers one for addresses.
     * `constraint_name:` — optional, the name of the unique index on that column. Say it when your
-      naming convention is not the one Ecto derives; this library then creates it under that name,
-      and the changeset's constraint matches it.
-    * `unique_index: false` — optional, an opt-out: say it when your application creates that index
-      itself, and this library will check that one exists rather than create it.
+      naming convention is not the one Ecto derives. Ithibati then creates the index under that
+      name, and the changeset's constraint matches it.
+    * `unique_index: false` — optional, an opt-out. Say it when your application creates that
+      index itself, and Ithibati checks that one exists rather than creating it.
 
-  The three value options may each be written inline or named with a module attribute standing
-  above the `use` line. An option written as `nil` is refused, because that is what a misspelled
+  You may write each of the three value options inline, or name a module attribute standing above
+  the `use` line. Ithibati refuses an option written as `nil`, because that is what a misspelled
   attribute looks like.
 
-  Whatever the field is called, values written through `identifier_changeset/2` are trimmed and
-  lowercased.
+  `identifier_changeset/2` trims and lowercases the values it writes, whatever the field is
+  called.
 
-  Why there is no default, and why the offered pattern is not RFC 5322, is in `docs/design.md`,
-  decision 2.
+  There is no default, and the macro says so when you leave it out: this library never sends
+  mail, so it will not ask you for an address by assumption.
+  `Ithibati.Schema.Identifier.email_format/0` says what the offered email pattern accepts and
+  why it is not RFC 5322.
 
   ## What it injects, and what it refuses
 
-  One field, three associations, and three functions: `identifier_changeset/2`,
-  `passkey_display_name/1` (overridable, `nil` by default) and `__ithibati__/1`. The list
-  is pinned in `Ithibati.Schema.UserTest` against a schema that does not use this macro, so a fourth
-  one has to be a decision.
+  The macro injects one field, three associations, and three functions: `identifier_changeset/2`,
+  `passkey_display_name/1` (overridable, `nil` by default) and `__ithibati__/1`.
+  `Ithibati.Schema.UserTest` pins that list against a schema that does not use this macro, so a
+  fourth one has to be a decision.
 
-  Two things it refuses, both at compile time: a module that never calls `ithibati_account/0` inside
-  its schema block, and one that defines `identifier_changeset/2` or `__ithibati__/1` itself.
+  It refuses two things, both at compile time: a module that never calls `ithibati_account/0`
+  inside its schema block, and one that defines `identifier_changeset/2` or `__ithibati__/1`
+  itself.
   """
 
   import Ecto.Changeset
@@ -64,7 +67,7 @@ defmodule Ithibati.Schema.User do
   alias Ithibati.Schema.Identifier
 
   @doc """
-  Declares the identifier field and the associations this library needs. Call it inside your
+  Declares the identifier field and the associations Ithibati needs. Call it inside your
   `schema` block, in a module that has `use Ithibati.Schema.User` above it.
   """
   defmacro ithibati_account do
@@ -80,7 +83,7 @@ defmodule Ithibati.Schema.User do
 
       has_many :passkeys, Ithibati.UserKey, foreign_key: :user_id
       has_many :recovery_codes, Ithibati.RecoveryCode, foreign_key: :user_id
-      has_many :auth_tokens, Ithibati.UserToken, foreign_key: :user_id
+      has_many :sessions, Ithibati.Session, foreign_key: :user_id
     end
   end
 
@@ -102,13 +105,13 @@ defmodule Ithibati.Schema.User do
       @doc """
       A name for this account that a passkey dialog can show, or `nil`.
 
-      Returning `nil` is the ordinary answer, and this library then shows the identifier. Override it
-      when the application has something better:
+      Returning `nil` is the ordinary answer, and Ithibati then shows the identifier. Override this
+      function when the application has something better:
 
           def passkey_display_name(account), do: account.name
 
-      No fallback is needed in an override — an account that has not filled the better name in
-      returns `nil`, which is correct rather than broken.
+      An override needs no fallback. An account that has not filled the better name in returns
+      `nil`, which is correct rather than broken.
       """
       def passkey_display_name(_account), do: nil
 
@@ -131,18 +134,18 @@ defmodule Ithibati.Schema.User do
 
     quote do
       @doc """
-      What this library was told about this schema: `:identifier` is the field an account is known
-      by, `:constraint` the unique index name the application said it maintains itself, or `nil`.
+      What Ithibati was told about this schema. `:identifier` is the field an account is known by.
+      `:constraint` is the unique index name the application said it maintains itself, or `nil`.
       """
       def __ithibati__(:identifier), do: unquote(field)
       def __ithibati__(:constraint), do: unquote(constraint)
       def __ithibati__(:unique_index), do: unquote(unique_index)
 
       @doc """
-      Casts and validates the identifier, and declares the constraint this library relies on.
+      Casts and validates the identifier, and declares the constraint Ithibati relies on.
 
-      Takes a struct or a changeset and returns a changeset, so you compose it into your own rather
-      than being handed one that owns the account.
+      It takes a struct or a changeset and returns a changeset, so you compose it into your own
+      instead of receiving one that owns the account.
       """
       def identifier_changeset(account_or_changeset, attrs) do
         # Written out because this is a quote: Elixir resolves aliases where the code is *written*,
@@ -169,8 +172,9 @@ defmodule Ithibati.Schema.User do
   @doc """
   Whether a module carries what this macro injects.
 
-  One predicate rather than two spellings of it: the marker function has been renamed once already,
-  and a second caller checking it by hand is a second thing to find by grep next time.
+  Ithibati offers one predicate rather than two spellings of it. The marker function has been
+  renamed once already, and a second caller checking it by hand would be a second thing to find
+  by grep next time.
   """
   def account_schema?(module),
     do: Code.ensure_loaded?(module) and function_exported?(module, :__ithibati__, 1)
@@ -178,25 +182,24 @@ defmodule Ithibati.Schema.User do
   @doc """
   Whether the identifier is what a failed insert collided on.
 
-  A transaction that refuses an account hands back an `Ecto.Changeset`, and an application then has
-  to decide what to tell somebody. "That name is taken" and "that is not a name" come from
-  different places — a unique index and the format — and only this library knows which *field* is
-  the identifier, because `ithibati_account/0` is what declared it.
+  A transaction that refuses an account hands back an `Ecto.Changeset`, and the application then
+  has to decide what to tell somebody. "That name is taken" comes from a unique index and "that is
+  not a name" comes from the format. Only Ithibati knows which *field* is the identifier, because
+  `ithibati_account/0` declared it.
 
-  The field is what is matched, so a uniqueness error on it counts however the index is shaped: an
+  The match is on the field, so a uniqueness error on it counts however the index is shaped. An
   application that scopes the identifier to a tenant gets `true` for a collision inside that
-  tenant, which is what it means there.
+  tenant, which is what a collision means there.
 
-  Answered rather than said: whether this becomes `:username_taken`, an English sentence or an HTTP
-  status stays with the application, the same way `Ithibati.Web.Handler` leaves what a verified
-  assertion is worth to the application. A library that shipped the wording would be choosing the
-  tone of somebody else's product.
+  The function answers which of the two it was and nothing more. The application turns that into
+  `:username_taken`, a sentence or an HTTP status, the same way `Ithibati.Web.Handler` leaves it
+  what a verified assertion is worth.
 
   > #### Only after the database has seen it {: .warning}
   >
-  > A constraint error exists on a changeset only once an insert has been attempted and refused. A
-  > changeset built and never given to the repo answers `false` however certainly the name is
-  > taken, which looks exactly like this function not working.
+  > A changeset carries a constraint error only after the repo has attempted the insert and been
+  > refused. A changeset built and never given to the repo answers `false` however certainly the
+  > identifier is taken, and that looks exactly like this function not working.
 
   """
   def identifier_taken?(%Ecto.Changeset{data: %module{}} = changeset) do
@@ -209,9 +212,9 @@ defmodule Ithibati.Schema.User do
   The `name` and `displayName` a WebAuthn registration shows, for an account or for an identifier
   that does not have one yet.
 
-  Both are derived here rather than by the caller, because the fallback is this library's to own: a
-  consumer's `passkey_display_name/1` may answer `nil` and be right. The first registration on an
-  instance has no account at all, which is why the second clause exists.
+  Ithibati derives both here rather than leaving them to the caller, because it owns the fallback:
+  an application's `passkey_display_name/1` may answer `nil` and be right. The first registration
+  on an instance has no account at all, which is why the second clause exists.
   """
   def credential_user(%module{} = account) do
     ensure_account_schema!(module)

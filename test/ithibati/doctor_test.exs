@@ -54,13 +54,88 @@ defmodule Ithibati.DoctorTest do
                "the repo answers",
                "config :ithibati, user_schema:",
                "config :ithibati, invitation_schema:",
-               "config :ithibati, token_validity:",
+               "config :ithibati, session_validity:",
                "this library's tables",
                "config :ithibati, users_key_type:",
                "the identifier's unique index",
+               "the invitation table",
                "config :wax_",
-               "the ceremony routes"
+               "the ceremony routes",
+               "the handler's callbacks"
              ]
+    end
+  end
+
+  # Both of these are the questions nothing else can ask. An application that turns invitations
+  # on after the migration has run never runs it again, so the table it just made is checked by
+  # this or by nothing; and a handler missing a callback is a compiler *warning*, which an
+  # application not built with `--warnings-as-errors` never sees.
+  describe "the questions that catch what compiles and migrates anyway" do
+    test "an invitation table that has the index reports so" do
+      assert "the invitation table" in subjects(Doctor.examine(:ithibati), :ok)
+    end
+
+    # Dropped inside the test's own transaction, the way the missing-table test above does it:
+    # this is a real index that is really gone, not a stubbed answer about one.
+    test "an invitation table whose token_hash lost its unique index" do
+      SQL.query!(Ithibati.TestRepo, "DROP INDEX invitations_token_hash_index", [])
+
+      results = Doctor.examine(:ithibati)
+
+      assert "the invitation table" in subjects(results, :error)
+      detail = detail(results, "the invitation table")
+      assert detail =~ "no unique index"
+      assert detail =~ "invitation_index"
+    end
+
+    test "an invitation table that is configured and not there" do
+      SQL.query!(Ithibati.TestRepo, "DROP TABLE invitations CASCADE", [])
+
+      assert detail(Doctor.examine(:ithibati), "the invitation table") =~ "there is no table"
+    end
+
+    # Guarded the way the web tests are: without the optional dependencies there is no behaviour
+    # to implement and no handler in the estate, and the question is skipped rather than asked.
+    if Code.ensure_loaded?(Phoenix.Component) do
+      test "a handler with all four callbacks reports so" do
+        assert "the handler's callbacks" in subjects(Doctor.examine(:ithibati), :ok)
+      end
+
+      # `Ithibati.Doctor` writes the list out, because it compiles in the build that has no web
+      # half and so cannot ask the behaviour. Here the behaviour exists, so this is where the copy
+      # is held to it: a fifth required callback would otherwise go unchecked by the one check
+      # whose purpose is to notice a missing one.
+      test "the callbacks it requires are the ones the behaviour declares" do
+        alias Ithibati.Web.Handler
+
+        declared =
+          Handler.behaviour_info(:callbacks) -- Handler.behaviour_info(:optional_callbacks)
+
+        assert Enum.sort(Doctor.required_callbacks()) == Enum.sort(declared)
+      end
+
+      # `Ithibati.TestExtensionHandler` declares `@behaviour Plug` in front of ours, the way a
+      # handler written on a controller does. Reading one `behaviour` attribute finds that first
+      # one and reports that nobody implements the behaviour at all — from the check whose whole
+      # purpose is to notice a missing callback.
+      test "and one that declares another behaviour first is found behind it" do
+        assert detail(Doctor.examine(:ithibati), "the handler's callbacks") =~
+                 "Ithibati.TestExtensionHandler"
+      end
+
+      # The judgement is checked against a module rather than through `examine/1`, because a
+      # module that declares the behaviour and omits a callback is a compile warning — which
+      # this suite runs as an error, and rightly. The test above proves the judgement is
+      # reached; this one proves what it judges.
+      test "a handler missing a callback is named, with the callback" do
+        assert {Ithibati.TestHandler, []} = Doctor.missing_callbacks(Ithibati.TestHandler)
+
+        assert {Ithibati.TestPageController, missing} =
+                 Doctor.missing_callbacks(Ithibati.TestPageController)
+
+        assert {:recovered, 3} in missing
+        assert {:register, 4} in missing
+      end
     end
   end
 
@@ -84,9 +159,9 @@ defmodule Ithibati.DoctorTest do
     end
 
     test "a token validity nobody can read" do
-      put_env(:ithibati, :token_validity, %{"session" => {0, :fortnight}})
+      put_env(:ithibati, :session_validity, {0, :fortnight})
 
-      assert detail(Doctor.examine(:ithibati), "config :ithibati, token_validity:") =~
+      assert detail(Doctor.examine(:ithibati), "config :ithibati, session_validity:") =~
                "expected {count, unit}"
     end
 
@@ -181,7 +256,10 @@ defmodule Ithibati.DoctorTest do
       detail = detail(Doctor.examine(:ithibati), "the identifier's unique index")
 
       assert detail =~ "users.email carries no unique index"
-      assert detail =~ "MultipleResultsError"
+
+      # What the missing index actually costs, so the message cannot drift back into naming a
+      # lookup this library does not perform.
+      assert detail =~ "both pass the changeset and both insert"
     end
 
     test "an account table with no unique index on the column the keys point at" do

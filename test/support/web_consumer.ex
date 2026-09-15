@@ -18,13 +18,28 @@ if Code.ensure_loaded?(Phoenix.Component) do
 
     @impl true
     def authenticate(conn, account), do: {:ok, Plug.Conn.assign(conn, :account, account)}
+
+    @impl true
+    def recovered(conn, account, fresh),
+      do: {:ok, conn |> Plug.Conn.assign(:account, account) |> Plug.Conn.assign(:fresh, fresh)}
   end
 
   # A consumer that serves a client whose origin is not the server's own — an extension, a native
   # app's associated domain. The relying-party id stays the server's; only the origin differs.
   defmodule Ithibati.TestExtensionHandler do
     @moduledoc false
+
+    # Declared before ours on purpose. A handler written on a controller has this one in front,
+    # injected by `use Phoenix.Controller`, and `Ithibati.Doctor` has to find ours behind it —
+    # `module_info(:attributes)[:behaviour]` answers with the first attribute only.
+    @behaviour Plug
     @behaviour Ithibati.Web.Handler
+
+    @impl Plug
+    def init(opts), do: opts
+
+    @impl Plug
+    def call(conn, _opts), do: conn
 
     @impl true
     def registration_subject(_conn, _params), do: {:ok, "someone@example.com"}
@@ -34,6 +49,9 @@ if Code.ensure_loaded?(Phoenix.Component) do
 
     @impl true
     def authenticate(conn, account), do: {:ok, Plug.Conn.assign(conn, :account, account)}
+
+    @impl true
+    def recovered(conn, account, _fresh), do: {:ok, Plug.Conn.assign(conn, :account, account)}
 
     # The relying-party id stays the server's domain — an extension may name any domain in its
     # `host_permissions`, so it does not become its own relying party. The origins are a list
@@ -45,6 +63,29 @@ if Code.ensure_loaded?(Phoenix.Component) do
 
     @impl true
     def relying_party(_conn, {rp_id, origin}), do: {rp_id, [origin | @extensions]}
+  end
+
+  # A handler that answers `recovered/3` with a bare connection instead of `{:ok, conn}`. `@impl`
+  # does not catch it — a callback has no compile-time return check — so the mistake is the
+  # controller's to make loud. Used by exactly one test.
+  defmodule Ithibati.TestSloppyHandler do
+    @moduledoc false
+    @behaviour Ithibati.Web.Handler
+
+    # Everything but the one wrong answer comes from the handler beside it, so the fixture reads
+    # as what it is: `recovered/3` returning a bare connection where `{:ok, conn}` was the
+    # contract.
+    @impl true
+    defdelegate registration_subject(conn, params), to: Ithibati.TestExtensionHandler
+
+    @impl true
+    defdelegate register(conn, key_attrs, subject, params), to: Ithibati.TestExtensionHandler
+
+    @impl true
+    defdelegate authenticate(conn, account), to: Ithibati.TestExtensionHandler
+
+    @impl true
+    def recovered(conn, _account, _fresh), do: conn
   end
 
   defmodule Ithibati.TestPageController do
@@ -82,8 +123,9 @@ if Code.ensure_loaded?(Phoenix.Component) do
     use Phoenix.Router
     import Ithibati.Web.Router
 
-    # The pipeline the README asks for, by the same name, because a fixture that wired these routes
-    # differently would be this library's own counter-example. `accepts ["json"]` is the half that
+    # The pipeline `docs/ceremonies.md` asks for, by the same name, because a fixture that wired
+    # these routes differently would be this library's own counter-example. `accepts ["json"]` is
+    # the half that
     # matters: a `:browser` pipeline refuses the hook's request with a 406 before the controller is
     # reached. `fetch_session` is the other — the endpoints call `put_session/3`, which raises
     # unless something fetched one, and a test that installs a session by hand cannot notice that
@@ -146,6 +188,11 @@ if Code.ensure_loaded?(Phoenix.Component) do
       ithibati_routes(handler: Ithibati.TestExtensionHandler, rp_name: "Ithibati Extension")
     end
 
+    scope "/sloppy" do
+      pipe_through(:ceremony)
+      ithibati_routes(handler: Ithibati.TestSloppyHandler, rp_name: "Ithibati Sloppy")
+    end
+
     # A second mount, so the ceremony options can be shown to come from the macro rather than from
     # a default that happens to match — two mounts answering to different rules is the reason they
     # are recorded on the routes instead of in application configuration.
@@ -159,6 +206,13 @@ if Code.ensure_loaded?(Phoenix.Component) do
         seconds: 30
       )
     end
+  end
+
+  # So that an exception raised in a request reaches the test as itself, rather than as the
+  # failure to render a 500 for it.
+  defmodule Ithibati.TestErrorJSON do
+    @moduledoc false
+    def render(template, _assigns), do: %{error: template}
   end
 
   defmodule Ithibati.TestEndpoint do

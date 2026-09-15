@@ -2,7 +2,7 @@ defmodule Ithibati.Identity.PasskeysRaceTest do
   @moduledoc """
   Two people deleting two *different* passkeys at the same moment. One of them has to be refused.
 
-  This is the case `docs/design.md` decision 8 names as the one a predicate in the `WHERE` cannot
+  This is the case a predicate in the `WHERE` cannot
   carry alone: the two deletes aim at different rows, so neither waits on the other, both snapshots
   still hold the sibling, and an account with two passkeys ends with none. Asserting that
   `delete_key/2` refuses the last one proves only that the two calls happened in order — the guard

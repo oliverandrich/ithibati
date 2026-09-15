@@ -1,4 +1,4 @@
-defmodule IthibatiOpen.Auth do
+defmodule IthibatiOpenWeb.Auth do
   @moduledoc """
   The three decisions Ithibati does not make, made here.
 
@@ -76,4 +76,18 @@ defmodule IthibatiOpen.Auth do
   @impl true
   def authenticate(conn, account),
     do: {:ok, conn |> Gate.log_in(account) |> json(%{redirect: "/"})}
+
+  # Signing in with a recovery code instead of a passkey. `fresh` is a new batch when the code
+  # just spent was the last unused one, and the only copy of it — so it goes the same way the
+  # first batch did, through the session onto a page that shows it once.
+  @impl true
+  def recovered(conn, account, nil), do: authenticate(conn, account)
+
+  def recovered(conn, account, fresh) do
+    {:ok,
+     conn
+     |> Gate.log_in(account)
+     |> put_session(:recovery_codes, fresh)
+     |> json(%{redirect: "/recovery-codes"})}
+  end
 end

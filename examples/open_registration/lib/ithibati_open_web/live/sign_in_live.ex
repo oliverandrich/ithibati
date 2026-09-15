@@ -29,6 +29,12 @@ defmodule IthibatiOpenWeb.SignInLive do
     {:noreply, socket |> assign(error: nil) |> push_event("ithibati:authenticate", %{})}
   end
 
+  # The way back in when the passkey is gone. Typed, not signed — but it still goes through the
+  # hook, because the endpoint answers JSON and sets a session cookie.
+  def handle_event("recover", %{"code" => code}, socket) do
+    {:noreply, socket |> assign(error: nil) |> push_event("ithibati:recover", %{code: code})}
+  end
+
   # What the hook pushes back. A successful ceremony ends in the redirect the handler answered with,
   # so the only thing that reaches the LiveView is a failure.
   def handle_event("ithibati:failed", %{"error" => error}, socket) do
@@ -47,6 +53,7 @@ defmodule IthibatiOpenWeb.SignInLive do
 
   defp message("username_required"), do: "Pick a username to register."
   defp message("no_credentials"), do: "No passkey is registered here yet."
+  defp message("invalid_code"), do: "That recovery code is not one we can use."
   defp message("ceremony_cancelled"), do: "The passkey prompt was dismissed."
   defp message(other), do: "Something went wrong: #{other}"
 
@@ -86,6 +93,11 @@ defmodule IthibatiOpenWeb.SignInLive do
         <.button phx-click="sign-in" class="btn">Sign in with a passkey</.button>
       </div>
 
+      <form phx-submit="recover" class="mt-8">
+        <.input name="code" value="" label="Lost your passkey? Use a recovery code" required />
+        <.button class="btn">Sign in with a code</.button>
+      </form>
+
       <%!-- The hook reads the paths off this element, because you chose the scope they are
       mounted under. It is empty on purpose: it drives the ceremony and renders nothing. --%>
       <div
@@ -95,6 +107,7 @@ defmodule IthibatiOpenWeb.SignInLive do
         data-registration-url={~p"/auth/registration"}
         data-authentication-challenge-url={~p"/auth/authentication/challenge"}
         data-authentication-url={~p"/auth/authentication"}
+        data-recovery-url={~p"/auth/recovery"}
       >
       </div>
     </Layouts.app>

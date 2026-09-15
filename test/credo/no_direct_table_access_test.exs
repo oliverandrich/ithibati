@@ -21,13 +21,13 @@ defmodule Ithibati.Credo.NoDirectTableAccessTest do
         import Ecto.Query
 
         def sessions(account) do
-          from(t in Ithibati.UserToken, where: t.user_id == ^account.id)
+          from(t in Ithibati.Session, where: t.user_id == ^account.id)
         end
       end
       """
       |> check()
       |> assert_issue(fn issue ->
-        assert issue.trigger == "UserToken"
+        assert issue.trigger == "Session"
         assert issue.message =~ "reach it through Ithibati.Identity"
       end)
     end
@@ -69,11 +69,11 @@ defmodule Ithibati.Credo.NoDirectTableAccessTest do
     test "a pipe into a repo, which is how most of this is written" do
       """
       defmodule App.Accounts do
-        def sessions, do: Ithibati.UserToken |> App.Repo.all()
+        def sessions, do: Ithibati.Session |> App.Repo.all()
       end
       """
       |> check()
-      |> assert_issue(fn issue -> assert issue.trigger == "UserToken" end)
+      |> assert_issue(fn issue -> assert issue.trigger == "Session" end)
     end
 
     test "a join, which is the quiet way to reach a table you were not given" do
@@ -82,12 +82,12 @@ defmodule Ithibati.Credo.NoDirectTableAccessTest do
         import Ecto.Query
 
         def with_tokens do
-          from(u in App.Accounts.User, join: t in Ithibati.UserToken, on: t.user_id == u.id)
+          from(u in App.Accounts.User, join: t in Ithibati.Session, on: t.user_id == u.id)
         end
       end
       """
       |> check()
-      |> assert_issue(fn issue -> assert issue.trigger == "UserToken" end)
+      |> assert_issue(fn issue -> assert issue.trigger == "Session" end)
     end
 
     test "a repo that is not spelled Repo" do
@@ -106,11 +106,11 @@ defmodule Ithibati.Credo.NoDirectTableAccessTest do
     test "a fully qualified Ecto.Query.from, once and not twice" do
       """
       defmodule App.Accounts do
-        def all, do: Ecto.Query.from(t in Ithibati.UserToken)
+        def all, do: Ecto.Query.from(t in Ithibati.Session)
       end
       """
       |> check()
-      |> assert_issue(fn issue -> assert issue.trigger == "UserToken" end)
+      |> assert_issue(fn issue -> assert issue.trigger == "Session" end)
     end
 
     # The route a module-keyed rule would otherwise leave wide open.
@@ -118,27 +118,27 @@ defmodule Ithibati.Credo.NoDirectTableAccessTest do
       """
       defmodule App.Accounts do
         import Ecto.Query
-        def all, do: from(t in "ithibati_tokens")
+        def all, do: from(t in "ithibati_sessions")
       end
       """
       |> check()
-      |> assert_issue(fn issue -> assert issue.trigger == "ithibati_tokens" end)
+      |> assert_issue(fn issue -> assert issue.trigger == "ithibati_sessions" end)
     end
 
     test "and a schema of one's own declared over one of our tables" do
       """
       defmodule App.Token do
         use Ecto.Schema
-        schema "ithibati_tokens" do
+        schema "ithibati_sessions" do
         end
       end
       """
       |> check()
-      |> assert_issue(fn issue -> assert issue.message =~ "ithibati_tokens" end)
+      |> assert_issue(fn issue -> assert issue.message =~ "ithibati_sessions" end)
     end
 
     test "each of the four, so none is quietly unguarded" do
-      for schema <- ~w(UserKey RecoveryCode UserToken Bootstrap) do
+      for schema <- ~w(UserKey RecoveryCode Session Bootstrap) do
         """
         defmodule App.Accounts do
           import Ecto.Query
@@ -156,13 +156,13 @@ defmodule Ithibati.Credo.NoDirectTableAccessTest do
       """
       defmodule App.Accounts do
         import Ecto.Query
-        alias Ithibati.UserToken, as: Sessions
+        alias Ithibati.Session, as: Rows
 
-        def all, do: from(t in Sessions)
+        def all, do: from(t in Rows)
       end
       """
       |> check()
-      |> assert_issue(fn issue -> assert issue.message =~ "Ithibati.UserToken" end)
+      |> assert_issue(fn issue -> assert issue.message =~ "Ithibati.Session" end)
     end
   end
 
@@ -172,14 +172,14 @@ defmodule Ithibati.Credo.NoDirectTableAccessTest do
       """
       defmodule App.A do
         import Ecto.Query
-        alias Ithibati.UserToken
-        def a, do: from(t in UserToken)
+        alias Ithibati.Session
+        def a, do: from(t in Session)
       end
 
       defmodule App.B do
         import Ecto.Query
-        alias App.UserToken
-        def b, do: from(t in UserToken)
+        alias App.Session
+        def b, do: from(t in Session)
       end
       """
       |> check()
@@ -201,9 +201,9 @@ defmodule Ithibati.Credo.NoDirectTableAccessTest do
     test "an alias directive on its own" do
       """
       defmodule App.Accounts do
-        alias Ithibati.UserToken
+        alias Ithibati.Session
 
-        def type, do: UserToken
+        def type, do: Session
       end
       """
       |> check()
@@ -255,7 +255,7 @@ defmodule Ithibati.Credo.NoDirectTableAccessTest do
     """
     defmodule Anything do
       import Ecto.Query
-      def all, do: from(t in Ithibati.UserToken)
+      def all, do: from(t in Ithibati.Session)
     end
     """
     |> to_source_file("lib/ithibati/identity/tokens.ex")

@@ -14,10 +14,10 @@ defmodule Ithibati.MigrationTest do
 
   alias Ecto.Adapters.SQL.Sandbox
   alias Ithibati.RecoveryCode
+  alias Ithibati.Session
   alias Ithibati.TestKey
   alias Ithibati.TestRepo
   alias Ithibati.UserKey
-  alias Ithibati.UserToken
 
   @schema "probe"
   @version 20_990_101_000_000
@@ -41,6 +41,7 @@ defmodule Ithibati.MigrationTest do
 
       case {schema.__ithibati__(:unique_index),
             Application.get_env(:ithibati, :test_app_index, :unique)} do
+        {true, :collides} -> execute(colliding_index())
         {true, _} -> :ok
         {false, :unique} -> create(unique_index(:users, [:email], name: :users_email_uniq))
         {false, :plain} -> create(index(:users, [:email], name: :users_email_uniq))
@@ -74,12 +75,64 @@ defmodule Ithibati.MigrationTest do
 
     defp create_invitations(:none), do: :ok
 
+    # The columns from the library rather than typed out, which is what a consumer creating the
+    # table gets to do. The identifier comes from the schema, so it cannot disagree with it.
+    defp create_invitations(:from_the_library) do
+      create table(:invitations, primary_key: false) do
+        add :id, :binary_id, primary_key: true
+        Ithibati.Migration.invitation_columns(version: 1)
+      end
+    end
+
+    # The consumer who turned invitations on later has both the table and the index in a
+    # migration of their own, and a rebuilt database replays that before `up/1`.
+    defp create_invitations(:from_the_library_with_index) do
+      create_invitations(:from_the_library)
+      Ithibati.Migration.invitation_index(version: 1)
+    end
+
+    # The columns are there and one of them is the wrong type — the shape that migrates green
+    # today and fails at the first invitation.
+    defp create_invitations(:wrong_types) do
+      create table(:invitations, primary_key: false) do
+        add :id, :binary_id, primary_key: true
+        add :email, :string
+        add :token_hash, :string
+        add :expires_at, :utc_datetime_usec
+        add :accepted_at, :utc_datetime_usec
+      end
+    end
+
+    defp create_invitations(:no_expiry) do
+      create table(:invitations, primary_key: false) do
+        add :id, :binary_id, primary_key: true
+        add :email, :string
+        add :token_hash, :binary
+        add :accepted_at, :utc_datetime_usec
+      end
+    end
+
+    defp create_invitations(:no_token_hash) do
+      create table(:invitations, primary_key: false) do
+        add :id, :binary_id, primary_key: true
+        add :email, :string
+        add :expires_at, :utc_datetime_usec
+        add :accepted_at, :utc_datetime_usec
+      end
+    end
+
     # The key type the library's schemas were compiled with is not movable at runtime, so what a
     # disagreement test moves is the other side: the account table this probe plays the part of.
     defp create_users(:configured) do
       create table(:users, primary_key: false) do
         add :id, TestKey.column_type(), primary_key: true
         add :email, :string
+      end
+    end
+
+    defp create_users(:no_identifier) do
+      create table(:users, primary_key: false) do
+        add :id, TestKey.column_type(), primary_key: true
       end
     end
 
@@ -151,6 +204,21 @@ defmodule Ithibati.MigrationTest do
     defp partial_index do
       "CREATE UNIQUE INDEX users_email_uniq ON #{prefix()}.users (email) WHERE email IS NOT NULL"
     end
+
+    # The same shape under the name `create unique_index(:users, [:email])` derives, which is what
+    # `create_if_not_exists` compares against.
+    defp colliding_index do
+      "CREATE UNIQUE INDEX users_email_index ON #{prefix()}.users (email) WHERE email IS NOT NULL"
+    end
+  end
+
+  # A second migration of the consumer's own, which is the shape the documentation prescribes for
+  # turning invitations on later. At module level rather than inside the helper: two tests run it
+  # now, and a `defmodule` in a function body redefines the module on the second call.
+  defmodule LaterInvitations do
+    use Ecto.Migration
+
+    def change, do: Ithibati.Migration.invitation_index(version: 1)
   end
 
   # The sandbox is switched off for this module rather than checked out: `Ecto.Migrator` does its
@@ -248,6 +316,17 @@ defmodule Ithibati.MigrationTest do
     end
   end
 
+  # `create_if_not_exists` matches on the index name and nothing else, so an index of the
+  # application's under the name Ecto derives makes the create a silent no-op. The migration then
+  # succeeded and the account lookup found two rows at the next sign-in.
+  test "and an index of the application's under the name this library derives is not taken for ours" do
+    as_application_index(:collides)
+
+    assert_raise ArgumentError, ~r/users_email_index.*matches on that name alone/s, fn ->
+      migrate(:up)
+    end
+  end
+
   test "the index it creates carries the name the application asked for" do
     as_account_schema(Ithibati.NamedIndexUser)
 
@@ -292,7 +371,144 @@ defmodule Ithibati.MigrationTest do
   test "the foreign key takes the account table's key type" do
     :ok = migrate(:up)
 
-    assert column_type(UserToken, "user_id") == TestKey.postgres_type()
+    assert column_type(Session, "user_id") == TestKey.postgres_type()
+  end
+
+  # The column is the application's to add and the index on it is this library's to create, which
+  # is a line a reader has to be told about — so the migration says it rather than letting
+  # Postgres refuse an index on a column nobody mentioned.
+  describe "a table missing the column this library indexes" do
+    test "an account table with no identifier column is refused" do
+      as_account_table(:no_identifier)
+
+      assert_raise ArgumentError,
+                   ~r/#{inspect(TestUser)} declares .*users\.email, and the table has no such column.*yours to add/s,
+                   fn -> migrate(:up) end
+
+      assert missing() == tables()
+    end
+
+    test "a token_hash of the wrong type is refused, naming both types" do
+      as_invitation_table(:wrong_types)
+
+      assert_raise ArgumentError,
+                   ~r/invitations\.token_hash is character varying.*reads it as bytea/s,
+                   fn ->
+                     migrate(:up)
+                   end
+
+      assert missing() == tables()
+    end
+
+    test "a column the schema declares and the table does not have is refused" do
+      as_invitation_table(:no_expiry)
+
+      assert_raise ArgumentError,
+                   ~r/invitations\.expires_at, and the table has no such column/s,
+                   fn ->
+                     migrate(:up)
+                   end
+
+      assert missing() == tables()
+    end
+
+    test "an invitation table with no token_hash is refused" do
+      as_invitation_table(:no_token_hash)
+
+      assert_raise ArgumentError,
+                   ~r/#{inspect(TestInvitation)} declares .*invitations\.token_hash, and the table has no such column/s,
+                   fn -> migrate(:up) end
+
+      assert missing() == tables()
+    end
+  end
+
+  # The counterpart to `ithibati_invitation/0`: the schema declares the fields, this adds the
+  # columns behind them, and neither can drift from the other because both read the identifier
+  # off the same schema.
+  # Turning invitations on after `up/1` has already run is the ordinary case, not an edge one —
+  # and `up/1` cannot run again to create the index, so the consumer's own migration has to.
+  describe "invitation_index/1" do
+    test "creates the index this library's migration would have" do
+      as_invitation_table(:from_the_library)
+      migrate(:up)
+
+      query("DROP INDEX #{@schema}.invitations_token_hash_index", [])
+      assert token_hash_indexes() == []
+
+      run_index_migration()
+
+      assert token_hash_indexes() != []
+    end
+
+    test "refuses a version this release does not know" do
+      assert_raise ArgumentError, ~r/version/, fn ->
+        Ithibati.Migration.invitation_index(version: 99)
+      end
+    end
+
+    # The order the two can arrive in is not ours to control. This is the one that can collide:
+    # the consumer's migration made the index, and `up/1` then runs over a database that has it.
+    test "does not collide with the index up/1 creates" do
+      as_invitation_table(:from_the_library_with_index)
+
+      assert :ok = migrate(:up)
+      assert length(token_hash_indexes()) == 1
+    end
+
+    # The same name-only match `up/1` is now held to. This is the more exposed of the two paths:
+    # it is called from the consumer's own migration, in the "I turned invitations on later"
+    # case, against a table they have been maintaining indexes on themselves.
+    test "and an index of the application's under the same name is not taken for ours" do
+      as_invitation_table(:from_the_library)
+      migrate(:up)
+
+      query("DROP INDEX #{@schema}.invitations_token_hash_index", [])
+
+      query(
+        "CREATE UNIQUE INDEX invitations_token_hash_index ON #{@schema}.invitations " <>
+          "(token_hash) WHERE accepted_at IS NULL",
+        []
+      )
+
+      assert_raise ArgumentError, ~r/matches on that name alone/, fn -> run_index_migration() end
+    end
+  end
+
+  describe "invitation_columns/1" do
+    test "builds a table the migration then accepts" do
+      as_invitation_table(:from_the_library)
+
+      assert :ok = migrate(:up)
+      assert missing() == []
+    end
+
+    test "names the identifier the schema declares" do
+      as_invitation_table(:from_the_library)
+      migrate(:up)
+
+      assert %{rows: [[_type, _unique]]} =
+               query(
+                 """
+                 SELECT format_type(a.atttypid, a.atttypmod), true
+                 FROM pg_attribute a
+                 WHERE a.attrelid = to_regclass($1)::oid AND a.attname = $2 AND a.attnum > 0
+                 """,
+                 ["#{@schema}.invitations", "email"]
+               )
+    end
+
+    test "refuses a version this release does not know" do
+      assert_raise ArgumentError, ~r/version/, fn ->
+        Ithibati.Migration.invitation_columns(version: 99)
+      end
+    end
+
+    test "refuses to be called without one" do
+      assert_raise ArgumentError, ~r/version/, fn ->
+        Ithibati.Migration.invitation_columns([])
+      end
+    end
   end
 
   describe "an account table this library cannot point a foreign key at" do
@@ -370,7 +586,7 @@ defmodule Ithibati.MigrationTest do
   defp migrate(:down),
     do: Ecto.Migrator.down(TestRepo, @version, Probe, prefix: @schema, log: false)
 
-  defp tables, do: Enum.map([UserKey, RecoveryCode, UserToken], & &1.__schema__(:source))
+  defp tables, do: Enum.map([UserKey, RecoveryCode, Session], & &1.__schema__(:source))
 
   # One round trip, and it answers *which* rather than merely whether.
   defp missing do
@@ -405,6 +621,16 @@ defmodule Ithibati.MigrationTest do
   defp as_env(key, value), do: put_env(:ithibati, key, value)
 
   defp as_account_schema(module), do: as_env(:user_schema, module)
+
+  defp run_index_migration do
+    Ecto.Migrator.up(TestRepo, @version + 1, LaterInvitations, prefix: @schema, log: false)
+  end
+
+  defp token_hash_indexes do
+    "invitations"
+    |> indexes()
+    |> Enum.filter(&String.contains?(&1, "token_hash"))
+  end
 
   defp indexes(table) do
     %{rows: rows} =
