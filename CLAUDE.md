@@ -1,3 +1,3 @@
-The working rules for this repository are in [AGENTS.md](AGENTS.md), which is the cross-tool
-name for them. This file exists so that a tool which only looks for `CLAUDE.md` still finds
-them.
+The project's rules are in [CONTRIBUTING.md](CONTRIBUTING.md): the architecture and the
+conventions. [AGENTS.md](AGENTS.md) adds the few things that are true only of a local checkout.
+This file exists so that a tool which looks only for `CLAUDE.md` finds both.
