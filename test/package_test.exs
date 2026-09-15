@@ -33,4 +33,27 @@ defmodule Ithibati.PackageTest do
                "from the published package"
     end
   end
+
+  # The two had drifted, and nothing said so: hex.pm was still advertising revocable tokens after
+  # the library had stopped issuing any. The README's opening paragraph is the description, so a
+  # rewrite of one has to reach the other.
+  test "the package description is the paragraph the README opens with" do
+    # The *first* paragraph that is prose, found by position rather than by its opening words. A
+    # search for the words would be a third copy of the text these two are being held to, and it
+    # would stay green for a README whose opening paragraph had moved to the bottom.
+    opening =
+      "README.md"
+      |> File.read!()
+      |> String.split(~r/\n\s*\n/)
+      |> Enum.map(&String.trim/1)
+      |> Enum.reject(&(&1 == ""))
+      |> Enum.find(&(not String.starts_with?(&1, ["#", "![", "[", ">"])))
+
+    refute is_nil(opening), "README.md has no prose paragraph for the description to match"
+
+    assert normalise(opening) == normalise(Mix.Project.config()[:description])
+  end
+
+  # Line breaks are the author's business, and a hard break at the end of a line is invisible.
+  defp normalise(text), do: text |> String.replace(~r/\s+/, " ") |> String.trim()
 end

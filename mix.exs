@@ -4,10 +4,12 @@ defmodule Ithibati.MixProject do
   @version "0.1.0"
   @source_url "https://github.com/oliverandrich/ithibati"
 
-  # One copy, because README.md opens with it verbatim and hex.pm shows it.
-  @description "Passkey authentication for Elixir applications — accounts, WebAuthn credentials, " <>
-                 "recovery codes and revocable tokens — without an opinion about what an account " <>
-                 "may do. The optional web half is for Phoenix."
+  # The README opens with this text, and hex.pm shows it. `Ithibati.PackageTest` holds the two
+  # together: they had already drifted once, with hex.pm still advertising tokens after the
+  # library had stopped issuing any.
+  @description "Passkey authentication for Elixir applications: accounts, WebAuthn credentials, " <>
+                 "recovery codes and revocable sessions. It has no opinion about what an account " <>
+                 "may do. The web half is optional and built for Phoenix."
 
   def project do
     [

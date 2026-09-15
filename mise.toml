@@ -43,6 +43,71 @@ run = [
   "cd tmp/without-optional && ITHIBATI_WITHOUT_OPTIONAL=1 mix deps.get && ITHIBATI_WITHOUT_OPTIONAL=1 mix build_and_test",
 ]
 
+# What has to be true before anything reaches hex.pm. The release workflow asks it before the job
+# that publishes, and a laptop can ask it before the tag is pushed.
+#
+# The tag is the point. `mix hex.publish` tars the working directory, so without a tag on HEAD
+# there is nothing saying which commit the published version *is* — and `source_ref:` in mix.exs
+# aims every source link in the documentation at `v<version>` on GitHub, which would then resolve
+# to nothing.
+[tasks.release-check]
+description = "Refuse a release that is not exactly what a tag points at"
+run = '''
+set -eu
+
+fail() { echo "$1" >&2; exit 1; }
+
+# Piped through `tail`, because `mix run` compiles first and says so on stdout. The shape is
+# checked rather than trusted: a pipeline reports the last command's status, so a failing
+# `mix run` would otherwise hand over an empty string.
+version=$(mix run --no-start -e 'IO.puts(Mix.Project.config()[:version])' | tail -n1)
+
+case "$version" in
+  [0-9]*.[0-9]*.[0-9]*) ;;
+  *) fail "read \"$version\" as the version, which is not one" ;;
+esac
+
+# `git status --porcelain` rather than `git diff`, which sees neither untracked files nor their
+# consequence: everything under lib/, priv/, docs/ and assets/ goes into the package by glob, so
+# a file that was never added still ships.
+[ -z "$(git status --porcelain)" ] || fail "the working tree is not clean; a release is the commit and nothing beside it"
+
+tag="v$version"
+
+# `--points-at` rather than `git describe --exact-match`, which answers with one name of its own
+# choosing when HEAD carries several tags, and would reject a correctly tagged commit for having
+# a second tag on it.
+git tag --points-at HEAD | grep -qx "$tag" || fail "HEAD carries no $tag. Tag it first: git tag -a $tag -m $tag"
+
+# Annotated, because the message below tells you to make one and a lightweight tag can be moved
+# with no record that it was.
+[ "$(git cat-file -t "$tag")" = tag ] || fail "$tag is a lightweight tag; make it annotated: git tag -a -f $tag -m $tag"
+
+# On the remote and pointing here, or the source links in the published documentation lead to a
+# commit nobody else has.
+remote=$(git ls-remote origin "refs/tags/$tag^{}" | cut -f1)
+[ -n "$remote" ] || remote=$(git ls-remote origin "refs/tags/$tag" | cut -f1)
+[ -n "$remote" ] || fail "$tag is not on origin; push it: git push origin $tag"
+[ "$remote" = "$(git rev-parse HEAD)" ] || fail "origin's $tag points at $remote, not at HEAD"
+
+# `-F`, so a version with a dot in it is not a wildcard that matches a heading it should not.
+grep -qF "## [$version]" CHANGELOG.md || fail "CHANGELOG.md has no \"## [$version]\" section, so the release would ship without an entry"
+
+echo "release-check: $tag, on origin, and the changelog has a section for it"
+'''
+
+# Separate from `release-check` so the check can run without anybody holding a key, and so the
+# publish is one line that does nothing else. `mix hex.publish` is close to final — hex.pm allows
+# a revert for an hour and not after — which is why the whole gate runs in front of it. It sends
+# the documentation too, by running `mix docs` itself.
+[tasks.release]
+description = "Publish the tagged version to hex.pm"
+run = [
+  "mise run release-check",
+  "mise run check",
+  "mix hex.publish --yes",
+]
+
 # Deliberately not part of `check`; it runs on a schedule instead. Why, in
 # .github/workflows/audit.yml.
 [tasks.audit]
