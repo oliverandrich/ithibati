@@ -73,7 +73,8 @@ is safe, because the backlog lives on one machine and `git push` does not back i
     is not a clean suite — and the dangerous direction is the quiet one, where the sabotage never
     reaches the fixtures and the green suite reads as "this test guards nothing".
 - **The CI leg without the optional dependencies cannot be reproduced in this checkout — use
-  `mise run check-without-optional`.** `Code.ensure_loaded?` answers from the code path, and
+  `mise run check-without-optional`, which runs what that leg runs: compile and test, not the
+  whole gate.** `Code.ensure_loaded?` answers from the code path, and
   `_build` still holds the compiled Phoenix beams after any ordinary run, so the guard passes and
   the run then dies on something the local build invented. The task works from a clean copy,
   which is what CI gets.

@@ -42,6 +42,13 @@ jobs:
           # with them present.
           - name: without optional deps
             without_optional: "1"
+            # Not the full gate, for the same reason the colocated leg is not: style is judged
+            # once, on this same source. And `mix docs` cannot run here at all — without the web
+            # half there is no `Ithibati.Web.Handler` for a guide to link to, so every reference
+            # to it is unresolved. The published documentation is always built with the optional
+            # dependencies present, so a docs build without them would be checking a product
+            # nobody ships.
+            gate: build-and-test
           # The colocated delivery route, which every other leg leaves unbuilt: the variable is what
           # puts LiveView's compiler in `compilers/0`, and nothing else in this matrix sets it. Its
           # own step below checks that the manifest a consumer imports was actually written — the
