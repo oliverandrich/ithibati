@@ -285,10 +285,11 @@ jobs:
 
     permissions:
       contents: read
-      # What zizmor's online audits need. No `security-events: write`: the security tab needs
-      # GitHub Advanced Security, which a private repository does not have, so findings arrive as
-      # pull-request annotations instead.
+      # What zizmor's online audits need.
       actions: read
+      # The repository is public, so GitHub Advanced Security is available and findings belong in
+      # the security tab rather than only in pull-request annotations.
+      security-events: write
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -300,8 +301,7 @@ jobs:
           # Kept equal to `[tools]` in mise.toml by hand; see the note there.
           #
           # This job overlaps the `zizmor` step inside `mise run check` on purpose: the gate catches
-          # a workflow finding before the push, this one adds the online audits and the pull-request
-          # annotations that a local run has no way to produce.
+          # a workflow finding before the push, and this one adds the online audits a local run
+          # has no way to make, then files what it finds in the security tab.
           version: 1.30.0
-          advanced-security: false
-          annotations: true
+          advanced-security: true
