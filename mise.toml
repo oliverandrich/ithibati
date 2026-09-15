@@ -77,11 +77,11 @@ tag="v$version"
 # `--points-at` rather than `git describe --exact-match`, which answers with one name of its own
 # choosing when HEAD carries several tags, and would reject a correctly tagged commit for having
 # a second tag on it.
+# Annotated or not is not asked. A lightweight tag can normally be moved with no record that it
+# was, which is what an annotated one would have bought — but a repository ruleset on `v*`
+# refuses both deletion and force-update here, for either kind, which is the stronger guarantee.
+# `-a` is still the better habit and the message says so.
 git tag --points-at HEAD | grep -qx "$tag" || fail "HEAD carries no $tag. Tag it first: git tag -a $tag -m $tag"
-
-# Annotated, because the message below tells you to make one and a lightweight tag can be moved
-# with no record that it was.
-[ "$(git cat-file -t "$tag")" = tag ] || fail "$tag is a lightweight tag; make it annotated: git tag -a -f $tag -m $tag"
 
 # On the remote and pointing here, or the source links in the published documentation lead to a
 # commit nobody else has.
