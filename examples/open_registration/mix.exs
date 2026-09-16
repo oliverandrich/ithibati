@@ -95,6 +95,8 @@ defmodule IthibatiOpen.MixProject do
         "compile --warnings-as-errors",
         "deps.unlock --unused",
         "format --check-formatted",
+        # This application keeps no compile-connected edges, whatever put them there.
+        "xref graph --label compile-connected --fail-above 0",
         "assets.build",
         "test"
       ]

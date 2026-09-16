@@ -36,9 +36,12 @@ if Code.ensure_loaded?(Phoenix.Component) do
     The macro records all of this on the routes instead of reading it from application
     configuration, so that two mounts (an administrative one and a public one, say) can answer to
     different rules.
+
+    Naming the handler does not make your router compile-depend on it. Write it as an alias, the
+    way you would write any module.
     """
     defmacro ithibati_routes(opts) do
-      handler = Keyword.fetch!(opts, :handler)
+      handler = resolved(Keyword.fetch!(opts, :handler), __CALLER__)
       rp_name = Keyword.fetch!(opts, :rp_name)
       ceremony = Keyword.take(opts, [:user_verification, :seconds])
 
@@ -55,5 +58,13 @@ if Code.ensure_loaded?(Phoenix.Component) do
         end
       end
     end
+
+    # `Plug.Builder.expand_alias/2`, verbatim. An alias expanded inside a function body is a
+    # runtime reference, so the caller's aliases are consulted and the router takes no compile
+    # dependency on the handler. `Ithibati.Web.RouterDependencyTest` holds it.
+    defp resolved({:__aliases__, _, _} = alias, caller),
+      do: Macro.expand(alias, %{caller | function: {:init, 1}})
+
+    defp resolved(other, _caller), do: other
   end
 end

@@ -15,8 +15,8 @@ if Code.ensure_loaded?(Phoenix.Component) do
       {"POST", "/auth/recovery", :recovery}
     ]
 
-    # Filtered to one mount: the test estate mounts twice, and what is being pinned is the four
-    # suffixes a mount generates, not how many times the suite happens to call the macro.
+    # Filtered to one mount: the estate mounts the macro several times, and what is pinned is the
+    # five suffixes one mount generates.
     test "the macro generates exactly the documented routes" do
       actual =
         Ithibati.TestRouter.__routes__()
