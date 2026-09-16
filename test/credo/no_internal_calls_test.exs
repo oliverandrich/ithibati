@@ -120,11 +120,11 @@ defmodule Ithibati.Credo.NoInternalCallsTest do
     test "an underscored function this library marked itself" do
       """
       defmodule App.Accounts do
-        def force(a, b), do: Ithibati.Schema.User.__changeset__(a, b, :email, nil, nil)
+        def force(a, b), do: Ithibati.Schema.User.__changeset__(a, b, :email, nil, nil, nil)
       end
       """
       |> check()
-      |> assert_issue(fn issue -> assert issue.message =~ "__changeset__/5" end)
+      |> assert_issue(fn issue -> assert issue.message =~ "__changeset__/6" end)
     end
   end
 

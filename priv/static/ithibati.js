@@ -95,12 +95,21 @@ async function post(url, body) {
   return {ok: response.ok, status: response.status, body: parsed}
 }
 
+// Every `DOMException` this library has a word for, per ceremony, because the same name does not
+// mean the same thing in both. `InvalidStateError` from `create` is the authenticator saying it
+// already holds a credential this registration excluded, which is what the server answers
+// `already_enrolled` to when a browser ignores the exclude list. From `get` it is a document that
+// is no longer fully active, which a restore from the back-forward cache produces. Anything else
+// is `ceremony_failed`, which is honest: the hook cannot tell a broken authenticator from a
+// browser that refused for a reason it does not publish.
+const SHARED = {NotAllowedError: "ceremony_cancelled"}
+
 // One place that says which ceremony is which. The alternative is a two-valued discriminator
 // spelled out at each of three sites, two of them ternaries, which fail by quietly taking the
 // other branch.
 const CEREMONIES = {
-  registration: {start: register},
-  authentication: {start: authenticate}
+  registration: {start: register, failures: {...SHARED, InvalidStateError: "already_enrolled"}},
+  authentication: {start: authenticate, failures: SHARED}
 }
 
 export const PasskeyCeremony = {
@@ -141,12 +150,16 @@ export const PasskeyCeremony = {
 
       this.done(finished.body)
     } catch (error) {
-      // A cancelled or failed ceremony is a `DOMException`, which the server never hears about —
-      // the person closed the dialog. A missing URL is the one reported by name, because it is a
-      // wiring mistake and looks exactly like a cancelled ceremony otherwise.
+      // A cancelled or failed ceremony is a `DOMException`, which the server never hears about.
+      // A missing URL is the one reported by name, because it is a wiring mistake and looks
+      // exactly like a cancelled ceremony otherwise.
       if (error.name === "IthibatiMissingUrl") return this.failed(error.message)
 
-      this.failed(error.name === "NotAllowedError" ? "ceremony_cancelled" : "ceremony_failed")
+      // `Object.hasOwn`, because a plain lookup reads through `Object.prototype`: a name like
+      // `constructor` would answer with a function, which is truthy and is not a word.
+      const failures = CEREMONIES[ceremony].failures
+
+      this.failed(Object.hasOwn(failures, error.name) ? failures[error.name] : "ceremony_failed")
     }
   },
 

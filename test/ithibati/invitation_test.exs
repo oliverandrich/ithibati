@@ -203,6 +203,27 @@ defmodule Ithibati.Schema.InvitationTest do
     end
   end
 
+  # The option checks live once in `Ithibati.Schema.Identifier.options!/2`, and the wiring that
+  # carries the value to the changeset does not: this macro threads it separately from the account
+  # one, and only a test here says whether that thread is connected.
+  describe "the format message, which this macro takes too" do
+    test "is the application's sentence when it gives one" do
+      body = """
+      use Ithibati.Schema.Invitation,
+        identifier: :email,
+        format: ~r/@example\\.test\\z/,
+        format_message: "must be an example address"
+      """
+
+      module = probe("WordedInvitation", body, inside: "ithibati_invitation()")
+
+      assert %{email: ["must be an example address"]} =
+               errors_on(
+                 module.invitation_changeset(struct(module), %{email: "ada@elsewhere.test"})
+               )
+    end
+  end
+
   describe "what it refuses at compile time" do
     # The same accident as a forgotten sigil, and reachable from the shape `docs/invitations.md`
     # shows: a misspelled attribute is `nil` with only a warning, and would mean no pattern at

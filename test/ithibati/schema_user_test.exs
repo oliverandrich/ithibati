@@ -204,6 +204,82 @@ defmodule Ithibati.Schema.UserTest do
     end
   end
 
+  # A refused identifier otherwise reads "has invalid format", which beside an email field is
+  # worse than the sentence any application would write. Everywhere else this library declines to
+  # ship wording, on the grounds that the tone of somebody else's product is not its to choose.
+  describe "the message the format refusal carries" do
+    test "is the application's sentence when it gives one" do
+      body = """
+      use Ithibati.Schema.User,
+        identifier: :email,
+        format: ~r/@example\\.test\\z/,
+        format_message: "must be an example address"
+      """
+
+      module = probe("Worded", body, inside: "ithibati_account()")
+
+      assert ["must be an example address"] = errors_for(module, :email, "ada@elsewhere.test")
+    end
+
+    test "may be a module attribute, the way the format may" do
+      body = """
+      @wording "must be an example address"
+      use Ithibati.Schema.User,
+        identifier: :email,
+        format: ~r/@example\\.test\\z/,
+        format_message: @wording
+      """
+
+      module = probe("WordedAttribute", body, inside: "ithibati_account()")
+
+      assert ["must be an example address"] = errors_for(module, :email, "ada@elsewhere.test")
+    end
+
+    test "left out, the wording stays Ecto's" do
+      assert %{email: ["has invalid format"]} =
+               errors_on(TestUser.changeset(%TestUser{}, %{email: "not an address"}))
+    end
+
+    # The misspelled-attribute accident again, and a sentence nobody ever reads is exactly as
+    # silent as a pattern that checks nothing.
+    test "an option that arrived as nil is refused" do
+      assert_raise ArgumentError, ~r/misspelled module attribute/, fn ->
+        probe(
+          "WordedNil",
+          "use Ithibati.Schema.User, identifier: :email, format: ~r/x/, format_message: nil"
+        )
+      end
+    end
+
+    test "has to be a string, and an empty one is no sentence at all" do
+      assert_raise ArgumentError, ~r/`format_message:` must be a non-empty string/, fn ->
+        probe(
+          "WordedAtom",
+          "use Ithibati.Schema.User, identifier: :email, format: ~r/x/, format_message: :nope"
+        )
+      end
+
+      # It compiles, and it reaches the form as a blank error beside the field.
+      assert_raise ArgumentError, ~r/`format_message:` must be a non-empty string/, fn ->
+        probe(
+          "WordedBlank",
+          ~s|use Ithibati.Schema.User, identifier: :email, format: ~r/x/, format_message: ""|
+        )
+      end
+    end
+
+    # Nothing checks the format, so nothing could carry the sentence. Refused where it is written,
+    # because the alternative is an option that compiles and is worth nothing.
+    test "without a format there is nothing for it to word, and that is refused" do
+      assert_raise ArgumentError, ~r/`format_message:` needs a `format:`/, fn ->
+        probe(
+          "WordedFormatless",
+          ~s|use Ithibati.Schema.User, identifier: :email, format_message: "never read"|
+        )
+      end
+    end
+  end
+
   describe "the format, which is optional and the application's" do
     # Without the check this compiles and `validate_format/4` degrades to `String.contains?/2`,
     # which refuses "abc" against "^[a-z]+$" and accepts "x^[a-z]+$y" — wrong in both directions,
@@ -457,6 +533,13 @@ defmodule Ithibati.Schema.UserTest do
   end
 
   defp insert(email), do: %TestUser{} |> TestUser.changeset(%{email: email}) |> TestRepo.insert()
+
+  # The boolean sibling of `valid?/3`, for the assertions that are about the wording itself.
+  defp errors_for(schema, field, value) do
+    schema.identifier_changeset(struct(schema), %{field => value})
+    |> errors_on()
+    |> Map.get(field)
+  end
 
   defp valid?(schema, field, value) do
     match?(

@@ -31,13 +31,16 @@ defmodule Ithibati.Schema.User do
       write this one out here, because it is the field your schema declares.
     * `format:` — optional, a regular expression, evaluated once when your module compiles.
       `Ithibati.Schema.Identifier.email_format/0` offers one for addresses.
+    * `format_message:` — optional, the sentence a refused format carries. Without it Ecto says
+      "has invalid format", which beside an email field is worse than what you would write. It
+      needs a `format:`, since nothing else here reports one.
     * `constraint_name:` — optional, the name of the unique index on that column. Say it when your
       naming convention is not the one Ecto derives. Ithibati then creates the index under that
       name, and the changeset's constraint matches it.
     * `unique_index: false` — optional, an opt-out. Say it when your application creates that
       index itself, and Ithibati checks that one exists instead of creating it.
 
-  You may write each of the three value options inline, or name a module attribute standing above
+  You may write each of the four value options inline, or name a module attribute standing above
   the `use` line. Ithibati refuses an option written as `nil`, because that is what a misspelled
   attribute looks like.
 
@@ -95,10 +98,11 @@ defmodule Ithibati.Schema.User do
 
       @before_compile Ithibati.Schema.User
 
-      # Three of these may be a checking call instead of a value, so that an option written as
+      # Four of these may be a checking call instead of a value, so that an option written as
       # `@name` resolves here; see `Ithibati.Schema.Identifier.options!/2`.
       @ithibati_identifier unquote(given.identifier)
       @ithibati_format unquote(given.format)
+      @ithibati_format_message unquote(given.format_message)
       @ithibati_constraint unquote(given.constraint)
       @ithibati_unique_index unquote(given.unique_index)
 
@@ -129,6 +133,7 @@ defmodule Ithibati.Schema.User do
 
     field = Identifier.declared!(env, __MODULE__, "ithibati_account/0")
     format = Module.get_attribute(env.module, :ithibati_format)
+    format_message = Module.get_attribute(env.module, :ithibati_format_message)
     constraint = Module.get_attribute(env.module, :ithibati_constraint)
     unique_index = Module.get_attribute(env.module, :ithibati_unique_index)
 
@@ -156,6 +161,7 @@ defmodule Ithibati.Schema.User do
           attrs,
           unquote(field),
           unquote(Macro.escape(format)),
+          unquote(format_message),
           unquote(Macro.escape(constraint))
         )
       end
@@ -163,9 +169,9 @@ defmodule Ithibati.Schema.User do
   end
 
   @doc false
-  def __changeset__(account_or_changeset, attrs, field, format, constraint) do
+  def __changeset__(account_or_changeset, attrs, field, format, format_message, constraint) do
     account_or_changeset
-    |> Identifier.steps(attrs, field, format)
+    |> Identifier.steps(attrs, field, format, format_message)
     |> unique_constraint(field, Identifier.unique_opts(constraint))
   end
 

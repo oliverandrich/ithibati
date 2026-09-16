@@ -55,6 +55,9 @@ defmodule IthibatiOpenWeb.SignInLive do
   defp message("no_credentials"), do: "No passkey is registered here yet."
   defp message("invalid_code"), do: "That recovery code is not one we can use."
   defp message("ceremony_cancelled"), do: "The passkey prompt was dismissed."
+
+  defp message("already_enrolled"), do: "That device already holds a passkey for this site."
+
   defp message(other), do: "Something went wrong: #{other}"
 
   @impl true

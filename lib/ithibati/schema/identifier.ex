@@ -62,12 +62,12 @@ defmodule Ithibati.Schema.Identifier do
   def normalize(value), do: value |> String.trim() |> String.downcase()
 
   @doc false
-  def steps(struct_or_changeset, attrs, field, format) do
+  def steps(struct_or_changeset, attrs, field, format, format_message) do
     struct_or_changeset
     |> cast(attrs, [field])
     |> update_change(field, &normalize/1)
     |> validate_required([field])
-    |> validate_pattern(field, format)
+    |> validate_pattern(field, format, format_message)
     |> validate_length(field, max: @max)
   end
 
@@ -75,8 +75,13 @@ defmodule Ithibati.Schema.Identifier do
   def unique_opts(nil), do: []
   def unique_opts(name), do: [name: name]
 
-  defp validate_pattern(changeset, _field, nil), do: changeset
-  defp validate_pattern(changeset, field, format), do: validate_format(changeset, field, format)
+  defp validate_pattern(changeset, _field, nil, _message), do: changeset
+
+  defp validate_pattern(changeset, field, format, nil),
+    do: validate_format(changeset, field, format)
+
+  defp validate_pattern(changeset, field, format, message),
+    do: validate_format(changeset, field, format, message: message)
 
   @doc false
   # A consumer's own clause for an injected function would win by clause order, and the library's
@@ -146,9 +151,12 @@ defmodule Ithibati.Schema.Identifier do
       raise ArgumentError,
             "use #{inspect(macro)} takes a literal keyword list, got: #{Macro.to_string(opts)}"
 
+    consistent!(opts)
+
     %{
       identifier: identifier!(opts, macro),
       format: deferred(opts, :format, :validated_format!),
+      format_message: deferred(opts, :format_message, :validated_message!),
       constraint: deferred(opts, :constraint_name, :validated_constraint_name!),
       unique_index: deferred(opts, :unique_index, :validated_unique_index!, true)
     }
@@ -170,6 +178,25 @@ defmodule Ithibati.Schema.Identifier do
       :error -> default
     end
   end
+
+  # The only cross-key question these options raise, so it is a statement of its own and the map
+  # below stays a map. A sentence nobody ever reads is as silent as a pattern that checks nothing,
+  # and this is the last point where both keys are still visible as keys.
+  defp consistent!(opts) do
+    if Keyword.has_key?(opts, :format_message) and not Keyword.has_key?(opts, :format) do
+      raise ArgumentError,
+            "`format_message:` needs a `format:` to word the refusal of. " <>
+              "Nothing else here reports one."
+    end
+  end
+
+  # Ecto takes any term and interpolates it into the error, so an atom would reach a form as
+  # `:nope`. A binary is the only thing that reads like a sentence.
+  # `""` is refused for the reason the whole option exists: it compiles, and it reaches the form as
+  # a blank error beside the field.
+  @doc false
+  def validated_message!(message) when is_binary(message) and message != "", do: message
+  def validated_message!(other), do: refuse!(:format_message, other, "a non-empty string")
 
   # A format that is not a regular expression should say so where it is written, not at somebody's
   # first registration. A binary slips through `validate_format/4` as `String.contains?/2`, which

@@ -108,6 +108,22 @@ defmodule IthibatiOpenWeb.FeatureCase do
   end
 
   @doc """
+  Registers an account and lands on the recovery codes, which is where a registration ends.
+
+  Three feature files want this preamble before they can reach their own subject. It carries its
+  own assertion so a test that fails here fails about the registration, not about whatever it was
+  going to check next.
+  """
+  def register(session, username) do
+    session
+    |> open("/")
+    |> fill_in(Wallaby.Query.css("input[name=username]"), with: username)
+    |> click(Wallaby.Query.button("Register"))
+    |> landed_on("/recovery-codes")
+    |> assert_has(Wallaby.Query.css("h1", text: "Your recovery codes"))
+  end
+
+  @doc """
   Attaches a virtual authenticator to this session's browser.
 
   Chrome's own, reached through chromedriver's CDP passthrough. Wallaby's `browserContext`

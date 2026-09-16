@@ -108,6 +108,17 @@ walkthrough should quietly assume.
 option out and `identifier_changeset/2` still trims the value, downcases it and requires it. It
 just does not check a shape.
 
+A refused format reads "has invalid format", which is Ecto's wording and rarely yours. Pass
+`format_message:` and it says what you wrote instead:
+
+```elixir
+use User, identifier: :email, format: Identifier.email_format(),
+  format_message: "must be an email address we can reach you at"
+```
+
+It takes a module attribute like the others, and it needs a `format:`. There is nothing else here
+for it to word.
+
 [`username_format/0`](`Ithibati.Schema.Identifier.username_format/0`) is Mastodon's rule for a
 *local* account: letters, digits and underscores, at
 most thirty characters. Their looser pattern, the one that allows dots and hyphens, is for
@@ -210,6 +221,10 @@ Deleting an account takes its passkeys, its recovery codes and its sessions with
 `on_delete: :delete_all`, so your own delete path needs no cleanup here. The bootstrap row is
 the exception. Its `user_id` is nilified and the row stays, because what it records is
 that this instance *was* set up, and that stays true after the account that did it is gone.
+
+That row is a singleton behind a unique index. If your application has a singleton of its own,
+[Invitations, and the first account](invitations.md) says why the order you write to them in
+matters.
 
 The identifier column itself is yours. Add it in the `create table` that builds your users table,
 or in an `alter` if that table already exists:
@@ -654,6 +669,7 @@ defmodule MyAppWeb.SignInLive do
   defp message("no_credentials"), do: "No passkey is registered here yet."
   defp message("invalid_code"), do: "That recovery code is not one we can use."
   defp message("ceremony_cancelled"), do: "The passkey prompt was dismissed."
+  defp message("already_enrolled"), do: "That device already holds a passkey for this site."
   defp message(other), do: "Something went wrong: #{other}"
 
   @impl true

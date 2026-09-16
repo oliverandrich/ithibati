@@ -7,17 +7,6 @@ defmodule IthibatiOpenWeb.RegistrationTest do
   """
   use IthibatiOpenWeb.FeatureCase
 
-  # The prelude the first test walks through with its own assertions, so that the tests about
-  # something else can reach their subject in a line — the shape `invitation_test.exs` uses too.
-  defp register(session, username) do
-    session
-    |> open("/")
-    |> fill_in(css("input[name=username]"), with: username)
-    |> click(button("Register"))
-    |> landed_on("/recovery-codes")
-    |> assert_has(css("h1", text: "Your recovery codes"))
-  end
-
   feature "a passkey is made, the codes are shown once, and the same passkey signs back in", %{
     session: session
   } do

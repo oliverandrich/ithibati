@@ -37,8 +37,9 @@ defmodule Ithibati.Schema.Invitation do
   The options are the account macro's. `identifier:` is required, and it is the one you have to
   write out. `format:` takes a regular expression, and `Ithibati.Schema.Identifier.email_format/0`
   offers a pattern for addresses. `constraint_name:` and `unique_index:` name the unique index on
-  the token digest and not on the identifier. You may write each of the three value options
-  inline, or name a module attribute standing above the `use` line.
+  the token digest and not on the identifier. `format_message:` words the refusal a `format:`
+  reports. You may write each of the four value options inline, or name a module attribute
+  standing above the `use` line.
 
   `identifier:` names the field the invitee is addressed by. It has to be the same field the
   account schema uses, and `Ithibati.Config.invitation_schema/0` refuses the pair when it is not.
@@ -93,10 +94,11 @@ defmodule Ithibati.Schema.Invitation do
 
       @before_compile Ithibati.Schema.Invitation
 
-      # Three of these may be a checking call instead of a value, so that an option written as
+      # Four of these may be a checking call instead of a value, so that an option written as
       # `@name` resolves here; see `Ithibati.Schema.Identifier.options!/2`.
       @ithibati_identifier unquote(given.identifier)
       @ithibati_format unquote(given.format)
+      @ithibati_format_message unquote(given.format_message)
       @ithibati_constraint unquote(given.constraint)
       @ithibati_unique_index unquote(given.unique_index)
     end
@@ -112,6 +114,7 @@ defmodule Ithibati.Schema.Invitation do
 
     field = Identifier.declared!(env, __MODULE__, "ithibati_invitation/0")
     format = Module.get_attribute(env.module, :ithibati_format)
+    format_message = Module.get_attribute(env.module, :ithibati_format_message)
     constraint = Module.get_attribute(env.module, :ithibati_constraint)
     unique_index = Module.get_attribute(env.module, :ithibati_unique_index)
 
@@ -144,6 +147,7 @@ defmodule Ithibati.Schema.Invitation do
           opts,
           unquote(field),
           unquote(Macro.escape(format)),
+          unquote(format_message),
           unquote(Macro.escape(constraint))
         )
       end
@@ -151,9 +155,17 @@ defmodule Ithibati.Schema.Invitation do
   end
 
   @doc false
-  def __changeset__(invitation_or_changeset, attrs, opts, field, format, constraint) do
+  def __changeset__(
+        invitation_or_changeset,
+        attrs,
+        opts,
+        field,
+        format,
+        format_message,
+        constraint
+      ) do
     invitation_or_changeset
-    |> Identifier.steps(attrs, field, format)
+    |> Identifier.steps(attrs, field, format, format_message)
     |> validate_unclaimed(field)
     |> put_token()
     |> put_expiry(opts)

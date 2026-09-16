@@ -145,9 +145,14 @@ What Ithibati itself can send:
 | `verification_failed` | the catch-all, when a step answered something that is not an atom |
 
 The browser half adds `ceremony_cancelled` when somebody dismisses the passkey prompt,
-`ceremony_failed` for any other `DOMException`, `http_<status>` when an endpoint answers
-something unexpected, and `missing_data_<attribute>` when the hook element is missing one of the
-five URLs it reads.
+`http_<status>` when an endpoint answers something unexpected, and `missing_data_<attribute>` when
+the hook element is missing one of the five URLs it reads. It answers `already_enrolled` too, for
+the `InvalidStateError` a browser raises when the authenticator already holds a credential this
+registration excluded. That is the same word the table above gives, because it is the same
+situation: a browser that honours `excludeCredentials` refuses before the server hears anything,
+and one that ignores it is refused by the insert. Signing in is not that situation, so the same
+`InvalidStateError` from an assertion is `ceremony_failed`, along with every other `DOMException`
+this library has no word for.
 
 Anything else is a code **your** handler returned. Those are yours to name and yours to phrase.
 

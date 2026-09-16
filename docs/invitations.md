@@ -166,6 +166,21 @@ The second person to try gets `{:error, :bootstrap, :already_claimed, _}` and le
 behind, because the whole transaction rolls back. That is what makes the guarantee hold when two
 people register in the same second instead of one after the other.
 
+> #### The bootstrap row is a singleton, and yours may be one too {: .info}
+>
+> What makes that guarantee hold is a unique index. `ithibati_bootstrap` has one on a boolean
+> column that defaults to `true`, so at most one row can claim the instance, and two transactions
+> that both claim block on it.
+>
+> That also puts a deadlock within reach of any application holding a singleton of its own. Two
+> transactions taking the two rows in opposite orders each wait on what the other holds, and
+> Postgres kills one of them with `40P01`. It was reported from a test suite that hit it on
+> roughly one seed in three, in a test that touched neither row. The symptom is a long way from
+> the cause and reads like flakiness.
+>
+> Write to the two in the same order everywhere, fixtures included. Which order does not matter.
+> Having one does.
+
 [`Instance.needs_setup?/0`](`Ithibati.Identity.Instance.needs_setup?/0`) is the question your
 registration page asks to decide which of the two
 it is showing.

@@ -69,6 +69,27 @@ defmodule IthibatiOpenWeb.HookFailuresTest do
     session
   end
 
+  # The one thing no amount of clicking produces: a browser that refuses. Each caller differs only
+  # in which call it spoils and which `DOMException` name comes back, and `name` is all the hook
+  # branches on.
+  defp refuses(session, method, name) do
+    execute_script(
+      session,
+      """
+      const [method, name] = [arguments[0], arguments[1]]
+
+      navigator.credentials[method] = () => {
+        const error = new Error(name)
+        error.name = name
+        return Promise.reject(error)
+      }
+      """,
+      [method, name]
+    )
+
+    session
+  end
+
   defp attribute_of(session, attribute) do
     execute_script(
       session,
@@ -121,19 +142,11 @@ defmodule IthibatiOpenWeb.HookFailuresTest do
 
     session
     |> open("/")
-    # The one thing no amount of clicking produces. WebAuthn reports a dismissed dialog as a
-    # `NotAllowedError`, and turning that into `ceremony_cancelled` rather than into a failure that
-    # names the server is the hook's job.
-    |> execute_script("""
-    const refuse = () => {
-      const error = new Error("The operation either timed out or was not allowed.")
-      error.name = "NotAllowedError"
-      return Promise.reject(error)
-    }
-    navigator.credentials.create = refuse
-    navigator.credentials.get = refuse
-    """)
-    |> type("ada")
+    # WebAuthn reports a dismissed dialog as a `NotAllowedError`, and turning that into
+    # `ceremony_cancelled` instead of a failure that names the server is the hook's job.
+    |> refuses("create", "NotAllowedError")
+    |> refuses("get", "NotAllowedError")
+    |> fill_in(css("input[name=username]"), with: "ada")
     |> click(button("Register"))
     |> assert_has(css(".alert-error", text: "The passkey prompt was dismissed."))
 
@@ -141,15 +154,41 @@ defmodule IthibatiOpenWeb.HookFailuresTest do
     assert Repo.aggregate(User, :count) == 0
   end
 
-  feature "a refusal the server named is shown as the server's own reason", %{session: session} do
+  feature "an authenticator that already holds a passkey says so", %{session: session} do
     virtual_authenticator(session)
+
+    # What the browser answers when `excludeCredentials` already names a credential this
+    # authenticator holds. The server never hears about it, so the word can only come from the
+    # hook, and it is the same word the server uses when a browser ignores the exclude list.
+    session
+    |> open("/")
+    |> refuses("create", "InvalidStateError")
+    |> fill_in(css("input[name=username]"), with: "ada")
+    |> click(button("Register"))
+    |> assert_has(css(".alert-error", text: "That device already holds a passkey for this site."))
+  end
+
+  feature "the same browser error means nothing of the kind when signing in", %{session: session} do
+    virtual_authenticator(session)
+
+    # A real registration first, or the challenge endpoint answers `no_credentials` and the browser
+    # is never asked at all. What this test is about is what the *browser* refuses.
+    register(session, "ada")
 
     session
     |> open("/")
-    |> fill_in(css("input[name=username]"), with: "ada")
-    |> click(button("Register"))
-    |> landed_on("/recovery-codes")
-    |> assert_has(css("h1", text: "Your recovery codes"))
+    # `navigator.credentials.get` raises this when the document is not fully active, which a
+    # restore from the back-forward cache produces. Nothing about it says the device is enrolled,
+    # and a word scoped to registration must not be reachable from here.
+    |> refuses("get", "InvalidStateError")
+    |> click(button("Sign in with a passkey"))
+    |> assert_has(css(".alert-error", text: "Something went wrong: ceremony_failed"))
+  end
+
+  feature "a refusal the server named is shown as the server's own reason", %{session: session} do
+    virtual_authenticator(session)
+
+    register(session, "ada")
 
     # A second registration for the name that now exists. The reason travels from the handler through
     # the JSON body, the hook and `ithibati:failed` into a sentence — the chain the README

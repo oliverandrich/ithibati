@@ -19,5 +19,7 @@ defmodule IthibatiInvitesWeb.CeremonyMessages do
   def message("username_required"), do: "Pick a username to claim this instance."
   def message("no_credentials"), do: "No passkey is registered here yet."
   def message("ceremony_cancelled"), do: "The passkey prompt was dismissed."
+
+  def message("already_enrolled"), do: "That device already holds a passkey for this site."
   def message(other), do: "Something went wrong: #{other}"
 end
