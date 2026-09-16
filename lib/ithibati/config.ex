@@ -4,13 +4,13 @@ defmodule Ithibati.Config do
 
   Ithibati reads what a schema is *built* from at compile time, because a table name and a field's
   type are fixed when the module is compiled. `Application.compile_env/3` makes that safe: Elixir
-  records the value it saw and refuses to boot against a different one, rather than running with a
+  records the value it saw and refuses to boot against a different one, instead of running with a
   table name nobody meant.
 
   Ithibati reads what it is *handed* at runtime: the account schema and the repo. The
   application's modules compile after the dependencies they use.
 
-  A setting that is a rule rather than a value lives with the rule. `Ithibati.Identity.Sessions`
+  A setting that is a rule, not a value, lives with the rule. `Ithibati.Identity.Sessions`
   reads `config :ithibati, session_validity:`, and it is also what decides that a validity is a
   count and a unit.
 
@@ -86,7 +86,7 @@ defmodule Ithibati.Config do
   invitations before it can answer "who may be invited", but an application with no invitations
   configures nothing and never reaches the module that reads this.
 
-  Ithibati checks the identifier against the account schema's here rather than reading it from
+  Ithibati checks the identifier against the account schema's here, instead of reading it from
   there. A schema's fields are fixed when its module compiles, and which module is the account's
   is read at runtime, so you state the two separately and this is the first moment both are known.
   """
@@ -101,7 +101,7 @@ defmodule Ithibati.Config do
   The same, for a caller that cannot do anything without one.
 
   `invitation_schema/0` answers `nil` because the migration has to know when there is no
-  invitation table to index. Everything else needs the module, and says so here rather than each
+  invitation table to index. Everything else needs the module, and says so here instead of each
   caller saying it in its own words.
   """
   def invitation_schema! do
@@ -172,7 +172,7 @@ defmodule Ithibati.Config do
   @doc """
   An account struct, refused unless it is the configured schema.
 
-  Every function that takes an account goes through this rather than matching `%{id: id}`. With
+  Every function that takes an account goes through this instead of matching `%{id: id}`. With
   `users_key_type: :id`, a struct from somewhere else whose `id` happens to be 1 would otherwise
   be accepted as account 1. With `:binary_id`, the foreign key catches it only afterwards and in
   the database's words.

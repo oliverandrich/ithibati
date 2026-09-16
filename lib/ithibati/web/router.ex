@@ -15,7 +15,7 @@ if Code.ensure_loaded?(Phoenix.Component) do
           ithibati_routes handler: MyAppWeb.Auth, rp_name: "MyApp"
         end
 
-    The suffixes belong to Ithibati rather than to each application, so that there is no way to
+    The suffixes belong to Ithibati and not to each application, so that there is no way to
     wire half of a ceremony: a mount chooses the prefix and nothing else. They are API from the
     first release, and changing one costs a major version.
 
@@ -29,11 +29,11 @@ if Code.ensure_loaded?(Phoenix.Component) do
 
     `:handler` implements `Ithibati.Web.Handler`, and `:rp_name` is the name a passkey dialog
     shows. Both are required. `:user_verification` and `:seconds` are the two WebAuthn choices
-    that belong to the application rather than to Ithibati: whether the authenticator
+    that belong to the application and not to Ithibati: whether the authenticator
     must confirm who is holding it, and how long a challenge stays acceptable. They default to
     `"preferred"` and sixty seconds.
 
-    The macro records all of this on the routes rather than reading it from application
+    The macro records all of this on the routes instead of reading it from application
     configuration, so that two mounts (an administrative one and a public one, say) can answer to
     different rules.
     """

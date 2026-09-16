@@ -37,7 +37,7 @@ defmodule Ithibati.Schema.Invitation do
   The options are the account macro's. `identifier:` is required, and it is the one you have to
   write out. `format:` takes a regular expression, and `Ithibati.Schema.Identifier.email_format/0`
   offers a pattern for addresses. `constraint_name:` and `unique_index:` name the unique index on
-  the token digest rather than on the identifier. You may write each of the three value options
+  the token digest and not on the identifier. You may write each of the three value options
   inline, or name a module attribute standing above the `use` line.
 
   `identifier:` names the field the invitee is addressed by. It has to be the same field the
@@ -232,7 +232,7 @@ defmodule Ithibati.Schema.Invitation do
 
   This is the invitation half of `Ithibati.Schema.User.account_schema?/1`, and it is public for
   the same reason. An application that configures an invitation schema can ask whether the module
-  is one, rather than checking for the marker function by hand and finding out the next time it
+  is one, instead of checking for the marker function by hand and finding out the next time it
   is renamed.
   """
   def invitation_schema?(module),

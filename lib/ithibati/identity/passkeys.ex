@@ -48,7 +48,7 @@ defmodule Ithibati.Identity.Passkeys do
   @doc """
   Mints a registration challenge for this relying party, and answers it.
 
-  It returns a `Wax.Challenge` on its own rather than a tuple, because nothing here can refuse a
+  It returns a `Wax.Challenge` on its own and not a tuple, because nothing here can refuse a
   registration and there is nothing to answer with. Keep the challenge until the browser replies,
   because `verify_registration/2` needs it, and spend it once, whether that reply verified or not.
 
@@ -56,7 +56,7 @@ defmodule Ithibati.Identity.Passkeys do
   authenticator models, so it does not ask for an attestation it would not check. An authenticator
   that honoured the request would be refused for its trouble.
 
-  Ithibati passes every option its behaviour depends on rather than leaving it out.
+  Ithibati passes every option its behaviour depends on, never leaving one out.
   `Wax.Challenge.new` fills any option it was *not* given from `Application.get_all_env(:wax_)`, so
   an application that configures `wax_` directly would otherwise decide the relying party, how long
   a ceremony may take, and which attestation types are trusted. A trusted-types list that does not
@@ -66,7 +66,7 @@ defmodule Ithibati.Identity.Passkeys do
   has a different stable origin in each browser, and an assertion carries whichever one it was made
   at. Every entry is accepted, and none of them is preferred.
 
-  `:user_verification` is the one choice here that belongs to the application rather than to
+  `:user_verification` is the one choice here that belongs to the application and not to
   Ithibati: whether the authenticator must confirm who is holding it. It defaults to `"preferred"`,
   and `registration_options/3` reads it back off the challenge, so the browser can never be asked
   for something the server will refuse. `:seconds` is how long the challenge stays acceptable.
@@ -91,12 +91,12 @@ defmodule Ithibati.Identity.Passkeys do
   exist yet. The only option is `:rp_name`, which is required and is the name a passkey dialog
   shows.
 
-  The credentials to exclude come from Ithibati's own table rather than from an argument. Their
+  The credentials to exclude come from Ithibati's own table, not from an argument. Their
   purpose is that one authenticator cannot enrol itself twice, and an argument that can be forgotten
   defeats that at the call site which adds a second passkey.
 
-  Three of the values are not negotiable, and the reasons are here rather than in the map. A
-  **discoverable** credential is required, and `required` rather than `preferred`: sign-in names no
+  Three of the values are not negotiable, and the reasons are here, not in the map. A
+  **discoverable** credential is required, and `required`, not `preferred`: sign-in names no
   credential, so one the authenticator kept to itself would be invisible there, and a system with no
   passwords cannot leave the property it depends on to the authenticator's discretion.
   `requireResidentKey` is the same wish in the older spelling, and WebAuthn L2 asks for it alongside
@@ -105,7 +105,7 @@ defmodule Ithibati.Identity.Passkeys do
   authenticator may refuse, and `verify_registration/2` acts on that answer.
 
   The algorithms offered are ES256 and RS256, the two every authenticator in circulation supports.
-  Ed25519 is deliberately absent rather than forgotten. Nothing here has met an authenticator that
+  Ed25519 is deliberately absent, not forgotten. Nothing here has met an authenticator that
   offers it and not one of these two, and a list an application can extend is a published option
   Ithibati has no caller for yet.
   """
@@ -156,15 +156,15 @@ defmodule Ithibati.Identity.Passkeys do
   `Ithibati.Web.PasskeyController` does.
 
   It takes the `PublicKeyCredential` the browser produced, parsed: what `JSON.parse` gives for
-  `credential.toJSON()`. Base64url decoding happens here rather than at the caller, for the same
+  `credential.toJSON()`. Base64url decoding happens here, not at the caller, for the same
   reason `registration_options/3` builds the browser's dictionary here. It is protocol detail,
-  and protocol detail belongs in one place rather than in every caller.
+  and protocol detail belongs in one place, not in every caller.
 
   Whether the credential is discoverable comes from `clientExtensionResults.credProps.rk`, which is
   where the browser puts it. An explicit `false` refuses. A credential that sign-in can never
-  name is turned away now rather than at the person's next visit, where the platform says "no passkey
+  name is turned away now, not at the person's next visit, where the platform says "no passkey
   available" and nothing explains it. An absent value means the client does not implement the
-  extension, which is silence rather than denial.
+  extension, which is silence and not denial.
   """
   def verify_registration(credential, challenge)
 
@@ -217,7 +217,7 @@ defmodule Ithibati.Identity.Passkeys do
   `registration_options/3` puts this account's credentials in `excludeCredentials`, so a browser
   that honours it never offers an authenticator it has already enrolled here. The unique index
   answers for a browser that does not, and for the same authenticator arriving on a *different*
-  account. That is the same collision, because a credential identifies a device rather than a
+  account. That is the same collision, because a credential identifies a device, not a
   person.
   """
   def add_key(account, key_attrs) do
@@ -301,7 +301,7 @@ defmodule Ithibati.Identity.Passkeys do
 
   It refuses the last one with `{:error, :last_key}`. Pass `last: :allow` to delete it anyway.
 
-  That refusal is a default rather than an invariant, and the difference is the one that
+  That refusal is a default, not an invariant, and the difference is the one that
   matters: recovery codes still reach the account, so an application that overrides it breaks
   nothing
   Ithibati guarantees. The default is set this way because of what follows the deletion. A single
@@ -410,7 +410,7 @@ defmodule Ithibati.Identity.Passkeys do
   Mints an authentication challenge: `{:ok, %Wax.Challenge{}}`, or `{:error, :no_credentials}` on
   an instance that has no passkey at all.
 
-  Ithibati asks whether *any* credential exists with `exists?` rather than by loading them, because
+  Ithibati asks whether *any* credential exists with `exists?` instead of loading them, because
   loading them is the query this call is here to prevent. The answer is not a secret either way: a
   sign-in page on an instance with no account has nothing to offer.
 
@@ -421,7 +421,7 @@ defmodule Ithibati.Identity.Passkeys do
   this tenant. `ithibati_keys` carries no relying-party column, so an application serving several of
   them from one database gets an answer about all of them together.
 
-  The options are `registration_challenge/3`'s, with one more pinned rather than offered.
+  The options are `registration_challenge/3`'s, with one more pinned instead of offered.
   `silent_authentication_enabled` stays off. Wax fills it from `config :wax_` when it is not passed,
   and it accepts an assertion made without the person being present.
   """
@@ -444,7 +444,7 @@ defmodule Ithibati.Identity.Passkeys do
   @doc """
   Builds the browser's `PublicKeyCredentialRequestOptions`, binary fields base64url-encoded.
 
-  `allowCredentials` is empty, and it is sent that way rather than omitted, because the shape the
+  `allowCredentials` is empty, and it is sent that way and not omitted, because the shape the
   browser reads should say what it means. See `authentication_challenge/3` for why it names nothing.
   """
   def authentication_options(challenge) do
@@ -467,7 +467,7 @@ defmodule Ithibati.Identity.Passkeys do
   `verify_registration/2`, which says what to do about it.
 
   It takes the `PublicKeyCredential` the browser produced, parsed, and decodes it here. See
-  `verify_registration/2` for why that is Ithibati's job rather than the caller's.
+  `verify_registration/2` for why that is Ithibati's job and not the caller's.
 
   Ithibati looks the credential up *before* `Wax.authenticate/6` and hands it over, which is the
   resident-key path: the challenge names no credential, so Wax takes the public key from that

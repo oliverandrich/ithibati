@@ -1,6 +1,6 @@
 defmodule Ithibati.Migration do
   @moduledoc """
-  Creates Ithibati's tables, as code rather than as a file to copy.
+  Creates Ithibati's tables, as code and not as a file to copy.
 
   You write an ordinary migration of your own and call this from it.
   [Getting started](getting_started.md#4-the-migration) carries the template and the configuration
@@ -26,7 +26,7 @@ defmodule Ithibati.Migration do
   into the schemas, and this migration reads it back out of one of them. An application can still
   configure a type its own account table does not have, so the migration asks the column these
   foreign keys will point at what it is before it builds anything, and refuses a disagreement
-  rather than half-applying it.
+  instead of half-applying it.
   """
   use Ecto.Migration
 

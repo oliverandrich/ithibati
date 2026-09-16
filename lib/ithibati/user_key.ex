@@ -32,7 +32,7 @@ defmodule Ithibati.UserKey do
   @credential_id_max 1023
 
   @doc """
-  How much of a label is kept. Ithibati cuts a longer one rather than refusing it, and the column
+  How much of a label is kept. Ithibati cuts a longer one instead of refusing it, and the column
   itself has no limit.
   """
   def label_max, do: @label_max

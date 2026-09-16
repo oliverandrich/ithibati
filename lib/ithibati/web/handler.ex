@@ -67,7 +67,7 @@ if Code.ensure_loaded?(Phoenix.Component) do
     Answer as you would in `c:authenticate/2`. `%{redirect: path}` means the same thing here.
 
     `subject` is what `c:registration_subject/2` approved. Ithibati carries it here from the
-    challenge rather than re-reading it from `params`, because the browser sends the whole body
+    challenge instead of re-reading it from `params`, because the browser sends the whole body
     again. An application that trusted `params` would validate an invitation for one identifier and
     enrol a credential against another.
     """
@@ -96,7 +96,7 @@ if Code.ensure_loaded?(Phoenix.Component) do
     the account's last unused one, and that batch is the only copy there will ever be. `fresh` is
     that list, or `nil` when there were codes left.
 
-    Ithibati requires this callback rather than making it optional, and that is deliberate. An
+    Ithibati requires this callback instead of making it optional, and that is deliberate. An
     application that fell back to `authenticate/2` here would drop the batch in exactly the case it
     exists for: somebody has used their last code, nobody tells them, and the next lost passkey
     locks them out for good. You may delegate in one line, as long as you have made that choice
@@ -114,8 +114,8 @@ if Code.ensure_loaded?(Phoenix.Component) do
     @doc """
     Which relying party this request belongs to, as `{rp_id, origin}`.
 
-    This callback is optional. Ithibati hands you the default rather than expecting you to replace
-    it. `default` is the endpoint's configured `:url`, which is what the browser saw rather than
+    This callback is optional. Ithibati hands you the default instead of expecting you to replace
+    it. `default` is the endpoint's configured `:url`, which is what the browser saw and not
     what this node accepted. Behind a proxy that terminates TLS the two disagree, and every
     ceremony fails on an origin mismatch. An implementation that dropped the default would have to
     re-derive exactly that, and people get that derivation wrong.
@@ -128,7 +128,7 @@ if Code.ensure_loaded?(Phoenix.Component) do
     origin is not that URL. Two of them: a native app's assertion arrives
     with the origin of an associated domain, an extension's arrives with the origin of the
     extension, and one relying-party id serves all of them. The application decides which origins
-    it accepts, which is why Ithibati asks rather than reading configuration.
+    it accepts, which is why Ithibati asks instead of reading configuration.
 
     The origin may be a list, and for an extension it usually is. The same extension has a
     different stable origin in each browser, `chrome-extension://<id>` and

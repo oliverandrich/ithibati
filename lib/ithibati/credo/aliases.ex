@@ -14,7 +14,7 @@ if Code.ensure_loaded?(Credo.Check) do
     @doc """
     Every name this file binds to a module under `Ithibati`, as a map from the bare name.
 
-    Ambiguity is dropped rather than guessed at. Two modules in one file can alias the same last
+    Ambiguity is dropped, never guessed at. Two modules in one file can alias the same last
     segment to different things — one to ours, one to their own — and a flat walk has no notion
     of which is in scope where. Losing a finding in a rare file is better than naming a module
     the consumer's source does not contain.

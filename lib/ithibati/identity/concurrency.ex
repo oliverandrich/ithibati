@@ -27,13 +27,13 @@ defmodule Ithibati.Identity.Concurrency do
   no lock makes it visible. That errs the safe way for a guard of the "at least one must remain"
   shape, because a row it cannot see is a row it does not count on.
 
-  `FOR NO KEY UPDATE` rather than `FOR UPDATE`: it conflicts with itself, which is all the queueing
+  `FOR NO KEY UPDATE`, not `FOR UPDATE`: it conflicts with itself, which is all the queueing
   needs, and not with the `FOR KEY SHARE` a foreign-key insert takes. Locking an account therefore
   does not block somebody writing a row that points at it.
 
-  A third shape needs no lock at all. Where the invariant is over the *whole table* rather than over
+  A third shape needs no lock at all. Where the invariant is over the *whole table* and not over
   a set belonging to somebody, a unique index decides, and the loser comes back as a constraint
-  error rather than as a row count. `Ithibati.Identity.Instance.claim/2` is that one: at most one
+  error and not as a row count. `Ithibati.Identity.Instance.claim/2` is that one: at most one
   instance may be claimed, so `ithibati_bootstrap` carries an index that permits a single row, and
   nothing is read beforehand.
   """
@@ -42,7 +42,7 @@ defmodule Ithibati.Identity.Concurrency do
   @doc """
   Takes the account's row, so that everything deciding about a set of its credentials queues here.
 
-  It raises rather than answering `nil` for an account that is not there. An invariant rests on this
+  It raises instead of answering `nil` for an account that is not there. An invariant rests on this
   lock, and losing it quietly is worse than losing it loudly.
 
   Nothing needs the row itself, only the lock, so the query selects a constant.
@@ -78,7 +78,7 @@ defmodule Ithibati.Identity.Concurrency do
   It belongs beside the lock because it is part of the same argument. A guard that rides the `WHERE`
   of its own statement has no separate answer to read, so the affected-row count is how it reports.
 
-  Ithibati writes through a query rather than handing `Repo.update/1` or `Repo.delete/1` a loaded
+  Ithibati writes through a query instead of handing `Repo.update/1` or `Repo.delete/1` a loaded
   struct. `delete/1` raises `Ecto.StaleEntryError` for a row that is already gone, and `update/1`
   skips the database altogether when the struct already holds the value being written, reporting
   success over a row it never touched. Both are the wrong answer where the caller has to say what

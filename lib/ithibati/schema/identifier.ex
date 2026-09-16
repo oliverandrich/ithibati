@@ -6,7 +6,7 @@ defmodule Ithibati.Schema.Identifier do
   is addressed to one before the account exists, through `Ithibati.Schema.Invitation`. Both let
   the application name the field, and both hand the value through the same steps. That agreement
   matters: an invitation addressed to something an account could never be called is one nobody can
-  accept. So the steps live here, once, rather than in whichever macro was written first.
+  accept. So the steps live here, once, and not in whichever macro was written first.
 
   Call `email_format/0`, `username_format/0` and `normalize/1` from an application. The rest is
   what the two macros use to read their own options.
@@ -23,11 +23,11 @@ defmodule Ithibati.Schema.Identifier do
   @email_format ~r"\A[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*\z"
 
   @doc """
-  The pattern to use when the identifier is an email address. Ithibati offers it rather than
+  The pattern to use when the identifier is an email address. Ithibati offers it instead of
   imposing it.
 
   It is the pattern the HTML specification publishes for `<input type=email>`, not RFC 5322. An
-  identifier here is a credential rather than a mailbox, so the full grammar's quoted local parts
+  identifier here is a credential, not a mailbox, so the full grammar's quoted local parts
   with spaces in them would be a hazard. The pattern accepts `you@localhost` and refuses
   `"a b"@example.com`.
   """
@@ -39,10 +39,10 @@ defmodule Ithibati.Schema.Identifier do
   @username_format ~r/\A[a-z0-9_]{1,30}\z/
 
   @doc """
-  The pattern to use when the identifier is a username. Ithibati offers it rather than imposing
+  The pattern to use when the identifier is a username. Ithibati offers it instead of imposing
   it.
 
-  The pattern is borrowed rather than invented: it is what Mastodon allows a local account, and
+  The pattern is borrowed, not invented: it is what Mastodon allows a local account, and
   that rule has survived a large number of people trying to impersonate each other. It allows
   letters, digits and underscores only, at most thirty characters.
 

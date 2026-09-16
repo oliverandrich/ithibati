@@ -22,7 +22,7 @@ defmodule Ithibati.Catalogue do
 
   This resolves the name the way Ecto resolves the `REFERENCES` clause it emits: qualified when
   there is a prefix, and through the search path when there is not. Postgres does the quoting
-  rather than Ithibati, so a table whose name is not lower case answers for itself instead of
+  and Ithibati does not, so a table whose name is not lower case answers for itself instead of
   being downcased into a different one.
   """
   def table_oid(repo, prefix, table) do

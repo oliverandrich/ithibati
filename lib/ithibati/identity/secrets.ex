@@ -22,7 +22,7 @@ defmodule Ithibati.Identity.Secrets do
   @doc """
   A fresh secret, ready to hand over: #{@bytes} random bytes as URL-safe text.
 
-  The length lives here rather than at each caller, for the reason the module exists. A token and an
+  The length lives here, not at each caller, for the reason the module exists. A token and an
   invitation link are the same kind of secret, and a library that mints them at two lengths has made
   a decision nobody took.
   """

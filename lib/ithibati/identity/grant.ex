@@ -5,7 +5,7 @@ defmodule Ithibati.Identity.Grant do
 
   The passkey and the recovery codes belong in the same transaction as the account and as whatever
   the application records about it. Ithibati therefore
-  hands over the pieces rather than running them, and the application appends its own steps:
+  hands over the pieces without running them, and the application appends its own steps:
 
       Ecto.Multi.new()
       |> Ecto.Multi.insert(:account, MyApp.Accounts.User.changeset(%User{}, attrs))
@@ -29,13 +29,13 @@ defmodule Ithibati.Identity.Grant do
 
   `:account` names the step that created the account and defaults to `:account`. `:count` says how
   many recovery codes to issue, and `0` issues none. Ithibati replaces the account's existing codes,
-  if it somehow has any, rather than adding to them.
+  if it somehow has any, instead of adding to them.
 
   > #### The batch outlives a failed transaction {: .warning}
   >
   > A later step failing hands you `{:error, name, value, changes_so_far}`, and `changes_so_far`
   > still carries the plaintext codes of an account that was rolled back. Do not log that tuple
-  > whole. Compose whatever can refuse *before* this step rather than after it, so a transaction
+  > whole. Compose whatever can refuse *before* this step and not after it, so a transaction
   > that was never going to commit does not mint a batch on its way to being rolled back.
   > `Ithibati.Identity.Instance.claim/2` and `Ithibati.Identity.Invitations.accept/3` are both such
   > steps.

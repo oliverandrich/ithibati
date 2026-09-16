@@ -4,7 +4,7 @@ defmodule Ithibati.Identity.Sessions do
 
   `generate_session_token/1` returns URL-safe text, and the row holds only its sha256, so a
   database dump is not a set of live sessions. `Ithibati.Web.Gate` is what calls all three
-  functions; an application reaches them through it rather than directly.
+  functions; an application reaches them through it, not directly.
 
   A session is the only credential this table holds. An API token for an extension or a native
   client is a different thing — scopes, rotation, a page to revoke one on — and building it is

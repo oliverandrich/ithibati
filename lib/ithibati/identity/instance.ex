@@ -7,7 +7,7 @@ defmodule Ithibati.Identity.Instance do
   is the way in that needs no one already inside, and it may be taken exactly once.
 
   `Ithibati.Bootstrap`'s row and the unique index the migration puts on it are what make it once,
-  rather than a count read beforehand. `claim/2` says how.
+  and not a count read beforehand. `claim/2` says how.
 
       Ecto.Multi.new()
       |> Ecto.Multi.insert(:account, MyApp.Accounts.User.changeset(%User{}, %{email: email}))
@@ -15,11 +15,11 @@ defmodule Ithibati.Identity.Instance do
       |> Ithibati.Identity.Grant.with_key_and_codes(key_attrs)
       |> MyApp.Repo.transaction()
 
-  Claim before the grant rather than after it, for the reason
+  Claim before the grant, not after it, for the reason
   `Ithibati.Identity.Grant.with_key_and_codes/3` warns about: this step can refuse, and a refusal
   after the grant comes when the recovery codes have already been minted.
 
-  The module is named for the deployment rather than for the table, because the deployment is what
+  The module is named for the deployment, not for the table, because the deployment is what
   both functions are about and what an application asks them. The *step* `claim/2` adds is named for
   the row, `:bootstrap`, the way `:invitation` and `:passkey` are. An application matches on a step
   name, and what the step holds is that row.
@@ -33,7 +33,7 @@ defmodule Ithibati.Identity.Instance do
   @doc """
   Whether this deployment has been claimed yet.
 
-  A setup page asks this question. It answers about the claim rather than about accounts: an
+  A setup page asks this question. It answers about the claim, not about accounts: an
   application that never composes `claim/2`, one with open registration, is never claimed, however
   many accounts it has.
 
@@ -43,7 +43,7 @@ defmodule Ithibati.Identity.Instance do
   application decides which of the two a sign-in page should act on, which is why Ithibati answers
   both and folds neither into the other.
 
-  The answer comes from the row rather than from the accounts table. The row outlives the account
+  The answer comes from the row, not from the accounts table. The row outlives the account
   that made it, so deleting whoever set the instance up leaves a second claim refused by the unique
   index just as before.
   """
@@ -54,7 +54,7 @@ defmodule Ithibati.Identity.Instance do
 
   The step answers `{:error, :already_claimed}` when somebody got there first, and that rolls the
   whole transaction back. The account, its first passkey and its recovery codes go with it, so a
-  registration page that composes this is a one-time page rather than one that warns.
+  registration page that composes this is a one-time page, not one that warns.
 
   Anything else the insert refuses comes back as `{:error, %Ecto.Changeset{}}` under the same step
   name. A `user_id` the accounts table does not hold trips the foreign key, which is what happens

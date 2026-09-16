@@ -36,7 +36,7 @@ defmodule Ithibati.Doctor do
   application with no repo configured cannot be asked what is in its database, and saying so is a
   better answer than an exception from three layers down.
 
-  `app` is the application being examined. It is an argument rather than something read here
+  `app` is the application being examined. It is an argument, not something read here
   because nothing in Ithibati can derive it: `Mix.Project.config/0` knows, and Mix is not there
   in a release. Only the question about routes uses it.
   """

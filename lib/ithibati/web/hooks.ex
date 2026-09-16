@@ -9,7 +9,7 @@ if Code.ensure_loaded?(Phoenix.Component) do
     `priv/static/ithibati.js` directly; [Registering and signing
     in](ceremonies.md#the-javascript) shows both.
 
-    The hook body re-exports the client code rather than repeating it, so the two routes cannot
+    The hook body re-exports the client code instead of repeating it, so the two routes cannot
     disagree about what a ceremony does. A test reads both files and holds them to the same name,
     because a hook registered under the wrong name does not fail, it never mounts.
     """

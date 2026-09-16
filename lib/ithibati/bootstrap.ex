@@ -2,7 +2,7 @@ defmodule Ithibati.Bootstrap do
   @moduledoc """
   The record that an instance has been set up, and by whom.
 
-  A row here is the claim, and there can be at most one. This is a table of Ithibati's rather than
+  A row here is the claim, and there can be at most one. This is a table of Ithibati's, not
   a flag on the account for two reasons, and the second one decides it.
 
   The application would have to create the flag itself, on a table Ithibati does not own, together

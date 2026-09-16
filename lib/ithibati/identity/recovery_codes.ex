@@ -56,7 +56,7 @@ defmodule Ithibati.Identity.RecoveryCodes do
   Redeems a code: marks it spent and answers the account that held it.
 
   It answers `{:ok, account, codes}`, where `codes` is a fresh batch when this was the account's
-  **last** unused code and `nil` otherwise. The result has three elements rather than an optional
+  **last** unused code and `nil` otherwise. The result has three elements, not an optional
   key, so a caller cannot match the common case and silently drop the batch in the one case it
   exists for.
 

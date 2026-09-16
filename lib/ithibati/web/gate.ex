@@ -16,7 +16,7 @@ if Code.ensure_loaded?(Phoenix.Component) do
     The gate has two modes and no others. `:current_account` assigns whoever the session names, or
     `nil`, and always continues. `:require_account` refuses when there is nobody.
 
-    An unrecognised mode raises rather than being ignored. The plug raises from `init/1`, which
+    An unrecognised mode raises instead of being ignored. The plug raises from `init/1`, which
     Phoenix runs at compile time under `init_mode: :compile` and at the first request otherwise;
     the `on_mount` raises at the mount either way. A gate that listed its modes and let anything
     else through would turn a typo into a page that refuses nobody, and nothing would report
@@ -46,7 +46,7 @@ if Code.ensure_loaded?(Phoenix.Component) do
     @doc """
     Signs an account in by storing a session token under Ithibati's session key.
 
-    Ithibati offers this rather than imposing it. An application decides in `Ithibati.Web.Handler`
+    Ithibati offers this instead of imposing it. An application decides in `Ithibati.Web.Handler`
     what a verified assertion is worth, and one that issues a bearer token for an extension instead
     simply never calls this. The gate then finds nothing, which is the right answer. But a gate
     that read a key nothing here ever wrote would leave every application guessing the convention.
@@ -71,7 +71,7 @@ if Code.ensure_loaded?(Phoenix.Component) do
 
     Ithibati derives the topic from the token's *digest*. A topic reaches logs, telemetry and
     everything subscribed to the pubsub server, and `phx.gen.auth` puts the live token itself in
-    there. The topic is per token rather than per account, so signing out in one browser leaves the
+    there. The topic is per token, not per account, so signing out in one browser leaves the
     same person's other devices alone.
 
     This function is public for an application that ends a session somewhere other than
@@ -93,7 +93,7 @@ if Code.ensure_loaded?(Phoenix.Component) do
     end
 
     @doc """
-    Signs out and revokes the token rather than merely forgetting it.
+    Signs out and revokes the token instead of merely forgetting it.
 
     A session dropped on the client alone leaves a token that still resolves. That is the sign-out
     counterpart of a replayed assertion, and it fails just as quietly.

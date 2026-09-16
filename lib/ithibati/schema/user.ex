@@ -35,7 +35,7 @@ defmodule Ithibati.Schema.User do
       naming convention is not the one Ecto derives. Ithibati then creates the index under that
       name, and the changeset's constraint matches it.
     * `unique_index: false` — optional, an opt-out. Say it when your application creates that
-      index itself, and Ithibati checks that one exists rather than creating it.
+      index itself, and Ithibati checks that one exists instead of creating it.
 
   You may write each of the three value options inline, or name a module attribute standing above
   the `use` line. Ithibati refuses an option written as `nil`, because that is what a misspelled
@@ -111,7 +111,7 @@ defmodule Ithibati.Schema.User do
           def passkey_display_name(account), do: account.name
 
       An override needs no fallback. An account that has not filled the better name in returns
-      `nil`, which is correct rather than broken.
+      `nil`, which is correct and not broken.
       """
       def passkey_display_name(_account), do: nil
 
@@ -172,7 +172,7 @@ defmodule Ithibati.Schema.User do
   @doc """
   Whether a module carries what this macro injects.
 
-  Ithibati offers one predicate rather than two spellings of it. The marker function has been
+  Ithibati offers one predicate, not two spellings of it. The marker function has been
   renamed once already, and a second caller checking it by hand would be a second thing to find
   by grep next time.
   """
@@ -212,7 +212,7 @@ defmodule Ithibati.Schema.User do
   The `name` and `displayName` a WebAuthn registration shows, for an account or for an identifier
   that does not have one yet.
 
-  Ithibati derives both here rather than leaving them to the caller, because it owns the fallback:
+  Ithibati derives both here instead of leaving them to the caller, because it owns the fallback:
   an application's `passkey_display_name/1` may answer `nil` and be right. The first registration
   on an instance has no account at all, which is why the second clause exists.
   """
