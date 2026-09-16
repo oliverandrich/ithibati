@@ -54,6 +54,77 @@ defmodule Ithibati.PackageTest do
     assert normalise(opening) == normalise(Mix.Project.config()[:description])
   end
 
+  # The card the documentation site hands a scraper. Both halves are things mix.exs *states* and
+  # the file *is*, which is the shape that drifts: a replaced logo, or a description that grows a
+  # quotation mark and silently truncates the attribute it sits in.
+  describe "the social card" do
+    # The signature and the IHDR marker are asserted rather than skipped over. Without them the
+    # pattern matches any file of twenty-four bytes or more, so a JPEG saved under a `.png` name
+    # — which is exactly the "somebody replaced the logo" case — would read two arbitrary words
+    # as the dimensions and fail with a bare number mismatch.
+    test "claims the dimensions the image actually has" do
+      <<"\x89PNG\r\n\x1a\n", _length::32, "IHDR", width::32, height::32, _::binary>> =
+        File.read!("assets/logo.png")
+
+      card = Ithibati.MixProject.social_card(:html)
+
+      assert card =~ ~s(<meta property="og:image:width" content="#{width}">)
+      assert card =~ ~s(<meta property="og:image:height" content="#{height}">)
+    end
+
+    # `assets:` in `docs/0` is what puts the file where the URL says it is. Change that map and
+    # the card 404s on every page while every other assertion here stays green.
+    test "points at the path the build actually writes the image to" do
+      [{_source, target}] = Map.to_list(Mix.Project.config()[:docs][:assets])
+
+      assert Ithibati.MixProject.social_card(:html) =~ ~s(/#{target}/logo.png")
+    end
+
+    test "escapes the description rather than demanding it stay free of markup" do
+      assert Ithibati.MixProject.escape(~s(a & b < c > d "e")) ==
+               "a &amp; b &lt; c &gt; d &quot;e&quot;"
+
+      assert Ithibati.MixProject.social_card(:html) =~
+               ~s(<meta property="og:description" content="#{Mix.Project.config()[:description]}">)
+    end
+
+    # The one decision the comment in mix.exs argues at length: with no `og:title`, a scraper
+    # falls back to the per-page `<title>`, so a link to one guide does not present itself as a
+    # link to the whole site.
+    test "sets no og:title, so the page keeps its own" do
+      refute Ithibati.MixProject.social_card(:html) =~ "og:title"
+    end
+
+    test "is empty for any format that has no head to put it in" do
+      assert Ithibati.MixProject.social_card(:epub) == ""
+      assert Ithibati.MixProject.social_card(:markdown) == ""
+    end
+  end
+
+  # ExDoc writes the documentation root from a redirect template that takes no head hook, so the
+  # card is patched in afterwards. That patch is a string replacement, and a string replacement
+  # that stops matching answers the string it was given.
+  describe "the patch onto ExDoc's redirect page" do
+    test "puts the card in front of the closing head tag" do
+      patched = Ithibati.MixProject.with_card("<html><head><title>x</title></head></html>")
+
+      assert patched =~ ~r|<meta property="og:image".*</head>|s
+      assert patched =~ "<title>x</title>"
+    end
+
+    test "leaves a page that already carries one alone" do
+      once = Ithibati.MixProject.with_card("<html><head></head></html>")
+
+      assert Ithibati.MixProject.with_card(once) == once
+    end
+
+    test "refuses a page it cannot patch rather than answering it unchanged" do
+      assert_raise Mix.Error, ~r|no </head>|, fn ->
+        Ithibati.MixProject.with_card("<html><body>nothing to patch</body></html>")
+      end
+    end
+  end
+
   # Line breaks are the author's business, and a hard break at the end of a line is invisible.
   defp normalise(text), do: text |> String.replace(~r/\s+/, " ") |> String.trim()
 end

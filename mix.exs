@@ -69,6 +69,42 @@ defmodule Ithibati.MixProject do
       else: Mix.compilers()
   end
 
+  defp card_on_the_redirect(_args) do
+    path = Path.join(Mix.Project.config()[:docs][:output] || "doc", "index.html")
+
+    File.write!(path, with_card(File.read!(path)))
+  end
+
+  # Escaped rather than forbidden. The alternative was a test refusing `&` in `@description`,
+  # which is also the hex.pm blurb and the README's opening paragraph — so an ampersand in
+  # ordinary prose would have failed the suite for a reason belonging to an HTML attribute.
+  # Four characters is the whole of it for a double-quoted attribute, and `&` goes first.
+  @doc false
+  def escape(text) do
+    text
+    |> String.replace("&", "&amp;")
+    |> String.replace("<", "&lt;")
+    |> String.replace(">", "&gt;")
+    |> String.replace("\"", "&quot;")
+  end
+
+  @doc false
+  def with_card(html) do
+    cond do
+      # `mix docs` can run twice over a build it did not rewrite from scratch.
+      html =~ "og:image" ->
+        html
+
+      String.contains?(html, "</head>") ->
+        String.replace(html, "</head>", social_card(:html) <> "</head>")
+
+      # `String.replace/3` with no match answers the string it was given, so without this the
+      # patch would quietly do nothing the day ExDoc changes that template.
+      true ->
+        Mix.raise("ExDoc's redirect page has no </head> to put the card before")
+    end
+  end
+
   defp refuse_partial_package(_args) do
     if enabled?("ITHIBATI_WITHOUT_OPTIONAL") do
       Mix.raise(
@@ -167,6 +203,36 @@ defmodule Ithibati.MixProject do
   @tooling ~w(docs/doctor.md docs/credo.md)
   @about ["CHANGELOG.md", "LICENSE"]
 
+  # hexdocs redirects `hexdocs.pm/ithibati/…` to this subdomain with a 301, and a scraper
+  # fetching a card image is not reliably a thing that follows redirects. Measured, not assumed:
+  # `curl -I` on the short form answers 301 and only the long one answers the image.
+  #
+  # Version-pinned, because hexdocs keeps every version's tree forever while the unversioned
+  # path follows the latest release. Without the version, a page frozen at 0.1.0 advertises an
+  # image a later release owns, and renaming that file breaks the card on every old page at
+  # once, silently, with no build failing anywhere.
+  @card_image "https://ithibati.hexdocs.pm/#{@version}/assets/logo.png"
+
+  # ExDoc 0.40 emits no OpenGraph tags of its own and names this hook as the place to add meta
+  # tags. Deliberately no `og:title`: without one a scraper falls back to `<title>`, which ExDoc
+  # already writes per page, so a link to one guide does not present itself as a link to the
+  # whole site.
+  @doc false
+  def social_card(:html) do
+    """
+    <meta property="og:type" content="website">
+    <meta property="og:site_name" content="Ithibati">
+    <meta property="og:description" content="#{escape(@description)}">
+    <meta property="og:image" content="#{@card_image}">
+    <meta property="og:image:alt" content="The Ithibati logo">
+    <meta property="og:image:width" content="1200">
+    <meta property="og:image:height" content="675">
+    <meta name="twitter:card" content="summary_large_image">
+    """
+  end
+
+  def social_card(_epub), do: ""
+
   defp docs do
     [
       # Not the README, on either count. It is the repository's front page: it opens by making the
@@ -177,6 +243,7 @@ defmodule Ithibati.MixProject do
       # Copied into the build under the same name the pages reference, so `assets/logo.png`
       # resolves both on GitHub, which reads the repository, and on hexdocs, which reads this.
       assets: %{"assets" => "assets"},
+      before_closing_head_tag: &social_card/1,
       extra_section: "GUIDES",
       extras: @guides ++ @tooling ++ ["CHANGELOG.md", {"LICENSE", title: "Licence"}],
       groups_for_extras: [Guides: @guides, Tooling: @tooling, About: @about],
@@ -213,6 +280,12 @@ defmodule Ithibati.MixProject do
       # in `project/0`, which every mix task evaluates, including the leg that sets it.
       "hex.build": [&refuse_partial_package/1, "hex.build"],
       "hex.publish": [&refuse_partial_package/1, "hex.publish"],
+      # ExDoc writes `index.html` from a redirect template of its own, and that template has no
+      # head hook — so the one URL anybody actually shares, the documentation root, is a
+      # meta-refresh carrying no card. A scraper does not follow a meta-refresh. Patched after
+      # the build rather than left alone. `mix hex.publish` reaches `docs` through
+      # `Mix.Task.run/2`, which resolves aliases, so the published copy is patched too.
+      docs: ["docs", &card_on_the_redirect/1],
       # Split where CI needs to cut it: a leg that asks whether this builds and behaves on another
       # Elixir runs `build_and_test` and nothing about style, because a formatter or Credo release
       # judges the tree against the toolchain it was written with. Composed rather than listed
