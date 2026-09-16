@@ -44,7 +44,7 @@ defmodule Mix.Tasks.Ithibati.Doctor do
     Mix.shell().info(IO.ANSI.format([mark(status), " ", subject, "\n    ", detail]))
   end
 
-  # A word rather than colour alone: this output is read in CI logs as often as in a terminal.
+  # A word, not colour alone. This output is read in CI logs as often as in a terminal.
   defp mark(:ok), do: [:green, "ok  "]
   defp mark(:error), do: [:red, "bad "]
   defp mark(:skip), do: [:yellow, "skip"]

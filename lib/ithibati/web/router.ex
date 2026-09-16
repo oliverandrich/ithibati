@@ -43,7 +43,7 @@ if Code.ensure_loaded?(Phoenix.Component) do
       ceremony = Keyword.take(opts, [:user_verification, :seconds])
 
       quote bind_quoted: [handler: handler, rp_name: rp_name, ceremony: ceremony] do
-        # On the scope rather than on each route: a fifth route added here without the handler would
+        # On the scope, not on each route. A sixth route added here without the handler would
         # be exactly the half-wired ceremony this exists to rule out.
         scope "/", Ithibati.Web,
           private: %{ithibati: %{handler: handler, rp_name: rp_name, ceremony: ceremony}} do

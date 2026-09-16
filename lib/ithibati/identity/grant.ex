@@ -45,11 +45,11 @@ defmodule Ithibati.Identity.Grant do
     |> Multi.insert(:passkey, fn changes ->
       Passkeys.credential_changeset(key_attrs, Steps.account!(changes, opts))
     end)
-    # The repo the step is handed rather than `Config.repo()`. Both would write inside this
-    # transaction — Ecto finds the open connection through the calling process, which is why a
-    # `Repo.insert` inside `Repo.transaction` joins it — but only the passed one follows a caller
+    # The repo the step is handed, not `Config.repo()`. Both would write inside this
+    # transaction. Ecto finds the open connection through the calling process, which is why a
+    # `Repo.insert` inside `Repo.transaction` joins it. But only the passed one follows a caller
     # who has moved the repo with `put_dynamic_repo/1`, and that is a caller this library cannot
-    # see. No test here can tell the two apart, so the reason is written down rather than claimed
+    # see. No test here can tell the two apart, so the reason is written down and not claimed
     # by a green run.
     |> Multi.run(:recovery_codes, fn repo, changes ->
       {:ok, RecoveryCodes.issue!(repo, Steps.account!(changes, opts), opts)}

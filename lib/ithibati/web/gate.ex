@@ -35,7 +35,7 @@ if Code.ensure_loaded?(Phoenix.Component) do
 
     # Phoenix's name, not this library's: `Phoenix.LiveView.Socket.id/1` reads exactly this key out
     # of the cookie session, so it cannot be namespaced and a consumer's own use of it would
-    # collide. Written out rather than derived, because the string is the contract.
+    # collide. Written out, not derived, because the string is the contract.
     @live_socket "live_socket_id"
     @modes [:current_account, :require_account]
     @options [:to]
@@ -82,8 +82,8 @@ if Code.ensure_loaded?(Phoenix.Component) do
       "ithibati_sessions:" <> Secrets.url64(Secrets.digest(token))
     end
 
-    # Only where the endpoint can carry it, and the guard is on the *write* rather than on the
-    # broadcast for a reason worth knowing: `Phoenix.Socket` subscribes to this id when a socket
+    # Only where the endpoint can carry it, and the guard is on the *write* and not on the
+    # broadcast, for a reason worth knowing: `Phoenix.Socket` subscribes to this id when a socket
     # connects, through the same call that raises without a `:pubsub_server`. An id written into an
     # application that has none would take down every websocket at connect, not just the sign-out.
     defp name_live_socket(conn, token) do
@@ -107,7 +107,7 @@ if Code.ensure_loaded?(Phoenix.Component) do
 
     # Before the session is renewed, because renewing is what takes the topic away. Both halves ask
     # the same question, but not in the same release: a cookie outlives a deploy that dropped the
-    # pubsub server, so the endpoint is checked here too rather than inferred from the key existing.
+    # pubsub server, so the endpoint is checked here too and not inferred from the key existing.
     defp disconnect_live_sockets(conn) do
       with topic when is_binary(topic) <- get_session(conn, @live_socket),
            endpoint when not is_nil(endpoint) <- pubsub_endpoint(conn) do
@@ -116,7 +116,7 @@ if Code.ensure_loaded?(Phoenix.Component) do
     end
 
     # The endpoint, when it is one that can carry a broadcast. `nil` for an application that
-    # configured no server, and for a connection that never went through an endpoint at all — a plug
+    # configured no server, and for a connection that never went through an endpoint at all, a plug
     # called directly in a test, say. The server's *name* is never wanted, only whether there is one.
     defp pubsub_endpoint(conn) do
       endpoint = conn.private[:phoenix_endpoint]
@@ -126,14 +126,14 @@ if Code.ensure_loaded?(Phoenix.Component) do
 
     # Both halves, and either alone reads like the whole thing: renewing carries the contents over
     # to the new id, and clearing leaves the id an attacker may already hold. Signing in and signing
-    # out want the same pair, so they ask for it by name rather than each writing it out.
+    # out want the same pair, so they ask for it by name instead of each writing it out.
     defp renew_session(conn), do: conn |> configure_session(renew: true) |> clear_session()
 
     @doc false
     def init(mode), do: mode!(mode)
 
     # Already normalised: Phoenix runs `init/1` at compile time and hands the result here, so
-    # validating again would pay per request for an answer that cannot have changed — and would
+    # validating again would pay per request for an answer that cannot have changed, and would
     # give the option check below two homes.
     @doc false
     def call(conn, {mode, opts}) do
@@ -156,11 +156,11 @@ if Code.ensure_loaded?(Phoenix.Component) do
     def on_mount(mode, _params, session, socket) do
       {mode, opts} = mode!(mode)
       # Before the branch, not inside it: asked for only on the anonymous path, a missing `:to`
-      # would mount perfectly for everyone who is signed in and raise at the first stranger — a
-      # 500 exactly where a redirect was meant, and only in front of the person it was meant for.
+      # would mount perfectly for everyone who is signed in and raise at the first stranger. That is
+      # a 500 exactly where a redirect was meant, and only in front of the person it was meant for.
       to = if mode == :require_account, do: to!(opts)
 
-      # `assign_new` rather than `assign`, and it earns both halves: on the first, disconnected
+      # `assign_new`, not `assign`, and it earns both halves: on the first, disconnected
       # render LiveView seeds it from `conn.assigns`, so the plug's lookup is not repeated, and a
       # LiveView nested under one that already answered inherits instead of asking again.
       socket =
@@ -188,14 +188,14 @@ if Code.ensure_loaded?(Phoenix.Component) do
                 "not own your paths."
     end
 
-    # Raised rather than returned, and raised from `init/1` so a router says so at compile time:
+    # Raised, not returned, and raised from `init/1` so a router says so at compile time:
     # the alternative is a mode nobody recognises behaving like the most permissive one.
     defp mode!(mode) when mode in @modes, do: {mode, []}
 
     # The option list gets what the mode list gets, and for the same reason one level down: `too:`
     # instead of `to:` would otherwise answer every stranger a bare 401 where a redirect to the
     # sign-in page was written, and nothing would say so. The plug is the half where that is
-    # silent — `on_mount` already raises on the same typo.
+    # silent. `on_mount` already raises on the same typo.
     defp mode!({mode, opts}) when mode in @modes and is_list(opts) do
       unknown = if Keyword.keyword?(opts), do: Keyword.keys(opts) -- @options, else: opts
 

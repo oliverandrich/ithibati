@@ -27,12 +27,12 @@ defmodule Ithibati.Config do
   @table_prefix Application.compile_env(:ithibati, :table_prefix, "ithibati")
 
   # The type of the *consumer's* account primary key, which this library's tables take a foreign key
-  # to. Its own keys are always `binary_id` — that is nobody else's business.
+  # to. Its own keys are always `binary_id`. That is nobody else's business.
   @users_key_type Application.compile_env(:ithibati, :users_key_type, :binary_id)
 
-  # Checked here rather than where a migration reads it: the three schemas read it too, and a value
-  # Ecto happens to accept as a field type compiles all of them happily and is caught only by
-  # whoever runs a migration next.
+  # Checked here, not where a migration reads it. Every schema this library owns reads it too, and
+  # a value Ecto happens to accept as a field type compiles all of them happily and is caught only
+  # by whoever runs a migration next.
   @users_key_type in [:binary_id, :id] ||
     raise(
       ArgumentError,
@@ -67,7 +67,7 @@ defmodule Ithibati.Config do
             "Ithibati.Schema.User. This library is told which schema is yours; it does not guess."
         )
 
-    # Checked here rather than left to whatever calls it: a module that is merely wrong fails with
+    # Checked here. A module that is merely wrong otherwise fails at the first call with
     # `__ithibati__/1 is undefined`, which names neither this library nor the configuration.
     User.account_schema?(schema) ||
       raise(
@@ -153,8 +153,9 @@ defmodule Ithibati.Config do
             "This library is told which repo is yours; it does not guess."
         )
 
-    # Checked here rather than left to the first query: a module that is merely wrong fails with
-    # `__adapter__/0 is undefined`, which names neither this library nor the configuration.
+    # Checked here. A module that is merely wrong otherwise fails at the first query with an
+    # undefined `all/1` or `one/2` on itself, which names neither this library nor the
+    # configuration.
     ecto_repo?(repo) ||
       raise(
         ArgumentError,
@@ -164,7 +165,7 @@ defmodule Ithibati.Config do
     repo
   end
 
-  # One predicate rather than two spellings of it, the same reason `account_schema?/1` gives next
+  # One predicate, not two spellings of it, for the reason `account_schema?/1` gives next
   # door: a second caller checking a module by hand is a second thing to find by grep next time.
   defp ecto_repo?(module),
     do: Code.ensure_loaded?(module) and function_exported?(module, :__adapter__, 0)

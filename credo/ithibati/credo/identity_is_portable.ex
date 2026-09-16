@@ -28,14 +28,14 @@ defmodule Ithibati.Credo.IdentityIsPortable do
 
   # After the `use` and not before it, which is the whole trick: `Credo.Check` writes a moduledoc
   # from its `explanations:` block, so an attribute set first is overwritten and one set afterwards
-  # wins. Hidden because this check guards this repository and is not in the package — `mix docs`
+  # wins. Hidden because this check guards this repository and is not in the package. `mix docs`
   # runs in `dev`, where `elixirc_paths` includes `credo/`, so without this it gets a page on
   # hexdocs describing a rule nobody reading it can switch on.
   @moduledoc false
 
   alias Credo.Code.Name
 
-  # Allowed rather than forbidden: a module added next year is refused without anyone remembering
+  # An allow-list, not a deny-list. A module added next year is refused without anyone remembering
   # this file exists, which forces a conscious decision instead of a silent one. `Identity` is on the
   # list because the guarded module's own `defmodule` line is an alias node too.
   @allowed [:Bootstrap, :Config, :Identity, :RecoveryCode, :Session, :UserKey]
@@ -44,12 +44,12 @@ defmodule Ithibati.Credo.IdentityIsPortable do
 
   @web_root "lib/ithibati/web/"
 
-  # Matched in the AST rather than against a filename. A path has to be kept equal to where the
+  # Matched in the AST, not against a filename. A path has to be kept equal to where the
   # module actually is, by hand and by a test; `defmodule` cannot drift from the module it declares.
   #
   # A prefix, not one name: the portable half is `Ithibati.Identity.Passkeys`,
   # `Ithibati.Identity.Sessions` and whatever joins them, and a list of exact names would leave the
-  # next one unguarded until somebody remembered this file — which is the failure that is silent and
+  # next one unguarded until somebody remembered this file. That is the failure that is silent and
   # points the wrong way. `Ithibati.Identity` itself is covered in case it ever exists again.
   @guarded [:Ithibati, :Identity]
 
@@ -60,7 +60,7 @@ defmodule Ithibati.Credo.IdentityIsPortable do
       else: []
   end
 
-  # Scoped here rather than through `param_defaults: [files: …]`, which Credo would apply for us:
+  # Scoped here, not through `param_defaults: [files: …]`, which Credo would apply for us:
   # that filter runs before the check and so cannot be reached from a unit test, and which files
   # count as core is the load-bearing half of the optional-dependency rule.
   defp core?(filename) do
@@ -92,7 +92,7 @@ defmodule Ithibati.Credo.IdentityIsPortable do
 
   # `alias Ithibati.{Config, UserKey}` does not nest: `Ithibati` stands alone and each name is its
   # own node with no prefix, so the clause above cannot see it. No such clause is needed for the
-  # optional dependencies — a bare `Phoenix` node is refused on its own, where a bare `Ithibati` one
+  # optional dependencies. A bare `Phoenix` node is refused on its own, where a bare `Ithibati` one
   # is not.
   defp collect(
          {{:., _dot, [{:__aliases__, _, [:Ithibati]}, :{}]}, meta, parts},
@@ -107,8 +107,8 @@ defmodule Ithibati.Credo.IdentityIsPortable do
 
   defp collect(_node, acc, _issue_meta, _guarded?), do: acc
 
-  # Not every element of a `{…}` is an alias node — `alias Ithibati.{unquote(mod)}` puts a call
-  # there, and a raise inside a check aborts the whole Credo run rather than reporting anything.
+  # Not every element of a `{…}` is an alias node. `alias Ithibati.{unquote(mod)}` puts a call
+  # there, and a raise inside a check aborts the whole Credo run instead of reporting anything.
   defp refused_part({:__aliases__, _meta, segments}, guarded?),
     do: List.wrap(refuse([:Ithibati | segments], guarded?))
 
@@ -121,7 +121,7 @@ defmodule Ithibati.Credo.IdentityIsPortable do
   defp refuse([root | _rest] = segments, _guarded?) when root in @optional_deps,
     do: {:optional_dep, segments |> Enum.take(2) |> Name.full()}
 
-  # Clauses rather than an entry on the list above, which matches the second segment alone and would
+  # Clauses, not an entry on the list above. That list matches the second segment alone and would
   # have admitted every `Ithibati.Schema.*` there will ever be. Both named modules are this library's
   # own contract with a schema the application owns, not another context: the ceremony asks `User`
   # what belongs in a credential, and `Identifier` for the one normalisation an identifier gets, so

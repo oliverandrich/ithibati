@@ -58,7 +58,7 @@ defmodule Ithibati.Identity.Invitations do
     %{field => Map.fetch!(invitation, field)}
   end
 
-  # Read off the struct rather than from the configuration, the same way `claim/2` reads the primary
+  # Read off the struct, not from the configuration, the same way `claim/2` reads the primary
   # key: an invitation of some other module would otherwise be read with the configured schema's
   # field name, which is either a wrong answer or a confusing error.
   defp addressed_by(%module{}), do: module.__ithibati_invitation__(:identifier)
@@ -82,10 +82,10 @@ defmodule Ithibati.Identity.Invitations do
   end
 
   # An acceptance form that lets the invitee correct their address is an ordinary thing to build, and
-  # it is the one that turns an invitation addressed to one person into an account for another —
+  # it is the one that turns an invitation addressed to one person into an account for another,
   # along with whatever the application's own step reads off the invitation. Whose address the
   # invitation carries is the whole of what `validate_unclaimed` is about, so the binding is checked
-  # here rather than left as advice. Nothing to check when the transaction creates no account: an
+  # here, and not left as advice. Nothing to check when the transaction creates no account: an
   # application is allowed to compose this step on its own.
   defp confirm_addressee(changes, opts, invitation) do
     case Steps.account(changes, opts) do
@@ -121,7 +121,7 @@ defmodule Ithibati.Identity.Invitations do
   end
 
   # "Unaccepted" rides the `WHERE` of the update that accepts it, and the row comes back from the
-  # same statement — so two people opening one link cannot both get through. Both aim at the same
+  # same statement, so two people opening one link cannot both get through. Both aim at the same
   # row, so the second waits on its lock and re-reads the committed version.
   # `Ithibati.Identity.Concurrency` covers the case where two writers aim at different rows, where
   # this is not enough.
@@ -134,7 +134,7 @@ defmodule Ithibati.Identity.Invitations do
         where: i.expires_at > ^now,
         select: i
       )
-      # Read off the struct rather than written out: the table is the application's, so what its
+      # Read off the struct. The table is the application's, so what its
       # primary key is called is the application's to decide.
       |> where(^Ecto.primary_key!(invitation))
 

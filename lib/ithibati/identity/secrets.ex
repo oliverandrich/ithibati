@@ -2,9 +2,9 @@ defmodule Ithibati.Identity.Secrets do
   @moduledoc false
 
   # How this library handles a secret, in one place because it is one contract: what the holder is
-  # given is URL-safe text, and what the row keeps is its sha256. Three modules store secrets —
-  # tokens, recovery codes, and whatever joins them — and a change here that reached only two of
-  # them would not fail: it would produce rows that stop matching, which reads to the person holding
+  # given is URL-safe text, and what the row keeps is its sha256. Three modules store secrets:
+  # tokens, recovery codes, and whatever joins them. A change here that reached only two of
+  # them would not fail. It would produce rows that stop matching, which reads to the person holding
   # a correct code as "that is not your code".
 
   @doc "The digest the row keeps: Ithibati can compare a secret against it but cannot recover it."

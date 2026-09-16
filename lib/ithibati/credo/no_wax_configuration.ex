@@ -58,9 +58,9 @@ if Code.ensure_loaded?(Credo.Check) do
     defp named([:wax_, key, _value]) when key in @settings, do: [key]
 
     # `config :wax_, SomeModule, rp_id: …` writes `Application.get_env(:wax_, SomeModule)`, which
-    # is a different key and one `wax_` never looks in — nothing inert is being set, so reporting
+    # is a different key and one `wax_` never looks in. Nothing inert is being set, so reporting
     # it would be wrong. A list built at run time is unrecognisable and equally left alone: a
-    # check that raised on one would abort the whole Credo run rather than report anything.
+    # check that raised on one would abort the whole Credo run and report nothing.
     defp named(_args), do: []
 
     defp issue_for(issue_meta, line_no, key) do

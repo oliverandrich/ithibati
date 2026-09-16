@@ -67,9 +67,9 @@ defmodule Ithibati.Identity.Instance do
   """
   def claim(multi, opts \\ []) do
     # No `exists?` before the insert: the unique index is the guarantee, and a read could not decide
-    # anything it does not already decide. What such a read buys elsewhere — not doing the work when
-    # somebody else has won — is not available here, because the account insert is already behind us
-    # and rolls back with this refusal either way. `Ithibati.Identity.Concurrency` sets out the three
+    # anything it does not already decide. Elsewhere such a read buys you not doing the work when
+    # somebody else has won. That is not available here: the account insert is already behind us and
+    # rolls back with this refusal either way. `Ithibati.Identity.Concurrency` sets out the three
     # shapes and which one this is.
     Multi.run(multi, :bootstrap, fn repo, changes ->
       account = Steps.account!(changes, opts)

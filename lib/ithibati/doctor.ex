@@ -23,7 +23,7 @@ defmodule Ithibati.Doctor do
   # Lexical only, so it costs nothing in the build that has no web half and no such module.
   alias Ithibati.Web.Handler
 
-  # Named by the schemas that name them rather than restated here, so a suffix cannot drift from
+  # Named by the schemas that name them, not restated here, so a suffix cannot drift from
   # the schema that declares it and a table added later cannot be silently unasked about.
   # `Ithibati.Migration` keeps its own list on purpose: that one is what version 1 created, and it
   # must not grow when this one does.
@@ -63,7 +63,7 @@ defmodule Ithibati.Doctor do
 
   # The two questions about the database are asked only of a repo that has already answered one.
   # Otherwise every one of them raises from inside Ecto, and because this list is built before a
-  # line of it is printed, the reader would see nothing at all — not even the answer that
+  # line of it is printed, the reader would see nothing at all, not even the answer that
   # diagnosed it.
   defp askable(repo, {:ok, _}), do: repo
   defp askable(_repo, {:skip, _} = unasked), do: unasked
@@ -90,7 +90,7 @@ defmodule Ithibati.Doctor do
     end
   end
 
-  # The migration creates this index, or confirms one the application said it maintains — but only
+  # The migration creates this index, or confirms one the application said it maintains, but only
   # while it runs. Nothing asks afterwards, and without the index two accounts can end up sharing
   # an identifier: the changeset's uniqueness check passes for both of two concurrent registrations
   # and nothing downstream refuses the second.
@@ -123,7 +123,7 @@ defmodule Ithibati.Doctor do
 
   # The one question nothing else can ask. An application that configures `invitation_schema:`
   # after running the migration never runs it again, so the table it has just written is checked
-  # here or nowhere — and what goes unchecked is a unique index on a bearer secret.
+  # here or nowhere. What goes unchecked is a unique index on a bearer secret.
   defp invitation_table(repo) do
     case answered(&Config.invitation_schema/0) do
       {:ok, nil} -> {:skip, "no invitation schema to ask about"}
@@ -168,7 +168,7 @@ defmodule Ithibati.Doctor do
 
   # A missing callback is a compiler warning, and an application not built with
   # `--warnings-as-errors` compiles, migrates, boots and serves without one. What it then fails
-  # is a ceremony, at the request rather than at the build.
+  # is a ceremony, at the request and not at the build.
   defp callbacks(app) do
     if Code.ensure_loaded?(Handler) do
       implemented(app)
@@ -184,23 +184,20 @@ defmodule Ithibati.Doctor do
     end
   end
 
-  # Asked of the behaviour rather than written out here, for the reason `@owned` gives above. A
-  # fifth callback added to `Ithibati.Web.Handler` would otherwise go unchecked by the one check
-  # whose purpose is to notice a missing one, and the report would go on saying "all 4". Not a
-  # module attribute: the behaviour is behind the web-half sentinel and this module compiles
-  # without it, so the question is asked inside `callbacks/1`'s load check.
-  # Written out rather than asked of `Ithibati.Web.Handler.behaviour_info/1`, because this module
-  # also compiles in the build without the optional dependencies, where that module does not
-  # exist and any call to it is a warning this project runs as an error. The copy is held to the
-  # behaviour by `Ithibati.DoctorTest` instead, which runs where the behaviour is there.
+  # A hand-written copy of the callbacks `Ithibati.Web.Handler` requires. It cannot be asked of
+  # `behaviour_info/1` here: this module also compiles in the build without the optional
+  # dependencies, where that module does not exist and any call to it is a warning this project
+  # runs as an error. `Ithibati.DoctorTest` holds the copy to the behaviour instead, and it runs
+  # where the behaviour is there. Without that test a fifth callback would go unchecked by the one
+  # check whose purpose is to notice a missing one, and the report would go on saying "all 4".
   @required [registration_subject: 2, register: 4, authenticate: 2, recovered: 3]
 
   @doc false
   def required_callbacks, do: @required
 
   # Every `behaviour` attribute, not `attributes[:behaviour]`, which answers with the first one
-  # only. A handler written on a controller has `@behaviour Plug` in front of ours — injected by
-  # `use Phoenix.Controller` — and reading one key would report that nobody implements the
+  # only. A handler written on a controller has `@behaviour Plug` in front of ours, injected by
+  # `use Phoenix.Controller`, and reading one key would report that nobody implements the
   # behaviour, from the check whose whole purpose is to notice a missing callback.
   defp handler?(module) do
     Code.ensure_loaded?(module) and Handler in behaviours(module)
@@ -288,9 +285,9 @@ defmodule Ithibati.Doctor do
     end
   end
 
-  # Keyed on the controller rather than on the sentinel every module of the web half is guarded
-  # by, because this one cannot sit inside that guard — it has to compile and answer in a consumer
-  # without Phoenix — and the controller is the module the routes have to dispatch to anyway.
+  # Keyed on the controller, not on the sentinel every module of the web half is guarded
+  # by, because this one cannot sit inside that guard: it has to compile and answer in a consumer
+  # without Phoenix. The controller is the module the routes have to dispatch to anyway.
   defp routes(app) do
     if Code.ensure_loaded?(Ithibati.Web.PasskeyController) do
       mounted(app)
@@ -323,11 +320,11 @@ defmodule Ithibati.Doctor do
     end
   end
 
-  # The prefix a table lives under when nothing says otherwise — the same one `Ecto.Migration`
+  # The prefix a table lives under when nothing says otherwise, the same one `Ecto.Migration`
   # falls back to, so this asks about the tables the migration would have built.
   defp schema_prefix(repo), do: repo.config()[:migration_default_prefix]
 
-  # `:migration_foreign_key` holds options, not a name — `Ecto.Migration.references/2` merges them
+  # `:migration_foreign_key` holds options, not a name. `Ecto.Migration.references/2` merges them
   # and takes `:column` from among them, defaulting to `:id`. Read as a bare name it is a keyword
   # list, which is not a column and does not survive being turned into one.
   defp foreign_key(repo) do

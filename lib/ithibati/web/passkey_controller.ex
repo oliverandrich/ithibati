@@ -87,14 +87,14 @@ if Code.ensure_loaded?(Phoenix.Component) do
     # what this library puts there for others.
     defp spend(conn, key), do: {delete_session(conn, key), get_session(conn, key)}
 
-    # The mount travels with the challenge rather than in the name of the slot it sits in. Two
+    # The mount travels with the challenge, not in the name of the slot it sits in. Two
     # mounts may answer to different relying parties and different handlers, and sharing one slot
     # without this let a challenge minted under one be spent at the other's verify route: the
     # assertion validates against its own challenge, so nothing refuses it, and the wrong handler
-    # decides what it is worth — on the registration side carrying a subject one mount approved into
-    # another mount's `register/4`, past the only place an instance can say "not you".
+    # decides what it is worth. On the registration side that carries a subject one mount approved
+    # into another mount's `register/4`, past the only place an instance can say "not you".
     #
-    # Compared rather than hashed into the key, so there is no collision to reason about, the
+    # Compared, not hashed into the key, so there is no collision to reason about, the
     # session still holds two slots however many mounts an application has, and a challenge offered
     # to the wrong mount is spent there all the same.
     defp keep(conn, key, held), do: put_session(conn, key, {settings(conn), held})
@@ -113,9 +113,9 @@ if Code.ensure_loaded?(Phoenix.Component) do
       end
     end
 
-    # A body with no `code` in it, in a clause of its own rather than as a catch-all in the `else`
+    # A body with no `code` in it, in a clause of its own and not as a catch-all in the `else`
     # above. A catch-all there also swallows a handler that answers `recovered/3` with a bare
-    # `Plug.Conn` instead of `{:ok, conn}` — and by then the code is spent, so the person is told
+    # `Plug.Conn` instead of `{:ok, conn}`. By then the code is spent, so the person is told
     # `invalid_code` about a code that worked and is now gone. The other four actions let that
     # mistake raise, and so does this one.
     def recovery(conn, _params), do: refuse(conn, :invalid_code)
@@ -126,7 +126,7 @@ if Code.ensure_loaded?(Phoenix.Component) do
     defp settings(conn), do: conn.private.ithibati
     defp handler(conn), do: settings(conn).handler
 
-    # A handler that answered for itself keeps its answer. Answer in JSON, though — the hook reads
+    # A handler that answered for itself keeps its answer. Answer in JSON, though. The hook reads
     # the body, and `fetch` follows a 3xx on its own, so a `Phoenix.Controller.redirect/2` here
     # arrives as an HTML page the client cannot read and the person stays where they were. To send
     # somebody somewhere, say so in the body: `json(conn, %{redirect: "/recovery-codes"})`.
@@ -136,7 +136,7 @@ if Code.ensure_loaded?(Phoenix.Component) do
     defp answered(%{state: :sent} = conn, _status), do: conn
     defp answered(conn, status), do: json(conn, %{status: status})
 
-    # The handler's answer when it has one — an extension and a native app post to these same
+    # The handler's answer when it has one. An extension and a native app post to these same
     # routes and their origins are not the server's, and which of them an application accepts is
     # the application's decision.
     #
@@ -158,7 +158,7 @@ if Code.ensure_loaded?(Phoenix.Component) do
     end
 
     # Never `to_string/1` on the reason: `Wax` answers with exception structs, and `String.Chars`
-    # is not implemented for them, so the expiring challenge — the commonest real failure there is —
+    # is not implemented for them, so the expiring challenge, the commonest real failure there is,
     # would have crashed with a 500 on top of a spent challenge. A handler's reason is the
     # application's and may be any term at all.
     defp refuse(conn, reason) when is_atom(reason) and not is_nil(reason) do

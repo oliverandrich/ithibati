@@ -55,7 +55,7 @@ if Code.ensure_loaded?(Credo.Check) do
       end
     end
 
-    # Positions rather than a list of call shapes: a list cannot cover the pipe, the `join:`, or a
+    # Positions, not a list of call shapes. A list cannot cover the pipe, the `join:`, or a
     # repo not spelled `Repo`, while a schema *being read* is in one of these places whatever the
     # surrounding call is named. None of them is somewhere a struct literal or an `alias` appears,
     # which is what keeps the rule off ordinary handling. The last is where a table name has to be
@@ -89,7 +89,7 @@ if Code.ensure_loaded?(Credo.Check) do
         else: acc
     end
 
-    # Read rather than assumed: an application that set a prefix has different table names, and
+    # Read, never assumed. An application that set a prefix has different table names, and
     # this check runs inside that application, where the setting is there to be read.
     defp table_prefix, do: Application.get_env(:ithibati, :table_prefix, "ithibati") <> "_"
 

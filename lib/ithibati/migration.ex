@@ -62,8 +62,8 @@ defmodule Ithibati.Migration do
   end
 
   # `:id` is the schema-side name for an integer key, and Ecto renders it as `integer` in a
-  # migration — but the Phoenix default it describes is `bigserial`, so a foreign key declared that
-  # way holds accounts only up to two billion and then fails on insert. Named rather than left to
+  # migration. But the Phoenix default it describes is `bigserial`, so a foreign key declared that
+  # way holds accounts only up to two billion and then fails on insert. Named here, and not left to
   # `references(type: :bigserial)`, which reaches the same column through a Postgres-only branch of
   # the adapter.
   @doc """
@@ -145,17 +145,17 @@ defmodule Ithibati.Migration do
   def invitation_index(opts) do
     pinned!(opts, "invitation_index/1")
 
-    # Through the same description and the same create-and-confirm `up/1` uses, rather than a
-    # second spelling of the index here: the promise above — that the two paths cannot collide
-    # however they are ordered — rests on them building the same thing, and on both noticing
-    # when `create_if_not_exists` matched a name that is not ours.
+    # Through the same description and the same create-and-confirm `up/1` uses. No second spelling
+    # of the index here: the promise above, that the two paths cannot collide however they are
+    # ordered, rests on them building the same thing, and on both noticing when
+    # `create_if_not_exists` matched a name that is not ours.
     %{invitation: Config.invitation_schema!()}
     |> invitation_indexes()
     |> Enum.each(&maintain_index/1)
   end
 
-  # `version:` is required, and pinned, for the reason `up/1` gives. One check rather than one per
-  # entry point: the range is `@current_version`'s to state, and three copies of it is three
+  # `version:` is required, and pinned, for the reason `up/1` gives. One check, not one per
+  # entry point. The range is `@current_version`'s to state, and three copies of it is three
   # places to edit when it gains a second value.
   defp pinned!(opts, caller) do
     version = Keyword.get(opts, :version)
@@ -181,9 +181,9 @@ defmodule Ithibati.Migration do
 
     from = Keyword.get(opts, :from, 0)
 
-    # Refused rather than tolerated: a version this release does not know reaches no clause, and a
+    # Refused, never tolerated. A version this release does not know reaches no clause, and a
     # starting point at or above it builds nothing at all while Ecto records the migration as
-    # applied — a consumer would find out at the first query.
+    # applied. A consumer would find out at the first query.
     require!(version, 1..@current_version//1, "version", "1..#{@current_version}")
     require!(from, 0..(version - 1)//1, "from", "0..#{version - 1}")
 
@@ -209,7 +209,7 @@ defmodule Ithibati.Migration do
       add :user_id, holder, null: false
       add :key_id, :binary, null: false
       add :public_key, :binary, null: false
-      # `:text` rather than a sized column: the limit on a label is a display decision, applied in
+      # `:text`, not a sized column. The limit on a label is a display decision, applied in
       # the changeset. See `Ithibati.UserKey`.
       add :label, :text
       add :last_used_at, :utc_datetime_usec
@@ -247,7 +247,7 @@ defmodule Ithibati.Migration do
 
     create table(source(Bootstrap), primary_key: false) do
       add :id, :binary_id, primary_key: true
-      # Nilified rather than cascaded: the account that set an instance up may be deleted, and the
+      # Nilified, not cascaded. The account that set an instance up may be deleted, and the
       # instance is still set up. A cascade here would make a second setup possible again.
       add :user_id, references(opts.users_table, type: key_type(), on_delete: :nilify_all)
       add :claimed, :boolean, null: false, default: true
@@ -268,7 +268,7 @@ defmodule Ithibati.Migration do
   end
 
   # Every index this library maintains on a table it does not own, as a list, so that a third such
-  # table is an entry rather than another pair of functions. Why it maintains them at all: a
+  # table is an entry and not another pair of functions. Why it maintains them at all: a
   # changeset cannot keep an identifier unique against a concurrent insert, so the uniqueness has
   # to be the database's.
   defp application_indexes(opts), do: [account_index(opts) | invitation_indexes(opts)]
@@ -279,8 +279,8 @@ defmodule Ithibati.Migration do
   # and then hoping. `Ithibati.Schema.User.identifier_taken?/1` is how the application learns
   # that this is what a refused insert collided on.
   #
-  # `unique_index: false` is how an application says it maintains its own — a partial, expression or
-  # composite index this library has no business guessing at — and then the index is checked instead.
+  # `unique_index: false` is how an application says it maintains its own: a partial, expression or
+  # composite index this library has no business guessing at. The index is then checked instead.
   defp account_index(opts) do
     %{
       schema: opts.schema,
@@ -330,11 +330,11 @@ defmodule Ithibati.Migration do
     if index.create?, do: drop_if_exists(index_for(index))
   end
 
-  # `name: nil` is not a missing name — `Ecto.Migration.index/3` fills it in with the one it derives.
+  # `name: nil` is not a missing name. `Ecto.Migration.index/3` fills it in with the one it derives.
   defp index_for(index), do: unique_index(index.table, [index.column], name: index.name)
 
-  # Asked of `pg_index` rather than of the name: `to_regclass` answers for any relation that happens
-  # to be called that — a table, a view, a non-unique index, an index on another column would all
+  # Asked of `pg_index`, not of the name. `to_regclass` answers for any relation that happens
+  # to be called that: a table, a view, a non-unique index, an index on another column would all
   # pass. What the account lookup needs is a unique index over exactly this column.
   defp confirm_index!(index) do
     # `create/1` only queues; the query below runs at once, so flush first or it cannot see an index
@@ -371,16 +371,16 @@ defmodule Ithibati.Migration do
 
   # What Postgres calls the column a foreign key of this type can point at. An `:id` account table
   # is `bigserial` by default but `serial` is a legal choice, and Postgres references across the
-  # integer widths happily — they share an operator family.
+  # integer widths happily. They share an operator family.
 
-  # What `references/2` will demand of the account table, asked before anything is built rather than
-  # discovered from inside it: the column it points at has to exist, be a type this foreign key can
+  # What `references/2` will demand of the account table, asked before anything is built and not
+  # discovered from inside it. The column it points at has to exist, be a type this foreign key can
   # compare against, and carry a unique index. A unique index is what Postgres requires of any
-  # referenced column — not a primary key — so a composite primary key with `UNIQUE (id)` beside it
+  # referenced column, not a primary key, so a composite primary key with `UNIQUE (id)` beside it
   # is a legal account table, and this is why it passes.
   defp confirm_tables!(opts) do
-    # Nothing to confirm while tearing down, and `flush/0` refuses to run in that direction at all —
-    # a consumer whose `change/0` calls `up/1` would otherwise fail its rollback here.
+    # Nothing to confirm while tearing down, and `flush/0` refuses to run in that direction at all.
+    # A consumer whose `change/0` calls `up/1` would otherwise fail its rollback here.
     if direction() == :up do
       # `create/1` only queues, and an application is allowed to create its tables and call `up/1`
       # in one migration.
@@ -388,7 +388,7 @@ defmodule Ithibati.Migration do
 
       # Every table this library reads without owning, and every column on each that it goes on
       # to read. Asked for first, so that a missing one is a word about the setting that named it
-      # rather than a Postgres error about a relation or a column nobody mentioned.
+      # and not a Postgres error about a relation or a column nobody mentioned.
       Enum.each(application_indexes(opts), &confirm_indexed_column!/1)
       confirm_invitation_columns!(opts)
 
@@ -398,7 +398,7 @@ defmodule Ithibati.Migration do
 
   # The column is the application's to add; the index on it is this library's to create. That line
   # is not obvious from the outside, so a column that is not there is answered with where it
-  # belongs rather than with the `undefined_column` Postgres raises when the index is built.
+  # belongs, and not with the `undefined_column` Postgres raises when the index is built.
   defp confirm_indexed_column!(index) do
     oid = table_oid!(index.table)
 
@@ -414,7 +414,7 @@ defmodule Ithibati.Migration do
   # The three columns beyond the identifier that an invitation table has to carry, with what
   # Postgres has to call them. The schema declares all four and the migration indexes one, so
   # without this a `token_hash` somebody wrote as `:string` migrates green and fails at the first
-  # invitation — later, and further from the mistake, than any other disagreement here.
+  # invitation, later and further from the mistake than any other disagreement here.
   #
   # The identifier is deliberately absent: `citext` is a shape this library supports, and an
   # application whose accounts use it wants its invitations to match.
@@ -457,7 +457,7 @@ defmodule Ithibati.Migration do
     end
   end
 
-  # Read off the reference rather than assumed: Ecto points a foreign key at `:id` unless the repo
+  # Read off the reference, never assumed. Ecto points a foreign key at `:id` unless the repo
   # moves it with `:migration_foreign_key`, and a check that guessed would pass tables the migration
   # then fails on.
   defp account_key_column(opts) do
@@ -475,7 +475,7 @@ defmodule Ithibati.Migration do
 
   defp qualified(table), do: Catalogue.qualified(schema_prefix(), table)
 
-  # The migrator's prefix, or the one the repo migrates into by default — which is what
+  # The migrator's prefix, or the one the repo migrates into by default, which is what
   # `Ecto.Migration` itself falls back to when it creates a table.
   defp schema_prefix, do: prefix() || repo().config()[:migration_default_prefix]
 

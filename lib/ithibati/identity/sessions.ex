@@ -17,7 +17,7 @@ defmodule Ithibati.Identity.Sessions do
   alias Ithibati.Identity.Secrets
   alias Ithibati.Session
 
-  # Sixty days, and it is a module attribute rather than a required setting because every
+  # Sixty days, and it is a module attribute and not a required setting because every
   # application has a session and almost none has an opinion about how long it lasts.
   @default_validity {60, :day}
 
@@ -34,7 +34,7 @@ defmodule Ithibati.Identity.Sessions do
   def generate_session_token(account) do
     %{id: user_id} = Config.account!(account)
 
-    # Called for its refusal rather than its answer: a validity this library cannot read would
+    # Called for its refusal, not its answer. A validity this library cannot read would
     # otherwise mint a session that every lookup afterwards raises on. Signing in would appear to
     # work and the request after it would not.
     configured_validity!()
@@ -56,7 +56,7 @@ defmodule Ithibati.Identity.Sessions do
   `nil`, and making each call site write `token && …` around that only moves the omission
   somewhere less visible.
   """
-  # Two clauses rather than one with a guard and an `if`: the `nil` path then provably reads no
+  # Two clauses, not one with a guard and an `if`. The `nil` path then provably reads no
   # configuration, so a page nobody is signed in to cannot answer 500 for a setting it never
   # needed. `delete_session_token/1` below is shaped the same way.
   def get_user_by_session_token(nil), do: nil
@@ -90,8 +90,8 @@ defmodule Ithibati.Identity.Sessions do
     DateTime.shift(DateTime.utc_now(), [{unit, -count}])
   end
 
-  # Its own function because that is the question `Ithibati.Doctor` asks — is this setting
-  # readable — which it has to be able to ask without minting or reading a session.
+  # Its own function because that is the question `Ithibati.Doctor` asks: is this setting readable.
+  # It has to be able to ask that without minting or reading a session.
   @doc false
   def configured_validity! do
     validity!(Application.get_env(:ithibati, :session_validity, @default_validity))

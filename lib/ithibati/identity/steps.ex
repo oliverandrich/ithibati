@@ -4,8 +4,8 @@ defmodule Ithibati.Identity.Steps do
   # Where this library's `Ecto.Multi` fragments find the account, in one place because it is one
   # convention: each of them reads it from a step the caller already ran, takes that step's name as
   # `account:`, and falls back to `:account`. Three public functions promise that default in their
-  # docs — `Grant.with_key_and_codes/3`, `Invitations.accept/3` and `Instance.claim/2` — and a
-  # default written out once per fragment is a default that drifts.
+  # docs: `Grant.with_key_and_codes/3`, `Invitations.accept/3` and `Instance.claim/2`. A default
+  # written out once per fragment is a default that drifts.
 
   alias Ithibati.Config
 
@@ -13,8 +13,8 @@ defmodule Ithibati.Identity.Steps do
 
   def name(opts), do: Keyword.get(opts, :account, @default)
 
-  # Named rather than left to `Map.fetch!`'s own message, which reports a missing key against a map
-  # of every step run so far — a wall of changesets in which the actual mistake, a step named
+  # Named here. `Map.fetch!`'s own message reports a missing key against a map
+  # of every step run so far, a wall of changesets in which the actual mistake, a step named
   # something else, is the one thing not shown. Which fragment asked is in the stack trace and is
   # deliberately not repeated here, where nothing would keep it true through a rename.
   def account!(changes, opts) do

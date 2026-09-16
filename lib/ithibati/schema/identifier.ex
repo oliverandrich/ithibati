@@ -17,8 +17,8 @@ defmodule Ithibati.Schema.Identifier do
   # RFC 5321's maximum for an address, and the longest identifier this library expects to see.
   @max 254
 
-  # `\A`/`\z` rather than `^`/`$`, which match around a newline rather than at the ends of the
-  # string: `"you@example.com\n"` is a value this is asked about, because an application may call
+  # `\A`/`\z`, not `^`/`$`. Those match around a newline instead of at the ends of the
+  # string, and `"you@example.com\n"` is a value this is asked about, because an application may call
   # this straight from its own `validate_format/3` with nothing trimmed first.
   @email_format ~r"\A[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*\z"
 
@@ -119,7 +119,7 @@ defmodule Ithibati.Schema.Identifier do
 
   @doc false
   # Told apart from "not given", because a non-literal reports the option as missing when it was in
-  # fact passed — and `true`/`false` are atoms, so a schema would compile with a field named `false`.
+  # fact passed. `true`/`false` are atoms, so a schema would compile with a field named `false`.
   def identifier!(opts, macro) do
     case Keyword.fetch(opts, :identifier) do
       {:ok, field} when is_atom(field) and field not in [nil, true, false] ->
@@ -154,15 +154,15 @@ defmodule Ithibati.Schema.Identifier do
     }
   end
 
-  # A call rather than a value, because `constraint_name: @index_name` is still an unresolved `@`
+  # A call, not a value, because `constraint_name: @index_name` is still an unresolved `@`
   # in the AST here: asking for its value where the macro expands is what the compiler refuses with
   # "undefined module attribute". The macro assigns the call to an attribute instead, and the
-  # consumer's module body evaluates it — by then every attribute they wrote exists.
+  # consumer's module body evaluates it. By then every attribute they wrote exists.
   #
   # Absence is decided here, where the key can still be seen, and that is the whole reason for
   # `default`. An option left out and an option written as `nil` are not the same thing: the second
   # is almost always a misspelled attribute, which evaluates to `nil` with nothing but a warning.
-  # `unique_index:` is where that distinction has to be made rather than merely kept — absent means
+  # `unique_index:` is where that distinction has to be made and not merely kept. Absent means
   # `true`, and `true` is also a legal value, so absence cannot be represented by the checked call.
   defp deferred(opts, key, checker, default \\ nil) do
     case Keyword.fetch(opts, key) do
@@ -173,14 +173,14 @@ defmodule Ithibati.Schema.Identifier do
 
   # A format that is not a regular expression should say so where it is written, not at somebody's
   # first registration. A binary slips through `validate_format/4` as `String.contains?/2`, which
-  # is wrong in both directions — it refuses `"abc"` against `"^[a-z]+$"` and accepts
+  # is wrong in both directions. It refuses `"abc"` against `"^[a-z]+$"` and accepts
   # `"x^[a-z]+$y"`.
   @doc false
   def validated_format!(%Regex{} = format), do: format
   def validated_format!(other), do: refuse!(:format, other, "a regular expression")
 
-  # `true`/`false` are atoms too, and a constraint named "true" matches no index — every duplicate
-  # would then surface as the `Ecto.ConstraintError` this option exists to prevent.
+  # `true`/`false` are atoms too, and a constraint named "true" matches no index, so every duplicate
+  # would surface as the `Ecto.ConstraintError` this option exists to prevent.
   @doc false
   def validated_constraint_name!(name) when is_atom(name) and name not in [nil, true, false],
     do: name

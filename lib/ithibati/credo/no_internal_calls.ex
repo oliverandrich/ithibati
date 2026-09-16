@@ -54,7 +54,7 @@ if Code.ensure_loaded?(Credo.Check) do
           do: {module, fun, published, line}
     end
 
-    # A pipe is the call it stands for, with one more argument than the node carries — and the
+    # A pipe is the call it stands for, with one more argument than the node carries, and the
     # arity is what the documentation is looked up by.
     defp candidates({:|>, _meta, [lhs, {{:., dot, [module, fun]}, call, args}]}, acc, aliases) do
       node = {{:., dot, [module, fun]}, call, [lhs | args]}
@@ -90,8 +90,8 @@ if Code.ensure_loaded?(Credo.Check) do
     end
 
     # What a consumer legitimately calls on one of this library's modules, whoever wrote it:
-    # reflection a `use` put there. Named by what may be called rather than by who generated it,
-    # because the two are not the same question — `__changeset__/0` is Ecto's and fair game, while
+    # reflection a `use` put there. Named by what may be called, not by who generated it,
+    # because the two are not the same question. `__changeset__/0` is Ecto's and fair game, while
     # `__changeset__/5` is this library's own and marked by hand.
     @reflection [
       {:__schema__, 1},
@@ -113,7 +113,7 @@ if Code.ensure_loaded?(Credo.Check) do
       Enum.find_value(docs, fn
         {{kind, ^fun, published}, _, _, :hidden, meta} when kind in [:function, :macro] ->
           # A default argument is published once, at the highest arity, with a count of how many
-          # may be left out — so a call at any of the lower arities is the same function.
+          # may be left out, so a call at any of the lower arities is the same function.
           arity in (published - Map.get(meta, :defaults, 0))..published and published
 
         _other ->
@@ -124,8 +124,8 @@ if Code.ensure_loaded?(Credo.Check) do
     defp published_arity(_other, _fun, _arity), do: nil
 
     # A module whose documentation chunk was stripped answers nothing, and this check then reports
-    # nothing about it — which reads exactly like a clean run. Said out loud in `docs/credo.md`
-    # rather than guessed at here, because a rule that invented an issue out of a missing chunk
+    # nothing about it, which reads exactly like a clean run. Said out loud in `docs/credo.md`
+    # and never guessed at here, because a rule that invented an issue out of a missing chunk
     # would be worse.
     defp docs(module) do
       case Code.fetch_docs(module) do

@@ -1,15 +1,15 @@
 # `Phoenix.Component` is the sentinel for the whole web half, and every module under
 # `lib/ithibati/web/` uses this same one. It lives in `phoenix_live_view`, which is the narrowest of
-# the three optional dependencies — so if it is there, `phoenix` and `plug` are too, and the web
-# half can be taken or left as one piece rather than in parts.
+# the three optional dependencies. If it is there, `phoenix` and `plug` are too, and the web half
+# can be taken or left as one piece, never in parts.
 #
 # It is one piece on purpose. Splitting it finer, so that a consumer could have Phoenix without
 # LiveView, cost a nested guard, a second example, and a class of mistake this library cannot see:
 # a private function used only from the LiveView half compiles away to dead code in that build and
 # warns in somebody else's, never in ours.
 #
-# The guard has to be here rather than in `elixirc_paths`, which `project/0` reads — and a
-# dependency's `project/0` can see nothing about the project being built. This check runs when the
+# The guard has to be here and not in `elixirc_paths`, which `project/0` reads. A dependency's
+# `project/0` can see nothing about the project being built. This check runs when the
 # module compiles, by which point a consumer's dependencies are loaded.
 if Code.ensure_loaded?(Phoenix.Component) do
   defmodule Ithibati.Web.Handler do

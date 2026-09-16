@@ -93,7 +93,7 @@ defmodule Ithibati.Schema.Invitation do
 
       @before_compile Ithibati.Schema.Invitation
 
-      # Three of these may be a checking call rather than a value, so that an option written as
+      # Three of these may be a checking call instead of a value, so that an option written as
       # `@name` resolves here; see `Ithibati.Schema.Identifier.options!/2`.
       @ithibati_identifier unquote(given.identifier)
       @ithibati_format unquote(given.format)
@@ -160,7 +160,7 @@ defmodule Ithibati.Schema.Invitation do
     |> unique_constraint(:token_hash, Identifier.unique_opts(constraint))
   end
 
-  # A query from a schema module, which is otherwise `Ithibati.Identity.*`'s job — and the exception
+  # A query from a schema module, which is otherwise `Ithibati.Identity.*`'s job, and the exception
   # Ecto itself makes: `unsafe_validate_unique/4` takes a repo for exactly this shape of advisory
   # check. It cannot be moved to the context, because the answer has to be an error on the changeset
   # the form is rendering.
@@ -168,8 +168,8 @@ defmodule Ithibati.Schema.Invitation do
   # What actually keeps two accounts off one address is the unique index on the accounts table,
   # which fires when the invitation is accepted. This is the earlier and kinder half of the same
   # answer: whoever is inviting is told at the form that this person already has an account, instead
-  # of the invitee finding it out at the end of a passkey ceremony. Advisory by nature — an account
-  # can be created between this query and the acceptance — which is why it does not replace the
+  # of the invitee finding it out at the end of a passkey ceremony. Advisory by nature: an account
+  # can be created between this query and the acceptance. That is why it does not replace the
   # index, and why it is worth having anyway.
   # Nothing is asked of the accounts table while the changeset is already invalid: a `phx-change`
   # form would otherwise send one `SELECT EXISTS` per keystroke, for values that cannot match an
@@ -214,7 +214,7 @@ defmodule Ithibati.Schema.Invitation do
 
   # Passed, it always applies, so that an application can extend an invitation somebody has not got
   # round to; absent, it fills in the window only for one that has none yet. The token is unchanged
-  # either way — extending keeps the link that was already sent working, which is the point of it.
+  # either way. Extending keeps the link that was already sent working, which is the point of it.
   defp put_expiry(changeset, opts) do
     case {Keyword.get(opts, :days), changeset.data.expires_at} do
       {nil, nil} -> expire_in(changeset, @default_days)

@@ -8,7 +8,7 @@ if Code.ensure_loaded?(Credo.Check) do
     # fiddly enough to be worth having once: the multi-alias form does not nest, `as:` renames,
     # and a name two modules in one file alias differently cannot be answered at all.
     #
-    # Not public API despite living in `lib/` — `@moduledoc false`, which is exactly what
+    # Not public API despite living in `lib/`. It carries `@moduledoc false`, which is exactly what
     # `Ithibati.Credo.NoInternalCalls` reports a consumer for reaching past.
 
     @doc """

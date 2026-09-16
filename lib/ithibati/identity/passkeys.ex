@@ -30,9 +30,9 @@ defmodule Ithibati.Identity.Passkeys do
   alias Ithibati.Schema.User
   alias Ithibati.UserKey
 
-  # `Wax` does not refuse an over-long credential id — the length prefix is 16 bits, so an
-  # authenticator may claim up to 65535 — and what arrives here is the browser's, which makes the
-  # size somebody else's choice. Read from the schema so that the refusal on the way in and the
+  # `Wax` does not refuse an over-long credential id, and what arrives here is the browser's,
+  # which makes the size somebody else's choice. The length prefix is 16 bits, so an
+  # authenticator may claim up to 65535. Read from the schema so that the refusal on the way in and the
   # one on the way out cannot come apart; a literal, because guards cannot call a function.
   @credential_id_max UserKey.credential_id_max()
 
@@ -133,7 +133,7 @@ defmodule Ithibati.Identity.Passkeys do
         residentKey: "required",
         requireResidentKey: true,
         # Read off the challenge, all three, so the browser cannot be asked for something the server
-        # will refuse — the disagreement is silent and looks like a broken authenticator.
+        # will refuse. That disagreement is silent and looks like a broken authenticator.
         userVerification: challenge.user_verification
       },
       extensions: %{credProps: true},
@@ -189,9 +189,9 @@ defmodule Ithibati.Identity.Passkeys do
 
   def verify_registration(_credential, _challenge), do: {:error, :malformed_credential}
 
-  # Matched rather than walked: `get_in/2` raises for a `"clientExtensionResults"` that is a string,
-  # a number or a list, and those are bodies a client can post. Absent — or present in a shape this
-  # library did not ask for — is a client that did not answer, which is silence rather than denial.
+  # Matched, not walked. `get_in/2` raises for a `"clientExtensionResults"` that is a string,
+  # a number or a list, and those are bodies a client can post. Absent, or present in a shape this
+  # library did not ask for, is a client that did not answer. That is silence, not denial.
   defp discoverable(%{"clientExtensionResults" => %{"credProps" => %{"rk" => reported}}}),
     do: reported
 
@@ -233,7 +233,7 @@ defmodule Ithibati.Identity.Passkeys do
   # then `25P02` on their next statement.
   #
   # And *only* inside one, because Ecto raises `transaction is not started` for a savepoint with
-  # nothing to hang it on — which is every standalone call, the one the documentation shows. The
+  # nothing to hang it on. That is every standalone call, the one the documentation shows. The
   # suite could not see that: the sandbox wraps each test in a transaction, so the savepoint
   # always had one. `Ithibati.Identity.PasskeysUnwrappedTest` runs without it.
   defp insert_mode do
@@ -243,8 +243,8 @@ defmodule Ithibati.Identity.Passkeys do
   defp already_enrolled?({:ok, key}), do: {:ok, key}
 
   # The unique index is the only failure a caller can act on. A foreign key that no longer points
-  # anywhere — an account deleted between the read and this write — raises instead, which is what
-  # `generate_session_token/1` does in the same situation; `Ithibati.Config.account!/1` checks the struct's
+  # anywhere, say an account deleted between the read and this write, raises instead.
+  # `generate_session_token/1` does the same; `Ithibati.Config.account!/1` checks the struct's
   # module, not that its row still exists.
   defp already_enrolled?({:error, changeset}) do
     if Concurrency.collided?(changeset, :key_id),
@@ -322,7 +322,7 @@ defmodule Ithibati.Identity.Passkeys do
     with {:ok, id} <- key_id(id) do
       repo = Config.repo()
 
-      # The refusal is the transaction's *value*, not a `rollback/1` — unlike `RecoveryCodes.redeem/2`
+      # The refusal is the transaction's *value*, not a `rollback/1`. Unlike `RecoveryCodes.redeem/2`,
       # this path has written nothing when it refuses, so aborting a caller's enclosing transaction
       # would be a side effect of saying no.
       {:ok, outcome} = repo.transaction(fn -> revoke(repo, account, id, last) end)
@@ -338,7 +338,7 @@ defmodule Ithibati.Identity.Passkeys do
     end
   end
 
-  # Two statements, and that is the mechanism rather than a tidiness: one statement evaluates against
+  # Two statements, and that is the mechanism, not a tidiness: one statement evaluates against
   # one snapshot, so an `EXISTS` sitting beside the `FOR NO KEY UPDATE` would be computed from the
   # stand before the wait and the lock would buy nothing. The delete has to be the second statement,
   # taking a fresh snapshot after it.
@@ -355,13 +355,13 @@ defmodule Ithibati.Identity.Passkeys do
 
   # The one place a key is named together with the account allowed to touch it. Written once because
   # it is the authorization boundary of all three functions below, and a fourth reader that forgets
-  # a term would not crash — it would answer about somebody else's row.
+  # a term would not crash. It would answer about somebody else's row.
   defp own_key(account, id) do
     from k in UserKey, as: :key, where: k.id == ^id and k.user_id == ^account.id
   end
 
-  # `id` is a `binary_id`, and Ecto raises rather than matching nothing when what it is handed is not
-  # a UUID — so a hand-edited address would be a 500 where the documented answer is a refusal. Asked
+  # `id` is a `binary_id`, and Ecto raises instead of matching nothing when what it is handed is not
+  # a UUID, so a hand-edited address would be a 500 where the documented answer is a refusal. Asked
   # before the transaction opens, so nothing is locked on the way to saying no.
   defp key_id(id) do
     case Ecto.UUID.cast(id) do
@@ -371,10 +371,10 @@ defmodule Ithibati.Identity.Passkeys do
   end
 
   # "The owner has another one" rides the `WHERE` of the delete, so no count is read and then acted
-  # on. Why that needs the lock above as well — the two deletes aim at different rows and so wait on
-  # nothing — is `Ithibati.Identity.Concurrency.lock_rows/1`'s.
+  # on. Why it needs the lock above as well is `Ithibati.Identity.Concurrency.lock_rows/1`'s to
+  # explain: the two deletes aim at different rows and so wait on nothing.
   #
-  # `parent_as(:key)` rather than the account's id again: the outer `WHERE` has pinned the owner
+  # `parent_as(:key)`, not the account's id again. The outer `WHERE` has pinned the owner
   # already, and reading it off that row keeps the two halves from disagreeing.
   defp deletable_key(account, id, :allow), do: account |> own_key(id) |> select([key], key)
 
@@ -393,7 +393,7 @@ defmodule Ithibati.Identity.Passkeys do
     |> select([key], key)
   end
 
-  # A second statement, and on READ COMMITTED a second snapshot — sharing the transaction with the
+  # A second statement, and on READ COMMITTED a second snapshot. Sharing the transaction with the
   # delete buys no agreement between the two. That is acceptable because of what is being decided:
   # not whether to delete, which already happened, but which of two refusals to name. A key removed
   # by some other route in between is reported as `:not_found`, which by then is the true answer.
@@ -522,7 +522,7 @@ defmodule Ithibati.Identity.Passkeys do
   def verify_authentication(_credential, _challenge), do: {:error, :malformed_credential}
 
   # Unpadded, which is the alphabet the browser writes and `*_options/1` reads back. A field that is
-  # not that is the browser's input like any other, so it is refused rather than raised on.
+  # not that is the browser's input like any other. It is refused, never raised on.
   defp decode(value) when is_binary(value) do
     case Base.url_decode64(value, padding: false) do
       {:ok, decoded} -> {:ok, decoded}
@@ -540,21 +540,21 @@ defmodule Ithibati.Identity.Passkeys do
     end
   end
 
-  # Longer than any authenticator may issue, so it matches no row — answered here rather than by
+  # Longer than any authenticator may issue, so it matches no row. Answered here and not by
   # asking, which keeps a body-sized parameter out of a bytea index lookup. `key_id` is `:binary`
   # and would accept it; the saving is the query, not a refusal Postgres would have made.
   defp fetch_key(_credential_id), do: {:error, :unknown_credential}
 
   # The write is the answer, and it brings the account back with it. Two properties in one statement:
   # a passkey revoked between the lookup above and this update would otherwise still sign in, and
-  # Postgres reads the joined row in the same round trip, so a sign-in costs two rather than three —
-  # on a database that is not on this host, a whole network round trip per sign-in.
+  # Postgres reads the joined row in the same round trip, so a sign-in costs two round trips, not three.
+  # On a database that is not on this host, that saves a whole network round trip per sign-in.
   #
   # `updated_at` is deliberately left where it is, unlike a rename's: signing in is not a change to
   # the credential, and moving it would make "when was this row last edited" mean two things.
   #
   # No test in this suite can reach that revocation window; it needs a second writer committing
-  # inside this one's transaction. The correctness comes from the shape of the statement rather than
+  # inside this one's transaction. The correctness comes from the shape of the statement, not
   # from a green run.
   defp touch(key) do
     query =
@@ -574,7 +574,7 @@ defmodule Ithibati.Identity.Passkeys do
   # an invited account and would otherwise restate this field list, which is how the grant path ends
   # up storing something subtly different from the registration path.
   #
-  # `key_attrs` is rebuilt rather than merged into: a caller whose map carries a string `"user_id"`
+  # `key_attrs` is rebuilt, never merged into. A caller whose map carries a string `"user_id"`
   # would otherwise get an atom one beside it, and which of the two Ecto reads is a detail of
   # `Ecto.Changeset`'s parameter handling. The account is the caller's to name, not the map's.
   def credential_changeset(key_attrs, account) do
@@ -597,7 +597,7 @@ defmodule Ithibati.Identity.Passkeys do
   end
 
   # An authenticator that sets no attested-credential-data flag leaves this `nil`, and `Wax` does
-  # not refuse it — the registration simply carries no credential. Matched rather than assumed:
+  # not refuse it. The registration simply carries no credential. Matched, never assumed:
   # the input is the browser's, and reading a field off `nil` would raise outside the rescue above,
   # which is the crash-with-a-stale-challenge this whole path exists to avoid.
   defp attested_credential(%{
@@ -615,7 +615,7 @@ defmodule Ithibati.Identity.Passkeys do
   # never name, and the person is better told now than at their next visit, where the platform says
   # "no passkey available" and nothing explains it.
   #
-  # Only an explicit `false` refuses. `nil` is a client that does not implement `credProps` — that
+  # Only an explicit `false` refuses. `nil` is a client that does not implement `credProps`. That
   # is silence, not a denial, and turning it away would lock out every browser that has not caught
   # up. `"false"` counts as the same denial: a form-encoded body, or anything routed through a DOM
   # attribute, hands over a string, and a guard matching the atom alone would wave it through with
@@ -634,13 +634,13 @@ defmodule Ithibati.Identity.Passkeys do
   defp subject(identifier) when is_binary(identifier), do: Identifier.normalize(identifier)
 
   # The account's own key once there is a row, and before that a value derived from the identifier
-  # rather than a fresh random one: an authenticator replaces a discoverable credential only when
+  # and not a fresh random one: an authenticator replaces a discoverable credential only when
   # the relying party and this handle both match, so a random one would leave a second passkey
   # behind every time somebody cancels an invitation and opens it again.
   #
-  # It is deliberately *not* the identifier itself — WebAuthn says a user handle must not be
-  # personally identifying — and it does not agree with the account id that the same person gets
-  # afterwards. Nothing here resolves a credential by handle; sign-in goes by credential id.
+  # It is deliberately *not* the identifier itself, because WebAuthn says a user handle must not be
+  # personally identifying. It does not agree with the account id that the same person gets
+  # afterwards either. Nothing here resolves a credential by handle; sign-in goes by credential id.
   defp handle(%_{id: id}), do: to_string(id)
   defp handle(identifier) when is_binary(identifier), do: Secrets.digest(identifier)
 
@@ -650,7 +650,7 @@ defmodule Ithibati.Identity.Passkeys do
 
   defp existing_credentials(_identifier), do: []
 
-  # Wax raises on some malformed input rather than answering; a caller gets the same error tuple
+  # Wax raises on some malformed input instead of answering. A caller gets the same error tuple
   # either way, because the alternative is a crash with a stale challenge left behind it.
   defp safe_wax(fun) do
     fun.()

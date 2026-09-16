@@ -95,7 +95,7 @@ defmodule Ithibati.Schema.User do
 
       @before_compile Ithibati.Schema.User
 
-      # Three of these may be a checking call rather than a value, so that an option written as
+      # Three of these may be a checking call instead of a value, so that an option written as
       # `@name` resolves here; see `Ithibati.Schema.Identifier.options!/2`.
       @ithibati_identifier unquote(given.identifier)
       @ithibati_format unquote(given.format)

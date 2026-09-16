@@ -17,7 +17,7 @@ defmodule Ithibati.Identity.RecoveryCodes do
 
   # Twelve is what fits a printed sheet, and eighty bits each is more than a guess can reach.
   # Sixteen lowercase base32 characters: one case, one alphabet, no separators. RFC 4648 keeps `i`,
-  # `l`, `o` and `b`, so it is not the variant that removes the confusable glyphs — it is the one
+  # `l`, `o` and `b`, so it is not the variant that removes the confusable glyphs. It is the one
   # Elixir ships, and hand-rolling Crockford to gain four letters is not a trade this library makes.
   @count 12
   @bytes 10
@@ -43,7 +43,7 @@ defmodule Ithibati.Identity.RecoveryCodes do
     {:ok, codes} =
       Config.repo().transaction(fn ->
         # Behind the same lock as a redemption, and for a reason of its own: a `DELETE` can only take
-        # rows its snapshot can see, so two regenerations at once leave two live batches — measured,
+        # rows its snapshot can see, so two regenerations at once leave two live batches. Measured:
         # twenty rounds in twenty.
         Concurrency.lock_account!(account.id)
         replace(account, opts)
@@ -93,12 +93,12 @@ defmodule Ithibati.Identity.RecoveryCodes do
   end
 
   # `nil` is what a missing form field gives you, and answering it is kinder than crashing. Anything
-  # else is a caller passing the wrong thing, and that should surface as one rather than as somebody
+  # else is a caller passing the wrong thing, and that should surface as one and not as somebody
   # mistyping their code.
   def redeem(nil, _opts), do: {:error, :invalid}
 
   # "Unused" rides the `WHERE` of the update that spends the code, and the row comes back from the
-  # same statement — so a second caller cannot find it unused. The predicate alone is enough
+  # same statement, so a second caller cannot find it unused. The predicate alone is enough
   # here and not for the count below, which is what `Ithibati.Identity.Concurrency` is for.
   defp spend(digest) do
     query =
@@ -110,7 +110,7 @@ defmodule Ithibati.Identity.RecoveryCodes do
 
   # Counted behind the account's lock, and this is what the lock is for: two callers spending two
   # *different* codes aim at different rows, so nothing makes them wait, each sees the other's code
-  # as still unused, and neither refills. Measured before the lock went in — eighteen rounds in
+  # as still unused, and neither refills. Measured before the lock went in: eighteen rounds in
   # twenty left the account holding nothing at all.
   defp refill(account, opts) do
     if Keyword.get(opts, :refill, true) and remaining(account) == 0,
@@ -121,9 +121,9 @@ defmodule Ithibati.Identity.RecoveryCodes do
   # Public for `Ithibati.Identity.Grant`, which writes through the transaction's own repo. It takes
   # no lock: the caller is provisioning an account nobody else has a handle on yet.
   #
-  # One statement rather than one per code: measured at 0.29 ms against 1.10 ms, and the round trips
+  # One statement, not one per code: measured at 0.29 ms against 1.10 ms, and the round trips
   # a database on another host charges a full network round for. `insert_all/2` fills the primary
-  # key and skips the changeset, which has nothing to do here — both fields are built in this
+  # key and skips the changeset, which has nothing to do here. Both fields are built in this
   # function.
   def issue!(repo, account, opts \\ []) do
     account = Config.account!(account)
@@ -147,7 +147,7 @@ defmodule Ithibati.Identity.RecoveryCodes do
   defp replace(account, opts), do: issue!(Config.repo(), account, opts)
 
   # One statement for the owner and the lock: the digest rides a sub-`SELECT`, which Postgres does
-  # not lock rows through — so the code row stays free while the account row is taken, which is the
+  # not lock rows through, so the code row stays free while the account row is taken. That is the
   # ordering the paragraph in `redeem/2` is about.
   defp lock_owner(digest) do
     owner = from(r in RecoveryCode, where: r.code_hash == ^digest, select: r.user_id)
