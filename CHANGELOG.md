@@ -10,6 +10,14 @@ that is the one thing you have to act on: it means writing a migration of your o
 
 ## Unreleased
 
+## [0.1.3] - 2026-09-16
+
+### Fixed
+
+- Naming a handler no longer makes a consumer's router compile-depend on it. Editing the handler,
+  or anything the handler reaches, rebuilt the router and everything downstream of it. Reported by
+  a consumer whose own build refuses such an edge.
+
 ## [0.1.2] - 2026-09-16
 
 What a consumer found putting their application on 0.1.1.
@@ -83,6 +91,7 @@ their account may then do.
   or an invitation table's `token_hash` — and says where the column belongs, rather than failing
   with Postgres's `undefined_column`.
 
+[0.1.3]: https://github.com/oliverandrich/ithibati/releases/tag/v0.1.3
 [0.1.2]: https://github.com/oliverandrich/ithibati/releases/tag/v0.1.2
 [0.1.1]: https://github.com/oliverandrich/ithibati/releases/tag/v0.1.1
 [0.1.0]: https://github.com/oliverandrich/ithibati/releases/tag/v0.1.0
