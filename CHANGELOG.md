@@ -10,6 +10,21 @@ that is the one thing you have to act on: it means writing a migration of your o
 
 ## Unreleased
 
+## [0.1.1] - 2026-09-16
+
+Documentation only. Nothing the library does has changed.
+
+### Changed
+
+- The README, the guides, the moduledocs and the comments read more plainly.
+- The documentation site carries an OpenGraph image, so a link to it shows a card.
+
+### Fixed
+
+- Four comments that described the code wrongly: `Ithibati.Config`'s repo check named an error
+  that would never appear, `Ithibati.Doctor`'s callback list was described as read from the
+  behaviour when it is a hand-written copy, and two counts were off by one.
+
 ## [0.1.0] - 2026-09-15
 
 First release. Ithibati answers who someone is and how they prove it, and nothing about what
@@ -46,4 +61,5 @@ their account may then do.
   or an invitation table's `token_hash` — and says where the column belongs, rather than failing
   with Postgres's `undefined_column`.
 
+[0.1.1]: https://github.com/oliverandrich/ithibati/releases/tag/v0.1.1
 [0.1.0]: https://github.com/oliverandrich/ithibati/releases/tag/v0.1.0

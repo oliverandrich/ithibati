@@ -37,8 +37,8 @@ jobs:
           --health-retries 5
 
     steps:
-      # `fetch-depth: 0`, because `release-check` asks `git describe --exact-match --tags HEAD`,
-      # and a shallow checkout has no tags to describe against.
+      # `fetch-depth: 0`, because `release-check` reads the tags: `git tag --points-at HEAD`, and
+      # the `git ls-remote` comparison against it. A shallow checkout carries none.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
