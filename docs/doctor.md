@@ -41,10 +41,10 @@ at run time. Six have nowhere else to live.
   `table_prefix:` *after* migrating, this is where you find out.
 
   Two different prefixes meet here, and the check involves both. `config :ithibati,
-  table_prefix:` is part of the **table name** — it is what makes the tables `ithibati_keys` and
+  table_prefix:` is part of the **table name**. It is what makes the tables `ithibati_keys` and
   friends, and `"auth"` would make them `auth_keys`. A Postgres **schema** prefix is the other
   one, and the doctor looks in whichever your repo migrates into by default. So if you migrate
-  into a schema chosen per run — `mix ecto.migrate --prefix tenant1` — it says which schema it
+  into a schema chosen per run, as `mix ecto.migrate --prefix tenant1` does, it says which schema it
   looked in, and you are being told about tables it was not looking at.
 - **`users_key_type` matches the real primary key** of your account table, and that column
   carries the unique index a foreign key needs. The migration checks this while it builds and
@@ -69,7 +69,7 @@ at run time. Six have nowhere else to live.
 One is about something that looks like configuration and is not. `wax_` reads
 `config :wax_, rp_id:` and `origin:` as its own defaults, and Ithibati never lets them be
 reached: both are passed per call, so one application can serve a browser and a native client
-with different answers. Setting them configures nothing here — and they sit in exactly the place
+with different answers. Setting them configures nothing here, and they sit in exactly the place
 you would look, which is why the doctor says so.
 
 ## What it needs

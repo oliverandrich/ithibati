@@ -34,15 +34,15 @@ report, and that is all they do.
 
 Each module carries its own reasoning, published here and shown by `mix credo explain`.
 
-`NoInternalCalls` leaves reflection alone — `__schema__/1`, `__struct__/0` and their kind — but
-not an underscored name Ithibati marked itself, because the underscores say nothing about who
+`NoInternalCalls` leaves reflection alone. That means `__schema__/1`, `__struct__/0` and their
+kind, but not an underscored name Ithibati marked itself, because the underscores say nothing about who
 marked it. Two things it cannot see: a module whose documentation chunk was stripped at build
 time answers nothing, so the rule reports nothing about it and a clean run looks the same; and a
-bare name that two modules in one file alias differently is dropped rather than guessed at, so
+bare name that two modules in one file alias differently is dropped instead of guessed at, so
 that file loses a finding instead of gaining a wrong one.
 
-`NoDirectTableAccess` recognises one of our schemas wherever it is read — piped into a repo,
-joined into somebody else's query, passed to a repo called anything at all — and one of our
+`NoDirectTableAccess` recognises one of our schemas wherever it is read: piped into a repo,
+joined into somebody else's query, passed to a repo called anything at all. It also recognises one of our
 tables named as a string, resolved against the prefix you configured. It cannot see SQL inside a
 string: `Repo.query!("select … from ithibati_sessions")` passes, and nothing will tell you.
 

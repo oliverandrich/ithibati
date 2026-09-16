@@ -26,7 +26,7 @@ browser, verify the answer with
 it is. [`key_attrs/2`](`Ithibati.Identity.Passkeys.key_attrs/2`) is how you put a name on it first
 — the snippet above passes what the
 verification returned, with a label the person chose.
-[`with_key_and_codes/3`](`Ithibati.Identity.Grant.with_key_and_codes/3`) is the other one — it
+[`with_key_and_codes/3`](`Ithibati.Identity.Grant.with_key_and_codes/3`) is the other one. It
 builds the account; `add_key/2` writes one row onto
 an account that already exists.
 
@@ -73,15 +73,15 @@ if you want one. A passkey enrolled without one shows up in
 
 `add_key/2` answers `{:error, :already_enrolled}` when that credential is on the account
 already. You get the same answer when it sits on *somebody else's* account, because a credential
-identifies a device rather than a person.
+identifies a device, not a person.
 
 It should be rare here, and that is worth one sentence: when `registration_subject/2` hands back
-the account rather than an identifier — which it can, once the account exists —
+the account instead of an identifier, which it can once the account exists,
 `registration_options/3` puts that account's credentials in `excludeCredentials`, and a browser
 that honours it never offers an authenticator it has already enrolled. Registering a *first*
 passkey has no account to name, so that list is empty and the unique index is what answers.
 
-If the account is deleted between the ceremony and the write, `add_key/2` raises rather than
+If the account is deleted between the ceremony and the write, `add_key/2` raises instead of
 returning an error, the same way minting a token does.
 
 Every function here is scoped to the account you pass. `list_keys/1` returns only that account's
@@ -109,4 +109,4 @@ Passkeys.delete_key(account, id, last: :allow)
 
 The refusal also holds when two passkeys are deleted at the same moment, which takes more than
 counting rows: the account's row is locked first, so the second deletion sees what the first
-committed rather than the snapshot it started from.
+committed and not the snapshot it started from.

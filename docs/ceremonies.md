@@ -18,7 +18,7 @@ you mount them in:
 | `POST /recovery` | spends a recovery code, then calls your handler |
 
 Under `scope "/auth"` those become `/auth/registration/challenge` and so on, which is what the
-hook element's `data-` attributes carry. The suffixes are this library's rather than yours, so
+hook element's `data-` attributes carry. The suffixes are this library's, not yours, so
 there is no way to wire half a ceremony, and they are meant to stay put: changing one breaks
 every mounted consumer at once.
 
@@ -39,12 +39,12 @@ scope "/auth" do
 end
 ```
 
-Give them their own pipeline rather than your `:browser` one. Every plug in it is load-bearing.
+Give them their own pipeline, not your `:browser` one. Every plug in it is load-bearing.
 The challenge waits in the session between the two round-trips, so something has to have fetched
-one. `protect_from_forgery` is what the hook answers with the `x-csrf-token` header — a JSON body
+one. `protect_from_forgery` is what the hook answers with the `x-csrf-token` header. A JSON body
 is not exempt. And the format list is `json`, which is what these endpoints speak.
 
-`:rp_name` is the name a passkey dialog shows. Two more options belong to a mount rather than to
+`:rp_name` is the name a passkey dialog shows. Two more options belong to a mount and not to
 Ithibati: `:user_verification`, whether the authenticator must confirm who is holding it, and
 `:seconds`, how long a challenge stays acceptable. They default to `"preferred"` and sixty.
 
@@ -54,9 +54,9 @@ once a credential verifies, and what is issued after an assertion. A session coo
 answer; a bearer token for an extension or a native client is another, and choosing one for you
 would rule out the other.
 
-`/recovery` is the odd one out, and it earns its place here rather than in your own controller:
+`/recovery` is the odd one out, and it earns its place here instead of in your own controller:
 it ends where a verified assertion ends, at an account whose holder has proved who they are. It
-takes a `code`, spends it, and calls `c:Ithibati.Web.Handler.recovered/3` — a separate callback
+takes a `code`, spends it, and calls `c:Ithibati.Web.Handler.recovered/3`. That is a separate callback
 from [`authenticate/2`](`c:Ithibati.Web.Handler.authenticate/2`) because it carries a third thing,
 the fresh batch that a spent *last* code
 produces and that nobody can be shown twice. There is no challenge and no authenticator; the
@@ -64,14 +64,14 @@ whole exchange is one request.
 
 ### The relying party
 
-Ithibati takes `rp_id` and `origin` per call, never from its own configuration — that is what
+Ithibati takes `rp_id` and `origin` per call, never from its own configuration. That is what
 lets one deployment answer differently for a browser page and an extension. What the routes hand
 it by default is derived from your endpoint's configured `:url`, not from the connection: behind
 a proxy that terminates TLS those two disagree, and the browser signs what it saw.
 
 [`relying_party/2`](`c:Ithibati.Web.Handler.relying_party/2`) is the optional callback that
 changes it. A browser served from your own URL
-wants the default, so the usual implementation adds to it rather than replacing it — the same
+wants the default, so the usual implementation adds to it instead of replacing it. The same
 passkey has to keep working in the browser:
 
 ```elixir
@@ -81,16 +81,16 @@ def relying_party(_conn, {rp_id, origin}), do: {rp_id, [origin | @extension_orig
 Implement it when the client's origin is not your URL. A native app's assertion arrives with the
 origin of an associated domain, an extension's with the origin of the extension, and one
 relying-party id serves all of them. Which of those you accept is your decision, which is why you
-are asked rather than configured.
+are asked, never configured.
 
 The origin may be a list, and for an extension it usually is: the same extension has a different
-stable origin in each browser — `chrome-extension://<id>` and `moz-extension://<hash>` — and an
+stable origin in each browser, `chrome-extension://<id>` and `moz-extension://<hash>`, and an
 assertion carries whichever one it was made at.
 
 **Return values from a fixed set.** If you read the `origin` request header and hand it back, the
 check compares the client's claim against itself and matches whatever arrives: a credential
 registered for your site could then be asserted from any page its holder visits. Nothing fails
-when you get this wrong — not in production, not in your tests — because the origin always
+when you get this wrong, because the origin always
 matches.
 
 ### Getting it right in production
@@ -113,20 +113,19 @@ follow, and the last one is the expensive one:
 - **`www.example.com` and `example.com` are two relying parties**, as far as an authenticator is
   concerned. Pick one and redirect the other, the way you would for cookies.
 - **Changing the relying-party id invalidates every passkey ever registered.** They are bound to
-  it. Moving from `example.com` to `example.dev` is not a redirect and a DNS change — every
+  it. Moving from `example.com` to `example.dev` is not a redirect and a DNS change. Every
   account has to enrol again, and recovery codes are how they get in to do it. If you might
   move, registering under the apex from the start is the cheap insurance.
 
 One property of the ceremony is easy to lose: a challenge is single-use, and **spending it is
-the caller's**. The routes do it — `Ithibati.Web.PasskeyController` deletes the challenge from
-the session the first time a verification is attempted, succeeded or not — because a challenge
+the caller's**, because a challenge
 lives wherever the caller put it and nothing in `Ithibati.Identity.Passkeys` can reach it there.
 Drive the ceremony yourself and that becomes yours to do.
 
 ### What a refusal says
 
 Every failure reaches the browser as `{"error": "<code>"}` with a 4xx, and the hook pushes it to
-your LiveView as `ithibati:failed` with that code **as a string** — your handler's atoms are
+your LiveView as `ithibati:failed` with that code **as a string**. Your handler's atoms are
 stringified on the way out. Turning them into sentences is yours; a library that shipped the
 wording would be choosing the tone of somebody else's product.
 
@@ -135,14 +134,14 @@ What Ithibati itself can send:
 | Code | Means |
 | --- | --- |
 | `no_credentials` | nobody has enrolled a passkey on this instance yet |
-| `no_challenge` | the session holds no challenge — it expired, or was already spent |
+| `no_challenge` | the session holds no challenge. It expired, or was already spent |
 | `malformed_credential` | the posted credential is not the shape WebAuthn describes |
 | `not_discoverable` | the authenticator kept the credential to itself, so sign-in could never find it |
 | `unknown_credential` | the assertion names a credential this instance does not have |
 | `no_attested_credential` | the attestation carried no credential to store |
 | `credential_id_too_long` | longer than the column takes |
 | `already_enrolled` | that authenticator is already on an account |
-| `invalid_code` | a recovery code nobody holds, or one already spent — deliberately the same answer |
+| `invalid_code` | a recovery code nobody holds, or one already spent. The same answer on purpose |
 | `verification_failed` | the catch-all, when a step answered something that is not an atom |
 
 The browser half adds `ceremony_cancelled` when somebody dismisses the passkey prompt,
@@ -183,7 +182,7 @@ fails visibly.
 `Gate.log_in(conn, account)` is what a handler's `authenticate/2` usually ends with. It stores a
 session token under Ithibati's key, after renewing the session against fixation.
 
-[`Gate.log_out/1`](`Ithibati.Web.Gate.log_out/1`) revokes the token rather than merely forgetting
+[`Gate.log_out/1`](`Ithibati.Web.Gate.log_out/1`) revokes the token instead of merely forgetting
 it, so a copied cookie stops
 working for new requests and new mounts. It also ends the sockets that session opened, so a
 LiveView left running in another tab does not go on answering as somebody who signed out. That
@@ -197,7 +196,7 @@ socket "/live", Phoenix.LiveView.Socket,
 
 That session is where LiveView looks for the socket's `id`. Without the pubsub server the gate
 writes no socket id and says nothing, and you are back to the first half alone. Without the
-`connect_info`, nothing subscribes and the broadcast reaches nobody — no error, just a socket
+`connect_info`, nothing subscribes and the broadcast reaches nobody. No error, just a socket
 that outlives its session.
 
 Signing in clears the session and the CSRF token with it, so **the flow has to end in a full page
@@ -236,7 +235,7 @@ config :ithibati, session_validity: {30, :day}
 The units are `:second`, `:minute`, `:hour`, `:day` and `:week`. `:month` and `:year` are missing
 because neither has a fixed length, and a validity that moves with the calendar is not what
 anybody means by ninety days. A value this library cannot read is refused where a session is
-minted and where one is read, so a broken setting fails at the sign-in rather than quietly
+minted and where one is read, so a broken setting fails at the sign-in instead of quietly
 letting everybody stay signed in forever. A page nobody is signed in to is unaffected.
 
 There is no "sign out everywhere". `delete_session_token/1` revokes the one token you hand it,
@@ -247,8 +246,8 @@ MyApp.Repo.delete_all(Ecto.assoc(account, :sessions))
 ```
 
 `Ithibati.Credo.NoDirectTableAccess` leaves that line alone, because it reaches the rows
-through an association on an account this library handed you rather than through the table.
-Naming the schema — `delete_all(Ithibati.Session)` — is what the rule reports.
+through an association on an account this library handed you, not through the table. Naming the
+schema, `delete_all(Ithibati.Session)`, is what the rule reports.
 
 This table holds sessions and nothing else. An API token for an extension or a native client is a
 different object, and building it is yours or another library's.
@@ -278,17 +277,17 @@ element, because you chose the scope they are mounted under:
 ```
 
 Set the pair for each ceremony that element starts. A missing one is reported as
-`missing_data_registration_url` rather than as a ceremony that failed.
+`missing_data_registration_url`, not as a ceremony that failed.
 
 Push `ithibati:register`, `ithibati:authenticate` or `ithibati:recover` from your LiveView to
-start one — that is where the identity fields are and where you have validated them. The hook pushes back
+start one. That is where the identity fields are and where you have validated them. The hook pushes back
 `ithibati:done` with whatever your handler answered, or `ithibati:failed` with a reason. The one
 answer it acts on itself is `%{redirect: …}`: a handler that sends somewhere, such as the page
-that shows the recovery codes, is obeyed rather than reported. Everything in between is a `fetch`
-to the endpoints rather than a LiveView event, because signing in ends in a session cookie and
+that shows the recovery codes, is obeyed and not reported. Everything in between is a `fetch`
+to the endpoints and not a LiveView event, because signing in ends in a session cookie and
 only a controller can set one.
 
-This half runs on somebody else's machine, so it is driven rather than described. Both example
+This half runs on somebody else's machine, so it is driven and not described. Both example
 applications carry Wallaby feature tests in `test/features/` that put this file in a real browser
 against a real WebAuthn ceremony, including the reasons the hook distinguishes when one does not
 finish. They are part of each example's own `mix test`, so CI runs them on every push. Chromium
@@ -315,7 +314,7 @@ import {hooks as ithibatiHooks} from "phoenix-colocated/ithibati"
 
 Then build Ithibati again with `mix deps.compile ithibati --force`. Mix does not rebuild a
 dependency because an environment variable changed, and the manifest is only written while
-compiling — without that step the import resolves to nothing and the bundler says so without
+compiling. Without that step the import resolves to nothing and the bundler says so without
 saying why.
 
 If you are not using LiveView, import `register` and `authenticate` from the same package instead
@@ -328,7 +327,7 @@ Everything above is Phoenix, which is the ordinary case. Without it the ceremony
 calls; what the routes add is the HTTP around them, somewhere to keep the challenge, and a
 handler to dispatch to. You now pass the relying party yourself, where the routes were deriving
 it from your endpoint. This is the route for a native client, a browser extension, or a server that is
-not Phoenix, and it is a first-class route rather than an afterthought.
+not Phoenix, and it is a first-class route, not an afterthought.
 
 Registering, with `alias Ithibati.Identity.Passkeys`:
 
@@ -360,8 +359,8 @@ enrolled one, which is the case a sign-in page has to say something about.
 Three things the controller does that are now yours:
 
 - **Keep the challenge between the two requests.** The controller puts it in the session. A
-  client that has no cookie needs something else — a row, a cache entry, or a signed value it
-  hands back — and whatever it is has to be spent once and not replayable.
+  client that has no cookie needs something else: a row, a cache entry, or a signed value it
+  hands back. Whatever it is has to be spent once and not replayable.
 - **Decide what a verification issues.**
   [`verify_authentication/2`](`Ithibati.Identity.Passkeys.verify_authentication/2`) answers the
   account and stops there. `Ithibati.Identity.Sessions.generate_session_token/1` is one answer,

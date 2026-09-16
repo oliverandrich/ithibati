@@ -14,7 +14,7 @@ RecoveryCodes.redeem(code)          # {:ok, account, fresh_or_nil} | {:error, :i
 The rows hold sha256 digests. Nothing recovers the plaintext afterwards, so the moment the codes
 are issued is the only moment anybody can write them down. Say that on the page that shows them.
 
-A code is ten random bytes in lower-case base32 — sixteen characters from an alphabet of
+A code is ten random bytes in lower-case base32. Sixteen characters from an alphabet of
 thirty-two, so eighty bits, which is why guessing is not the threat model. Reading over
 somebody's shoulder is.
 
@@ -31,7 +31,7 @@ RecoveryCodes.regenerate(account, count: 20)
 `count:` defaults to twelve and takes any non-negative integer. Anything else raises
 `ArgumentError`.
 
-The first batch usually arrives with the account rather than from a separate call.
+The first batch usually arrives with the account, not from a separate call.
 `Ithibati.Identity.Grant.with_key_and_codes/3` appends both the passkey and the codes to the
 transaction that creates it, so an account never exists without a way back in. [Invitations, and
 the first account](invitations.md) shows that composition.
@@ -43,7 +43,7 @@ account that held it. It is a sign-in route, not
 only a repair: what you do with the account afterwards is what you do after a successful
 assertion.
 
-It returns three elements rather than two:
+It returns three elements, not two:
 
 ```elixir
 case RecoveryCodes.redeem(code) do
@@ -72,7 +72,7 @@ the first committed and the refill happens once.
 
 [`ithibati_routes/1`](`Ithibati.Web.Router.ithibati_routes/1`) mounts a fifth endpoint, `POST
 /recovery`, for exactly this. It takes a
-`code`, spends it, and calls `c:Ithibati.Web.Handler.recovered/3` on your handler — the same
+`code`, spends it, and calls `c:Ithibati.Web.Handler.recovered/3` on your handler, the same
 place a verified assertion arrives, reached the other way:
 
 ```elixir
@@ -91,12 +91,12 @@ end
 The two clauses are the whole of it: no fresh batch, sign them in the way you always do; a fresh
 batch, show it once on the page you already have from registration.
 
-`POST /recovery` is unauthenticated by nature — somebody who cannot sign in is the person using
-it — so rate limiting is yours, the way it is for your sign-in page. Ithibati refuses an unknown
+`POST /recovery` is unauthenticated by nature, because somebody who cannot sign in is the
+person using it, so rate limiting is yours the way it is for your sign-in page. Ithibati refuses an unknown
 code and a spent one identically and counts nothing.
 
 The browser half is a form and a `push_event`, because the endpoint answers JSON and sets a
-session cookie — which a LiveView cannot do:
+session cookie, which a LiveView cannot do:
 
 ```elixir
 def handle_event("recover", %{"code" => code}, socket) do

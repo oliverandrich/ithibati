@@ -64,17 +64,6 @@ in a real browser. They are the only place `priv/static/ithibati.js` is executed
 - **Comment in this order: name it → extract it → comment it.** `@moduledoc`/`@doc` are
   wanted; a `#` is the exception and carries a *why*, never a *what*. No change history in
   `lib/` or `test/`: that belongs in the tracker and the commit message.
-- Write out technical terms; do not invent pictures for them. *Foreign key*, *write path*,
-  *constraint*, *boundary* — not doors, shelves or seams.
-- **Write like a developer explaining the thing, not like an essayist.** Documentation,
-  moduledocs and comments are all covered. Plain declarative sentences: subject, verb, object.
-  Name the subject — *Ithibati*, *the migration*, *you* — rather than circling it with *this
-  library* every other sentence, and keep one idea per sentence. Six habits, each of which has
-  had to be undone here: inversion for emphasis; an em-dash apposition doing the work of a main
-  clause; antithesis and parallel
-  construction; the aphoristic closing sentence; nominalisation; withholding the subject for
-  effect. The reason is not taste. Prose in this shape reads as generated, a reader discounts it,
-  and the content is what pays for the style.
 - **A comment that sends a reader to documentation names the file, never "the README".** A
   filename is checkable and a prose reference is not: `test/documentation_pointers_test.exs`
   fails on a `docs/…md` that does not exist. Write a link inside a published moduledoc as

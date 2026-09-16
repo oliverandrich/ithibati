@@ -20,7 +20,7 @@ $ mix ecto.create
 ```
 
 Both example applications in the repository do everything below, and CI drives them in a real
-browser. If you would rather read finished code, start there — this page is the
+browser. If you would rather read finished code, start there. This page is the
 open-registration one, spelled out.
 
 ## 1. Add the dependency
@@ -44,14 +44,14 @@ config :ithibati,
   users_key_type: :id
 ```
 
-Put this in `config/config.exs`, above the `import_config` line at the bottom — that line has to
-stay last, and `users_key_type` and `table_prefix` are read at compile time, so neither can live
-in `config/runtime.exs`.
+Put this in `config/config.exs`, above the `import_config` line at the bottom. That line has to
+stay last. `users_key_type` and `table_prefix` are read at compile time, so neither can live in
+`config/runtime.exs`.
 
 `users_key_type` is the primary-key type of your users table, and Ithibati's foreign keys use it.
 `:id` is what `mix phx.new` generates; write `:binary_id` if you asked for binary ids, which is
 also Ithibati's own default. If the table disagrees with what you configured, the migration
-refuses rather than building something that cannot be referenced — `users.id is bigint` against a
+refuses instead of building something that cannot be referenced. `users.id is bigint` against a
 configured `:binary_id` is the message you get.
 
 ## 3. The account schema
@@ -99,13 +99,13 @@ use User, identifier: :handle
 ```
 
 This walkthrough uses a username, because that is what Ithibati can support end to end. It
-cannot prove that somebody owns an email address — it sends no mail — so an application keyed by
-an address is trusting whatever was typed in. That is a normal thing to do, and it is why
-[`email_format/0`](`Ithibati.Schema.Identifier.email_format/0`) ships; it is just not what a first
+cannot prove that somebody owns an email address, because it sends no mail. An application keyed
+by an address is trusting whatever was typed in. That is a normal thing to do, and it is why
+[`email_format/0`](`Ithibati.Schema.Identifier.email_format/0`) ships. It is not what a first
 walkthrough should quietly assume.
 
 `format:` is the regex the identifier has to match, and two come with the library. Leave the
-option out and `identifier_changeset/2` still trims the value, downcases it and requires it — it
+option out and `identifier_changeset/2` still trims the value, downcases it and requires it. It
 just does not check a shape.
 
 [`username_format/0`](`Ithibati.Schema.Identifier.username_format/0`) is Mastodon's rule for a
@@ -116,9 +116,9 @@ and hyphens would let `alice.smith` register next to `alicesmith`, and character
 would let a Cyrillic а register next to a Latin a. Both pairs look identical on screen.
 
 `email_format/0` is the pattern the HTML specification publishes for `<input type=email>`, not
-RFC 5322. An identifier here is a credential rather than a mailbox, so the full grammar — quoted
-local parts with spaces in them — would be a hazard rather than a feature. It accepts
-`you@localhost` and refuses `"a b"@example.com`.
+RFC 5322. An identifier here is a credential, not a mailbox. The full grammar allows quoted
+local parts with spaces in them, which is a hazard here. The pattern accepts `you@localhost` and
+refuses `"a b"@example.com`.
 
 Your own pattern is as welcome as either of them, written inline or named:
 
@@ -141,17 +141,17 @@ bypasses the changeset stores whatever it is given.
 > #### Should the identifier column be `citext`? {: .info}
 >
 > You do not need it. Lowercasing happens before anything reaches the database, so an ordinary
-> unique index already does the job — and `citext` is an extension, which `CREATE EXTENSION
-> citext` needs rights for that a hosted database does not always grant.
+> unique index already does the job. `citext` is also an extension, and `CREATE EXTENSION
+> citext` needs rights a hosted database does not always grant.
 >
 > They are also not the same thing, and the difference is what ends up stored. `citext` keeps
 > what somebody typed and compares regardless of case; lowercasing keeps only the lowered
 > value. So if you want `AdaLovelace` on a page, that is display: put it in a field of your own,
 > or define `passkey_display_name/1` as shown below.
 >
-> Choose `citext` anyway when the reason is yours rather than Ithibati's — writes that bypass
-> the changeset, or rows already in mixed case. Then pass `unique_index: false` and build the
-> index yourself, which is what that option is for.
+> Choose `citext` anyway when the reason is yours and not Ithibati's. Writes that bypass the
+> changeset, say, or rows already in mixed case. Then pass `unique_index: false` and build the index yourself,
+> which is what that option is for.
 
 If a passkey dialog should show something friendlier than the identifier, define this:
 
@@ -164,7 +164,7 @@ shows the identifier instead.
 
 ## 4. The migration
 
-A `phx.new` application has no `users` table — `priv/repo/migrations/` is empty — so you write
+A `phx.new` application has no `users` table. `priv/repo/migrations/` is empty, so you write
 that one first. It is entirely yours; Ithibati only needs the identifier column to be in it:
 
 ```elixir
@@ -183,7 +183,7 @@ end
 ```
 
 `:name` is there because the schema in step 3 declares it; drop it if yours does not. The
-timestamps match that schema, which uses `:utc_datetime_usec` — Ithibati's own tables do too, and
+timestamps match that schema, which uses `:utc_datetime_usec`. Ithibati's own tables do too.
 Ecto raises if a schema and its table disagree about the type.
 
 Then Ithibati's own migration, which you write and it fills in:
@@ -206,9 +206,9 @@ It creates `ithibati_keys`, `ithibati_recovery_codes`, `ithibati_sessions` and
 index on your identifier column, because a changeset cannot keep an identifier unique against a
 concurrent insert. Only the database can.
 
-Deleting an account takes its passkeys, its recovery codes and its sessions with it —
-`on_delete: :delete_all` — so your own delete path needs no cleanup here. The bootstrap row is
-the exception: its `user_id` is nilified rather than the row removed, because what it records is
+Deleting an account takes its passkeys, its recovery codes and its sessions with it. That is
+`on_delete: :delete_all`, so your own delete path needs no cleanup here. The bootstrap row is
+the exception. Its `user_id` is nilified and the row stays, because what it records is
 that this instance *was* set up, and that stays true after the account that did it is gone.
 
 The identifier column itself is yours. Add it in the `create table` that builds your users table,
@@ -220,7 +220,7 @@ alter table(:users) do
 end
 ```
 
-> #### Wait — why does Ithibati index this column but not create it? {: .info}
+> #### Why does Ithibati index this column but not create it? {: .info}
 >
 > Because a rollback can take an index back and cannot take a column back.
 > [`down/1`](`Ithibati.Migration.down/1`) drops the
@@ -228,9 +228,9 @@ end
 > account with it, in a table that is yours. So Ithibati never creates one, and never has to
 > decide whether to drop it.
 >
-> Two smaller reasons sit on top. It could not guess the type — `citext` is a normal choice
-> here — and `null: false` cannot be added to a table that already has rows without a default or
-> a backfill, so the column it made would be missing the one constraint you wanted.
+> Two smaller reasons sit on top. It could not guess the type, since `citext` is a normal
+> choice here. And `null: false` cannot be added to a table that already has rows without a
+> default or a backfill, so the column it made would be missing the one constraint you wanted.
 >
 > The index is worth the asymmetry because nothing else can keep the identifier unique: two
 > registrations at the same moment both pass the changeset and both insert. A forgotten index is
@@ -264,8 +264,8 @@ it yourself and Ithibati creates it under that name:
 use User, identifier: :username, constraint_name: :users_username_uniq
 ```
 
-If you would rather build the index yourself — a partial index, an expression, `citext`, a
-composite with a tenant column — say so, and Ithibati stops creating one. It then checks that a
+You may want to build the index yourself. A partial index, an expression, `citext`, a composite
+with a tenant column. Say so, and Ithibati stops creating one. It then checks that a
 unique index covering that column exists and refuses the migration if it does not:
 
 ```elixir
@@ -277,7 +277,7 @@ use User, identifier: :username, unique_index: false
 The schema is versioned, and `version: 1` is what this release builds. When a later release of
 Ithibati adds to it, the changelog says so and names the new number;
 `Ithibati.Migration.current_version/0` answers with the one your installed copy knows. Until that
-happens there is nothing to do — the migration you already wrote stays pinned at 1 and does not
+happens there is nothing to do. The migration you already wrote stays pinned at 1 and does not
 run again.
 
 Upgrading is a second migration of your own, saying where it starts:
@@ -297,8 +297,8 @@ register, what an account is made of, what a successful ceremony issues, and wha
 somebody signs in with a recovery code instead. Four callbacks, and `Ithibati.Web.Handler`
 documents each one.
 
-It lives under `MyAppWeb` rather than in the context, because every callback takes a `conn` and
-hands one back — it sets the session and answers the request. It is the same place
+It lives under `MyAppWeb`, not in the context, because every callback takes a `conn` and
+hands one back. It sets the session and answers the request. It is the same place
 `phx.gen.auth` puts `MyAppWeb.UserAuth`. What it does *with* the account, once a credential has
 verified, is context work and can move into one of yours; this walkthrough keeps it inline so
 the whole flow is on one page.
@@ -371,8 +371,8 @@ end
 ```
 
 [`recovered/3`](`c:Ithibati.Web.Handler.recovered/3`) is the one for somebody signing in with a recovery code instead of a passkey. Its two clauses are the whole of it: no fresh batch, sign them in as usual; a fresh
-batch — which only happens when the code just spent was their last — show it once, on the page
-step 6 builds. It is a separate callback rather than a flag on
+batch, show it once on the page step 6 builds. That third argument is a fresh batch only when
+the code just spent was their last. It is a separate callback, not a flag on
 [`authenticate/2`](`c:Ithibati.Web.Handler.authenticate/2`) because that
 batch is the only copy there will ever be, and a signature with nowhere to put it is a signature
 that loses it.
@@ -380,8 +380,8 @@ that loses it.
 Three more things in there are worth pausing on.
 
 [`registration_subject/2`](`c:Ithibati.Web.Handler.registration_subject/2`) may answer with the
-identifier or with the account itself — here it is
-the identifier, because the account does not exist yet. Hand back an account when there is one
+identifier or with the account itself. Here it is the identifier, because the account does not
+exist yet. Hand back an account when there is one
 (enrolling a second device), and
 [`registration_options/3`](`Ithibati.Identity.Passkeys.registration_options/3`) can then list its
 existing credentials
@@ -390,25 +390,25 @@ in `excludeCredentials`, so a browser does not offer an authenticator that is al
 It is asked **before** a challenge is minted, which is why an identifier your schema could never
 store is refused there. Approving it would mean a passkey dialog, a
 credential the authenticator then keeps, and a refusal only after all of that. It asks the
-changeset rather than repeating the pattern, and answers with the normalised value, so the name
+changeset instead of repeating the pattern, and answers with the normalised value, so the name
 on the dialog is the name that gets stored.
 
 [`register/4`](`c:Ithibati.Web.Handler.register/4`) composes.
 [`Grant.with_key_and_codes/3`](`Ithibati.Identity.Grant.with_key_and_codes/3`) appends the passkey
 and the recovery codes
 to the transaction that creates the account, so an account never exists without a way back in.
-Your own steps — a membership row, a default project — go into the same `Multi` and commit or
-roll back with it.
+Your own steps go into the same `Multi` and commit or roll back with it. A membership row, a
+default project, whatever the account needs.
 
 It reads the account from the step that made it, expecting one called `:account`; pass
 `account: :person` if yours is named something else. It adds two steps of its own, `:passkey` and
-`:recovery_codes`, so do not use those names — the second is the one you destructure to show the
+`:recovery_codes`, so do not use those names. The second is the one you destructure to show the
 codes.
 
 Its error branch asks `Ithibati.Schema.User.identifier_taken?/1`, because a name somebody else
 already has and a name that is not allowed both arrive as `{:error, changeset}` and need
 different words on screen. Written by hand, that check is a scan for `constraint: :unique`, which
-also matches your own unique columns — a slug, a tenant key — and reports a collision on one of
+also matches your own unique columns, a slug or a tenant key, and reports a collision on one of
 those as the address being taken. Ithibati named the identifier field, so it knows which error
 belongs to it. Ask after the insert: a constraint error only exists once the database has refused
 a write.
@@ -479,7 +479,7 @@ end
 ```
 
 The template belongs at `lib/my_app_web/controllers/session_html/recovery_codes.html.heex`.
-Leaving the module out compiles cleanly and passes `mix ithibati.doctor` — it only fails at the
+Leaving the module out compiles cleanly and passes `mix ithibati.doctor`. It only fails at the
 first successful registration, when somebody has already created a passkey and their codes have
 already been issued.
 
@@ -491,8 +491,8 @@ off.
 ## 7. The routes
 
 Four pieces go into the router `phx.new` generated: the import, the gate in `:browser`, a second
-pipeline, and the scopes. Everything the generator put there — `get "/", PageController, :home`,
-the `dev_routes` block with LiveDashboard and the mailbox preview — stays. Shown whole so the
+pipeline, and the scopes. Everything the generator put there stays: `get "/", PageController`,
+and the `dev_routes` block with LiveDashboard and the mailbox preview in it. Shown whole so the
 order is visible:
 
 ```elixir
@@ -580,7 +580,7 @@ config :esbuild,
   ]
 ```
 
-The alias path is resolved from `cd:`, which is your `assets/` directory — so it is your path to
+The alias path is resolved from `cd:`, which is your `assets/` directory. So it is your path to
 the library with `assets/` climbed out of first. Both example applications carry exactly this
 line, and say why in a comment beside it. Taking Ithibati from Hex needs none of it.
 
@@ -604,7 +604,7 @@ button.
 >
 > There is not one, and this is the part that surprises people coming from passwords.
 >
-> A sign-in challenge names no credential — `allowCredentials` is sent empty — so the browser
+> A sign-in challenge names no credential. `allowCredentials` is sent empty, so the browser
 > offers whichever passkeys it holds for your site and the person picks one. There is nothing to
 > type, so there is nothing to submit. A button is the whole interface, and it works on a device
 > where nobody has ever typed their username.
@@ -693,7 +693,7 @@ end
 > #### Why does the registration form look like that? {: .info}
 >
 > It lives in a LiveView of yours, and here in the same one as the sign-in button, because one
-> page is shorter to walk through. Two separate routes work exactly as well — `/register` and
+> page is shorter to walk through. Two separate routes work exactly as well: `/register` and
 > `/sign-in`, each with its own copy of the hook element below, and nothing else shared.
 >
 > What is unusual is that there is no `to_form/2` and no changeset, because `phx-submit` does
@@ -711,7 +711,7 @@ The empty `<div id="passkey">` is the hook. It renders nothing, drives all three
 reads
 the endpoint paths off its own attributes, because you chose the scope they are mounted under.
 Set the pair for each ceremony that page starts; a missing one is reported as
-`missing_data_registration_url` rather than as a ceremony that failed.
+`missing_data_registration_url`, not as a ceremony that failed.
 
 And the page behind the gate, an ordinary LiveView that can now count on `@current_account`:
 
@@ -739,10 +739,10 @@ end
 $ mix ithibati.doctor
 ```
 
-Twelve checks in one run, so you find out now rather than at the first sign-in. Then `mix
+Twelve checks in one run, so you find out now and not at the first sign-in. Then `mix
 phx.server`, open `http://localhost:4000` and register: the browser asks for a passkey, you
 create one, and you land on the recovery codes. Write one down. Sign out, sign back in with the
-passkey, sign out again and use that code instead — both ways in work, and the loop is closed.
+passkey, sign out again and use that code instead. Both ways in work. The loop is closed.
 
 [`mix ithibati.doctor`](doctor.md) has the rest of what it asks.
 
@@ -763,10 +763,10 @@ config :ithibati,
 
 `session_validity` is how long a sign-in lasts. The units are `:second`, `:minute`, `:hour`,
 `:day` and `:week`; `:month` and `:year` are missing because neither has a fixed length. A value
-this library cannot read is refused rather than guessed at.
+this library cannot read is refused, never guessed at.
 
 `users_key_type` and `table_prefix` are read at compile time, so changing either recompiles
-Ithibati. Elixir then refuses to boot against a value it was not built for, rather than looking
+Ithibati. Elixir then refuses to boot against a value it was not built for, instead of looking
 for a table nobody meant.
 
 ## Where to go next
