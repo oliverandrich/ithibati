@@ -10,6 +10,28 @@ that is the one thing you have to act on: it means writing a migration of your o
 
 ## Unreleased
 
+## [0.1.2] - 2026-09-16
+
+What a consumer found putting their application on 0.1.1.
+
+### Added
+
+- `format_message:` on `Ithibati.Schema.User` and `Ithibati.Schema.Invitation`, the sentence a
+  refused identifier format carries. Ecto's "has invalid format" was the one piece of wording this
+  library did not leave to the application.
+
+### Fixed
+
+- A browser that refuses to enrol a passkey the authenticator already holds now reaches the page
+  as `already_enrolled`, the same word the server uses when a browser ignores the exclude list.
+  It was `ceremony_failed`, which a page cannot explain.
+
+### Documentation
+
+- `ithibati_bootstrap` is a singleton behind a unique index, so an application with a singleton of
+  its own has to write to the two in a fixed order. The deadlock otherwise surfaces a long way
+  from its cause. See [Invitations, and the first account](docs/invitations.md).
+
 ## [0.1.1] - 2026-09-16
 
 Documentation only. Nothing the library does has changed.
@@ -61,5 +83,6 @@ their account may then do.
   or an invitation table's `token_hash` — and says where the column belongs, rather than failing
   with Postgres's `undefined_column`.
 
+[0.1.2]: https://github.com/oliverandrich/ithibati/releases/tag/v0.1.2
 [0.1.1]: https://github.com/oliverandrich/ithibati/releases/tag/v0.1.1
 [0.1.0]: https://github.com/oliverandrich/ithibati/releases/tag/v0.1.0

@@ -1,7 +1,7 @@
 defmodule Ithibati.MixProject do
   use Mix.Project
 
-  @version "0.1.1"
+  @version "0.1.2"
   @source_url "https://github.com/oliverandrich/ithibati"
 
   # The README opens with this text, and hex.pm shows it. `Ithibati.PackageTest` holds the two
