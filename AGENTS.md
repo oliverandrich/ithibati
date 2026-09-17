@@ -11,3 +11,10 @@ commit style and required checks for everyone editing this project.
 - Bean IDs (`ithibati-xxxx`) belong only in the tracker and this file, never in `lib/`,
   `test/`, `docs/`, `priv/` or `README.md`. Explain the reason directly instead of citing an
   unresolvable ID. `Ithibati.Credo.NoBeanIds` enforces this for shipped code and documentation.
+
+## Before committing
+
+Review the diff for bugs, regressions, security issues and project-rule violations. Then
+simplify unnecessary branches and duplication without changing behavior or expanding scope.
+Fix confirmed issues, rerun affected checks after edits, and report the outcome briefly.
+For documentation-only changes, review wording and consistency instead.

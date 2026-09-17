@@ -2,9 +2,9 @@ defmodule Ithibati.Doctor do
   @moduledoc """
   Checks configuration, database state and web integration without changing them.
 
-  `examine/1` returns findings for the configured repo and schemas, required tables and indexes,
-  session validity, ceremony routes and handler callbacks. Database and application processes
-  must be available for the corresponding checks to run.
+  `examine/1` checks the configured repo, database adapter, schemas, tables, indexes, session
+  validity, ceremony routes and handler callbacks. Database and application processes must
+  be available for the corresponding checks to run.
 
   The doctor reuses configuration validation and catalogue queries from the integration itself.
   `mix ithibati.doctor` starts the consuming application and prints these findings.
@@ -36,11 +36,13 @@ defmodule Ithibati.Doctor do
   """
   def examine(app) do
     repo = answered(&Config.repo/0)
-    answers = reachable(repo)
+    adapter = adapter(repo)
+    answers = reachable(repo, adapter)
     database = askable(repo, answers)
 
     [
       {"config :ithibati, repo:", named(repo)},
+      {"the database adapter", adapter},
       {"the repo answers", answers},
       {"config :ithibati, user_schema:", named(answered(&Config.user_schema/0))},
       {"config :ithibati, invitation_schema:", invitation_schema()},
@@ -236,9 +238,24 @@ defmodule Ithibati.Doctor do
     end
   end
 
-  defp reachable({:error, _}), do: {:skip, "no repo to ask"}
+  defp adapter({:error, _}), do: {:skip, "no repo to ask"}
 
-  defp reachable({:ok, repo}) do
+  defp adapter({:ok, repo}) do
+    case repo.__adapter__() do
+      Ecto.Adapters.Postgres ->
+        {:ok, "PostgreSQL"}
+
+      other ->
+        {:error, "Ithibati requires PostgreSQL; #{inspect(repo)} uses #{inspect(other)}."}
+    end
+  end
+
+  defp reachable(_repo, {:skip, _} = skipped), do: skipped
+
+  defp reachable(_repo, {:error, _}),
+    do: {:skip, "the database adapter is not supported"}
+
+  defp reachable({:ok, repo}, {:ok, _}) do
     SQL.query!(repo, "SELECT 1", [], log: false)
     {:ok, "yes"}
   rescue

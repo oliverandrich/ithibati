@@ -32,6 +32,8 @@ upgrading to one of those releases.
 
 ### Fixed
 
+- `mix ithibati.doctor` reports unsupported database adapters before issuing SQL and skips
+  dependent database checks, instead of failing with a connection or catalogue-query error.
 - Corrected documentation for `needs_setup?/0`, default passkey labels and identifier-index
   metadata, and replaced the enum migration example with its database storage type.
 - Documented the existing `recovery_failed` error code and clarified that a failed browser

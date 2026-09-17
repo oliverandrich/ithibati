@@ -20,6 +20,10 @@ defmodule Ithibati.DoctorTest do
     use Ecto.Repo, otp_app: :ithibati, adapter: Ecto.Adapters.Postgres
   end
 
+  defmodule UnsupportedRepo do
+    def __adapter__, do: Ecto.Adapters.SQLite3
+  end
+
   defp subjects(results, status),
     do: for({subject, {^status, _detail}} <- results, do: subject)
 
@@ -34,6 +38,7 @@ defmodule Ithibati.DoctorTest do
 
       assert subjects(results, :error) == []
       assert "config :ithibati, repo:" in subjects(results, :ok)
+      assert "the database adapter" in subjects(results, :ok)
       assert "the repo answers" in subjects(results, :ok)
       assert "this library's tables" in subjects(results, :ok)
       assert "config :ithibati, users_key_type:" in subjects(results, :ok)
@@ -51,6 +56,7 @@ defmodule Ithibati.DoctorTest do
     test "and every question is asked, so a silent omission cannot pass for health" do
       assert Enum.map(Doctor.examine(:ithibati), &elem(&1, 0)) == [
                "config :ithibati, repo:",
+               "the database adapter",
                "the repo answers",
                "config :ithibati, user_schema:",
                "config :ithibati, invitation_schema:",
@@ -160,6 +166,39 @@ defmodule Ithibati.DoctorTest do
     end
   end
 
+  describe "an unsupported database adapter" do
+    test "reports the adapter without querying it and continues independent checks" do
+      put_env(:ithibati, :repo, UnsupportedRepo)
+
+      results = Doctor.examine(:ithibati)
+
+      assert subjects(results, :error) == ["the database adapter"]
+
+      assert detail(results, "the database adapter") ==
+               "Ithibati requires PostgreSQL; #{inspect(UnsupportedRepo)} uses Ecto.Adapters.SQLite3."
+
+      for subject <- [
+            "the repo answers",
+            "this library's tables",
+            "config :ithibati, users_key_type:",
+            "the identifier's unique index",
+            "the invitation table"
+          ] do
+        assert {^subject, {:skip, "the database adapter is not supported"}} =
+                 List.keyfind!(results, subject, 0)
+      end
+
+      assert "config :ithibati, user_schema:" in subjects(results, :ok)
+      assert "config :ithibati, session_validity:" in subjects(results, :ok)
+      assert "config :wax_" in subjects(results, :ok)
+
+      if Code.ensure_loaded?(Phoenix.Component) do
+        assert "the ceremony routes" in subjects(results, :ok)
+        assert "the handler's callbacks" in subjects(results, :ok)
+      end
+    end
+  end
+
   describe "configuration it refuses" do
     test "a repo nobody configured, and the questions that needed it are skipped, not crashed" do
       delete_env(:ithibati, :repo)
@@ -167,6 +206,7 @@ defmodule Ithibati.DoctorTest do
       results = Doctor.examine(:ithibati)
 
       assert detail(results, "config :ithibati, repo:") =~ "config :ithibati, repo: MyApp.Repo"
+      assert "the database adapter" in subjects(results, :skip)
       assert "the repo answers" in subjects(results, :skip)
       assert "this library's tables" in subjects(results, :skip)
       assert "config :ithibati, users_key_type:" in subjects(results, :skip)
@@ -203,6 +243,7 @@ defmodule Ithibati.DoctorTest do
 
       results = Doctor.examine(:ithibati)
 
+      assert "the database adapter" in subjects(results, :ok)
       assert "the repo answers" in subjects(results, :error)
       assert detail(results, "this library's tables") == "the repo did not answer"
       assert detail(results, "config :ithibati, users_key_type:") == "the repo did not answer"
