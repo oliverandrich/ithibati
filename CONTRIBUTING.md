@@ -23,13 +23,15 @@ $ mise run check-without-optional
 from an existing build is insufficient: leftover Phoenix beams can make `Code.ensure_loaded?`
 succeed and hide problems in the optional-dependency guards.
 
-For changes affecting the example or browser integration, also run:
+For changes affecting shared browser integration, run both example gates from the repository
+root. For a change confined to one example, run that example's gate:
 
 ```console
-$ cd examples/open_registration && mix precommit
+$ (cd examples/open_registration && mix precommit)
+$ (cd examples/invitation_only && mix precommit)
 ```
 
-CI runs this too. The example's browser tests are the only tests that execute
+CI runs both examples in a matrix. Their browser tests are the only tests that execute
 `priv/static/ithibati.js`.
 
 To preview documentation, run `mise run docs` and open `http://127.0.0.1:8000`. Python 3 is
@@ -71,9 +73,10 @@ terminal and refresh the page.
 
 Write tests before changing behavior. For bug fixes, demonstrate that the regression test
 fails on the original bug and passes with the fix. For new behavior, confirm that the test
-fails before implementation. Deliberately break the implementation as an additional control
-when it is unclear whether a test exercises the intended behavior. Prose-only changes do not
-require new tests.
+fails before implementation. For a new test of existing behavior, temporarily break the
+behavior it guards and confirm that the intended assertion fails. A failure caused by an
+unrelated setup error is not a control check. Use the same technique whenever a test's
+coverage is unclear. Prose-only changes do not require new tests.
 
 When temporarily changing code to check a test, restore it and rebuild affected modules:
 

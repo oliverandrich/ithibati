@@ -50,7 +50,9 @@ defmodule Ithibati.Identity.Grant do
     |> Multi.insert(:passkey, fn changes ->
       Passkeys.credential_changeset(key_attrs, Steps.account!(changes, opts))
     end)
-    # Use the repo supplied by the transaction so dynamic-repo selection follows the caller.
+    # Use the transaction's repo module so code issuance follows the multi's executor.
+    # Ecto resolves dynamic-repo selection per process; this argument does not pin a connection.
+    # The suite currently covers only the configured TestRepo, not dynamic-repo switching.
     |> Multi.run(:recovery_codes, fn repo, changes ->
       {:ok, RecoveryCodes.issue!(repo, Steps.account!(changes, opts), opts)}
     end)

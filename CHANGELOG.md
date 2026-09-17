@@ -32,6 +32,9 @@ upgrading to one of those releases.
 
 ### Fixed
 
+- Corrected the contributor instructions for both browser examples and the username-format
+  reference. Restored concise explanations of origin trust, RP IDs, recovery-code delivery,
+  integer foreign keys and current test-coverage limits.
 - `mix ithibati.doctor` reports unsupported database adapters before issuing SQL and skips
   dependent database checks, instead of failing with a connection or catalogue-query error.
 - Corrected documentation for `needs_setup?/0`, default passkey labels and identifier-index

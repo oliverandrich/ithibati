@@ -87,6 +87,8 @@ if Code.ensure_loaded?(Phoenix.Component) do
     Return `{:ok, conn}` or `{:error, reason}` using the response conventions of `c:authenticate/2`.
     When `fresh` is `nil`, delegating to `authenticate/2` is sufficient. Otherwise, preserve the
     batch for display as part of the response flow. The stored digests cannot recover it later.
+    Without the batch or a usable passkey, the user can lose access once their session ends;
+    this is why recovery has a required callback instead of falling back to `authenticate/2`.
 
     The controller refuses unknown or spent codes with `invalid_code` before invoking this
     callback. Refusing in the callback does not undo redemption or recover the spent code.
@@ -113,7 +115,8 @@ if Code.ensure_loaded?(Phoenix.Component) do
     > #### Choose trusted values {: .warning}
     >
     > Select values from a fixed set controlled by the application. Reflecting the request's
-    > `origin` header would make verification compare the client's claim with itself.
+    > `origin` header lets the requester choose the trusted origin, bypassing the server's
+    > origin allowlist. Signature and RP-ID checks do not replace this trust decision.
     """
     @callback relying_party(Plug.Conn.t(), default :: {String.t(), String.t()}) ::
                 {rp_id :: String.t(), origin :: String.t() | [String.t(), ...]}

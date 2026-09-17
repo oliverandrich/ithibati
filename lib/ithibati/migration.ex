@@ -150,6 +150,8 @@ defmodule Ithibati.Migration do
   defp identifier(schema), do: schema.__ithibati_invitation__(:identifier)
 
   @doc false
+  # Ecto's schema type `:id` may refer to a bigserial account key. Use bigint so foreign keys
+  # can hold ids beyond the 32-bit integer limit (2,147,483,647).
   def reference_type(:id), do: :bigint
   def reference_type(other), do: other
 

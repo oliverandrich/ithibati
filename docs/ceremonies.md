@@ -37,6 +37,10 @@ The scope prefix is yours; the five suffixes are fixed. The pipeline must accept
 the session and apply CSRF protection. The hook supplies the `x-csrf-token` header from the
 page's CSRF meta tag.
 
+The hook sends `Accept: application/json`. A pipeline with `plug :accepts, ["html"]` rejects
+that request with HTTP 406 before it reaches the ceremony controller. Check the pipeline on
+the mounted scope if the browser reports this response.
+
 Mount options are `handler:`, `rp_name:`, `user_verification:` and `seconds:`. User verification
 defaults to `"preferred"`; challenge lifetime defaults to sixty seconds. Set
 `user_verification: "required"` if your application requires authenticator user verification.
@@ -158,6 +162,13 @@ config :my_app, MyAppWeb.Endpoint,
 ```
 
 This produces `rp_id: "auth.example.com"` and origin `"https://auth.example.com"`.
+The RP ID contains no scheme or port. For an ordinary browser deployment, use the page's
+host or a registrable parent domain: `auth.example.com` can use `example.com`, but not `com`
+or `www.example.com`. `www.` is a distinct subdomain, not an interchangeable spelling.
+Cross-domain use requires the separate
+[related-origin mechanism](https://www.w3.org/TR/webauthn-3/#sctn-related-origins), where supported;
+adding an origin to the server's trusted list does not enable it in the browser.
+
 Keep the relying-party ID stable: existing passkeys are bound to the ID used at registration.
 A different ID requires enrolment for that ID; changing a redirect does not migrate credentials.
 
@@ -169,8 +180,10 @@ def relying_party(_conn, {rp_id, origin}), do: {rp_id, [origin | @extension_orig
 ```
 
 Choose origins from a fixed trusted set. Never reflect the request's `origin` header into this
-return value: verification must compare the credential against your expected origin. Support
-for an extension or native client also depends on that client's WebAuthn integration.
+return value: it lets the requester choose which origin the server trusts. This removes the
+server's origin allowlist as a phishing defense, even though signature and RP-ID checks still
+apply. For example, sharing an RP ID across subdomains does not make every subdomain trusted.
+Support for an extension or native client also depends on that client's WebAuthn integration.
 
 The core receives both values per call. Setting `config :wax_, origin: ...` or `rp_id: ...`
 does not configure Ithibati.

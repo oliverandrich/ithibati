@@ -26,6 +26,10 @@ defmodule Ithibati.Schema.Identifier do
   local parts such as `"a b"@example.com`. It checks syntax only; it does not verify ownership
   of a mailbox. Ithibati sends no email.
 
+  This deliberately narrow input format keeps identifiers easy to enter in browser forms.
+  It does not implement the full RFC 5322 mailbox grammar; a rejected address is not
+  necessarily an invalid mailbox.
+
   Pass it as `format:` to an account or invitation schema, or supply a pattern of your own.
   """
   def email_format, do: @email_format
@@ -40,7 +44,9 @@ defmodule Ithibati.Schema.Identifier do
 
   The schema changesets normalize identifiers before applying this pattern. Direct callers
   should do the same if they want to accept mixed-case input. Dots, hyphens, spaces and
-  non-ASCII characters are rejected.
+  non-ASCII characters are rejected. This limits punctuation variants and cross-script
+  lookalikes, such as a Cyrillic letter resembling a Latin one. ASCII still contains
+  lookalikes; the format does not guarantee that names cannot be confused.
 
   This format is optional. Supply your own `format:` when the application's identifier rules
   differ, and use a separate field for a display name.

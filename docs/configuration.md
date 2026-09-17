@@ -60,8 +60,11 @@ Choosing an email identifier does not verify that someone owns the mailbox; Ithi
 
 | Helper | Accepts |
 | --- | --- |
-| `Identifier.username_format/0` | ASCII letters, digits and underscores, up to thirty characters |
+| `Identifier.username_format/0` | 1–30 lowercase ASCII letters, digits or underscores |
 | `Identifier.email_format/0` | A practical email-address shape, including `you@localhost`; quoted local parts such as `"a b"@example.com` are refused |
+
+Changesets lowercase identifiers before applying the username pattern. Direct callers of
+`username_format/0` receive a regex only; normalize mixed-case input before matching it.
 
 Supply a regex for your own rules:
 

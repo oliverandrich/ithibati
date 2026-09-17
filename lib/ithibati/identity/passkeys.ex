@@ -465,6 +465,8 @@ defmodule Ithibati.Identity.Passkeys do
   # Update and return the account in one statement. A credential deleted before the update
   # then produces `:unknown_credential`, rather than authenticating from the earlier lookup.
   # Only `last_used_at` changes; `updated_at` continues to describe credential edits.
+  # The suite does not currently exercise a concurrent deletion between fetch_key/1 and this
+  # update. That window relies on the affected-row check, not a demonstrated race test.
   defp touch(key) do
     query =
       from(k in UserKey,

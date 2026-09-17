@@ -59,8 +59,12 @@ These tagged results illustrate the three branches; your application chooses the
 session and response.
 
 When the last unused code is spent, the same transaction issues a fresh batch. Preserve that
-third return value and display it. Concurrent redemptions lock the account row so the final
-count and refill are coordinated.
+third return value and display it. If all passkeys are unavailable, spending the last code
+without keeping its replacements can leave the user locked out when the current session ends.
+The stored digests cannot recover the plaintext batch. This is why refill is enabled by default
+and the web handler requires `recovered/3` to handle the result explicitly.
+
+Concurrent redemptions lock the account row so the final count and refill are coordinated.
 
 Disable automatic refill when your flow requires it:
 
