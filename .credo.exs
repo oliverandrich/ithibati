@@ -5,11 +5,14 @@
   configs: [
     %{
       name: "default",
+      plugins: [{ExSlop, []}],
       files: %{included: ["lib/", "test/", "credo/", "mix.exs"]},
       checks: %{
         extra: [
           {Ithibati.Credo.IdentityIsPortable, []},
-          {Ithibati.Credo.NoBeanIds, []}
+          {Ithibati.Credo.NoBeanIds, []},
+          # Exact list sizes are useful assertions, including for generated recovery codes.
+          {ExSlop.Check.Refactor.LengthComparison, files: %{excluded: ["test/"]}}
         ]
       }
     }

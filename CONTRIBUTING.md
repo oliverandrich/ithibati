@@ -16,7 +16,7 @@ $ mise run check
 $ mise run check-without-optional
 ```
 
-`check` runs the formatter, Credo, tests, `zizmor` over the workflows, and
+`check` runs the formatter, Credo (including ExSlop), tests, `zizmor` over the workflows, and
 `mix docs --warnings-as-errors`. `mix precommit` runs its Elixir checks without mise.
 
 `check-without-optional` tests the core without Phoenix in a clean copy. Removing dependencies

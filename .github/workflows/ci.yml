@@ -26,8 +26,8 @@ jobs:
           - name: check
           # The floor of the `elixir` requirement in mix.exs. The pin moves by a file written
           # below; mise.toml stays the single source for a local checkout.
-          - name: floor (elixir 1.17)
-            elixir: "1.17"
+          - name: floor (elixir 1.18)
+            elixir: "1.18"
             erlang: "27"
             # A narrower task, named in mise.toml with its reason: the full gate judges style
             # against the toolchain the tree was written with, and this leg's question is

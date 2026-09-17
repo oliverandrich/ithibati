@@ -15,13 +15,7 @@ defmodule Ithibati.MixProject do
     [
       app: :ithibati,
       version: @version,
-      # The floor is this library's own: `Ithibati.Identity` builds its expiry cutoff with
-      # `DateTime.shift/2`, which arrived in 1.17. Every shipped dependency sits lower (`ecto_sql`
-      # and `postgrex` at `~> 1.15`); `yaml_elixir`, which reaches the build through `mix_audit` in
-      # dev and test only, sits exactly here and would be the first thing to push this up for a
-      # reason that has nothing to do with the library. CI builds both ends of the range, so the
-      # requirement is measured rather than hoped for.
-      elixir: "~> 1.17",
+      elixir: "~> 1.18",
       elixirc_paths: elixirc_paths(Mix.env()),
       compilers: compilers(),
       start_permanent: Mix.env() == :prod,
@@ -126,6 +120,7 @@ defmodule Ithibati.MixProject do
       # tests under `test/credo/` need it, and the absent case is proven where it matters, in a
       # consumer's own `MIX_ENV=prod` build.
       {:credo, "~> 1.7", optional: true, runtime: false},
+      {:ex_slop, "~> 0.4.4", only: [:dev, :test], runtime: false},
       {:ex_doc, "~> 0.34", only: :dev, runtime: false},
       # HEEX in the guides is otherwise rendered unhighlighted beside the Elixir around it.
       {:makeup_eex, "~> 2.0", only: :dev, runtime: false},

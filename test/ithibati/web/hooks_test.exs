@@ -12,6 +12,8 @@ defmodule Ithibati.Web.HooksTest do
   use ExUnit.Case, async: true
 
   @component Path.expand("../../../lib/ithibati/web/hooks.ex", __DIR__)
+  # Inspect the checkout source alongside hooks.ex, including without optional dependencies.
+  # credo:disable-for-next-line ExSlop.Check.Warning.PathExpandPriv
   @javascript Path.expand("../../../priv/static/ithibati.js", __DIR__)
 
   # The whole of the hook body. Asserted exactly rather than probed for a string a copy might happen

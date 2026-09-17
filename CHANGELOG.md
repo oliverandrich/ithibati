@@ -10,6 +10,14 @@ upgrading to one of those releases.
 
 ## Unreleased
 
+### Changed
+
+- Require Elixir 1.18 or newer.
+
+### Added
+
+- ExSlop checks run through the existing Credo development and CI gate.
+
 ## [0.2.0] - 2026-09-17
 
 ### Upgrading from 0.1.3

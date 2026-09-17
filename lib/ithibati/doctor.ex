@@ -233,7 +233,7 @@ defmodule Ithibati.Doctor do
       missing ->
         {:error,
          "#{Enum.map_join(missing, ", ", &Catalogue.qualified(prefix, &1))} " <>
-           "#{if length(missing) == 1, do: "is", else: "are"} missing — run this library's " <>
+           "#{if match?([_], missing), do: "is", else: "are"} missing — run this library's " <>
            "migration, or check `config :ithibati, table_prefix:` against what it created."}
     end
   end
