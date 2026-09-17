@@ -11,6 +11,50 @@ defmodule Ithibati.Schema.InvitationTest do
   alias Ithibati.Identity.Secrets
   alias Ithibati.TestInvitation
 
+  test "module-attribute options reach metadata and validation together" do
+    body = """
+    @pattern ~r/@example\\.test\\z/
+    @message "use an example address"
+    @index :custom_identifier_index
+    @create_index false
+    use Ithibati.Schema.Invitation,
+      identifier: :email,
+      format: @pattern,
+      format_message: @message,
+      constraint_name: @index,
+      unique_index: @create_index
+    """
+
+    module = probe("CombinedInvitation", body, inside: "ithibati_invitation()")
+
+    assert module.__ithibati_invitation__(:identifier) == :email
+    assert module.__ithibati_invitation__(:constraint) == :custom_identifier_index
+    refute module.__ithibati_invitation__(:unique_index)
+
+    valid = module.invitation_changeset(struct(module), %{email: " ADA@EXAMPLE.TEST "})
+    assert valid.valid?
+    assert get_change(valid, :email) == "ada@example.test"
+    assert [%{field: :token_hash, constraint: "custom_identifier_index"}] = valid.constraints
+
+    invalid = module.invitation_changeset(struct(module), %{email: "ada@elsewhere.test"})
+    assert %{email: ["use an example address"]} = errors_on(invalid)
+  end
+
+  test "the declared identifier survives option reassignment after the schema" do
+    module =
+      probe("ReassignedInvitation", "use Ithibati.Schema.Invitation, identifier: :email",
+        inside: "ithibati_invitation()",
+        after_schema: "@ithibati_given %{@ithibati_given | identifier: :handle}"
+      )
+
+    assert :email in module.__schema__(:fields)
+    refute :handle in module.__schema__(:fields)
+    assert module.__ithibati_invitation__(:identifier) == :email
+    changeset = module.invitation_changeset(struct(module), %{email: " ADA@EXAMPLE.TEST "})
+    assert changeset.valid?
+    assert get_change(changeset, :email) == "ada@example.test"
+  end
+
   describe "what the macro injects" do
     test "the invitee's identifier, the digest, the two timestamps and the virtual token" do
       fields = TestInvitation.__schema__(:fields)

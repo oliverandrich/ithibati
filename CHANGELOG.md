@@ -27,6 +27,9 @@ upgrading to one of those releases.
 
 ### Changed
 
+- Schema macros carry their options as one map, so adding an option no longer changes the
+  internal changeset arities. Public schema APIs and validation behavior are unchanged.
+
 - Reorganized the README and guides around setup and common integration tasks, with configuration
   variants in a separate reference page.
 - Reworked module and function documentation to state inputs, results and failure behavior.

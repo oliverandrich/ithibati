@@ -120,15 +120,35 @@ defmodule Ithibati.Credo.NoInternalCallsTest do
     test "an underscored function this library marked itself" do
       """
       defmodule App.Accounts do
-        def force(a, b), do: Ithibati.Schema.User.__changeset__(a, b, :email, nil, nil, nil)
+        def force(a, b), do: Ithibati.Schema.User.__changeset__(a, b, %{})
       end
       """
       |> check()
-      |> assert_issue(fn issue -> assert issue.message =~ "__changeset__/6" end)
+      |> assert_issue(fn issue -> assert issue.message =~ "__changeset__/3" end)
+    end
+
+    test "the invitation macro's internal changeset function" do
+      """
+      defmodule App.Accounts do
+        def force(a, b), do: Ithibati.Schema.Invitation.__changeset__(a, b, [], %{})
+      end
+      """
+      |> check()
+      |> assert_issue(fn issue -> assert issue.message =~ "__changeset__/4" end)
     end
   end
 
   describe "it leaves alone" do
+    test "Ecto's generated changeset metadata" do
+      """
+      defmodule App.Accounts do
+        def types, do: Ithibati.UserKey.__changeset__()
+      end
+      """
+      |> check()
+      |> refute_issues()
+    end
+
     # Two modules in one file can alias the same last segment to different things, and this walk
     # has no notion of which is in scope where. Naming a module the source does not contain is
     # worse than saying nothing, so an ambiguous name is dropped.

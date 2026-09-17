@@ -23,6 +23,50 @@ defmodule Ithibati.Schema.UserTest do
     {OptedOutUser, :email, @own}
   ]
 
+  test "module-attribute options reach metadata and validation together" do
+    body = """
+    @pattern ~r/@example\\.test\\z/
+    @message "use an example address"
+    @index :custom_identifier_index
+    @create_index false
+    use Ithibati.Schema.User,
+      identifier: :email,
+      format: @pattern,
+      format_message: @message,
+      constraint_name: @index,
+      unique_index: @create_index
+    """
+
+    module = probe("CombinedUser", body, inside: "ithibati_account()")
+
+    assert module.__ithibati__(:identifier) == :email
+    assert module.__ithibati__(:constraint) == :custom_identifier_index
+    refute module.__ithibati__(:unique_index)
+
+    valid = module.identifier_changeset(struct(module), %{email: " ADA@EXAMPLE.TEST "})
+    assert valid.valid?
+    assert get_change(valid, :email) == "ada@example.test"
+    assert [%{field: :email, constraint: "custom_identifier_index"}] = valid.constraints
+
+    invalid = module.identifier_changeset(struct(module), %{email: "ada@elsewhere.test"})
+    assert %{email: ["use an example address"]} = errors_on(invalid)
+  end
+
+  test "the declared identifier survives option reassignment after the schema" do
+    module =
+      probe("ReassignedUser", "use Ithibati.Schema.User, identifier: :email",
+        inside: "ithibati_account()",
+        after_schema: "@ithibati_given %{@ithibati_given | identifier: :handle}"
+      )
+
+    assert :email in module.__schema__(:fields)
+    refute :handle in module.__schema__(:fields)
+    assert module.__ithibati__(:identifier) == :email
+    changeset = module.identifier_changeset(struct(module), %{email: " ADA@EXAMPLE.TEST "})
+    assert changeset.valid?
+    assert get_change(changeset, :email) == "ada@example.test"
+  end
+
   describe "what the macro contributes" do
     test "exactly one field, the one the application named" do
       for {schema, identifier, own} <- @fixtures do
@@ -100,7 +144,7 @@ defmodule Ithibati.Schema.UserTest do
       module =
         probe(
           "Moved",
-          "use Ithibati.Schema.User, identifier: :email\n  @ithibati_identifier :handle",
+          "use Ithibati.Schema.User, identifier: :email\n  @ithibati_given %{@ithibati_given | identifier: :handle}",
           inside: "ithibati_account()"
         )
 

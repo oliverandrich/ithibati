@@ -65,12 +65,12 @@ defmodule Ithibati.Schema.User do
   """
   defmacro ithibati_account do
     quote do
-      @ithibati_identifier ||
+      @ithibati_given ||
         raise(ArgumentError, "ithibati_account/0 needs `use Ithibati.Schema.User` above it")
 
       # The field and the generated functions both come from this one value, so they cannot name
       # different things.
-      @ithibati_declared @ithibati_identifier
+      @ithibati_declared @ithibati_given.identifier
 
       field @ithibati_declared, :string
 
@@ -88,13 +88,8 @@ defmodule Ithibati.Schema.User do
 
       @before_compile Ithibati.Schema.User
 
-      # Four of these may be a checking call instead of a value, so that an option written as
-      # `@name` resolves here; see `Ithibati.Schema.Identifier.options!/2`.
-      @ithibati_identifier unquote(given.identifier)
-      @ithibati_format unquote(given.format)
-      @ithibati_format_message unquote(given.format_message)
-      @ithibati_constraint unquote(given.constraint)
-      @ithibati_unique_index unquote(given.unique_index)
+      # Evaluate deferred checks here, where the consumer's module attributes exist.
+      @ithibati_given unquote({:%{}, [], Map.to_list(given)})
 
       @doc """
       Returns the display name for passkey registration, or `nil` to use the identifier.
@@ -120,10 +115,7 @@ defmodule Ithibati.Schema.User do
     Identifier.refuse_shadowing!(env, [__ithibati__: 1, identifier_changeset: 2], __MODULE__)
 
     field = Identifier.declared!(env, __MODULE__, "ithibati_account/0")
-    format = Module.get_attribute(env.module, :ithibati_format)
-    format_message = Module.get_attribute(env.module, :ithibati_format_message)
-    constraint = Module.get_attribute(env.module, :ithibati_constraint)
-    unique_index = Module.get_attribute(env.module, :ithibati_unique_index)
+    given = env.module |> Module.get_attribute(:ithibati_given) |> Map.put(:identifier, field)
 
     quote do
       @doc """
@@ -137,8 +129,8 @@ defmodule Ithibati.Schema.User do
       which one manages it.
       """
       def __ithibati__(:identifier), do: unquote(field)
-      def __ithibati__(:constraint), do: unquote(constraint)
-      def __ithibati__(:unique_index), do: unquote(unique_index)
+      def __ithibati__(:constraint), do: unquote(given.constraint)
+      def __ithibati__(:unique_index), do: unquote(given.unique_index)
 
       @doc """
       Returns a changeset with the account identifier cast, normalized and validated.
@@ -156,20 +148,17 @@ defmodule Ithibati.Schema.User do
         Ithibati.Schema.User.__changeset__(
           account_or_changeset,
           attrs,
-          unquote(field),
-          unquote(Macro.escape(format)),
-          unquote(format_message),
-          unquote(Macro.escape(constraint))
+          unquote(Macro.escape(given))
         )
       end
     end
   end
 
   @doc false
-  def __changeset__(account_or_changeset, attrs, field, format, format_message, constraint) do
+  def __changeset__(account_or_changeset, attrs, given) do
     account_or_changeset
-    |> Identifier.steps(attrs, field, format, format_message)
-    |> unique_constraint(field, Identifier.unique_opts(constraint))
+    |> Identifier.steps(attrs, given.identifier, given.format, given.format_message)
+    |> unique_constraint(given.identifier, Identifier.unique_opts(given.constraint))
   end
 
   @doc """

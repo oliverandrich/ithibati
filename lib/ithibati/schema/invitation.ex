@@ -64,13 +64,13 @@ defmodule Ithibati.Schema.Invitation do
   """
   defmacro ithibati_invitation do
     quote do
-      @ithibati_identifier ||
+      @ithibati_given ||
         raise(
           ArgumentError,
           "ithibati_invitation/0 needs `use Ithibati.Schema.Invitation` above it"
         )
 
-      @ithibati_declared @ithibati_identifier
+      @ithibati_declared @ithibati_given.identifier
 
       field @ithibati_declared, :string
 
@@ -92,13 +92,8 @@ defmodule Ithibati.Schema.Invitation do
 
       @before_compile Ithibati.Schema.Invitation
 
-      # Four of these may be a checking call instead of a value, so that an option written as
-      # `@name` resolves here; see `Ithibati.Schema.Identifier.options!/2`.
-      @ithibati_identifier unquote(given.identifier)
-      @ithibati_format unquote(given.format)
-      @ithibati_format_message unquote(given.format_message)
-      @ithibati_constraint unquote(given.constraint)
-      @ithibati_unique_index unquote(given.unique_index)
+      # Evaluate deferred checks here, where the consumer's module attributes exist.
+      @ithibati_given unquote({:%{}, [], Map.to_list(given)})
     end
   end
 
@@ -111,10 +106,7 @@ defmodule Ithibati.Schema.Invitation do
     )
 
     field = Identifier.declared!(env, __MODULE__, "ithibati_invitation/0")
-    format = Module.get_attribute(env.module, :ithibati_format)
-    format_message = Module.get_attribute(env.module, :ithibati_format_message)
-    constraint = Module.get_attribute(env.module, :ithibati_constraint)
-    unique_index = Module.get_attribute(env.module, :ithibati_unique_index)
+    given = env.module |> Module.get_attribute(:ithibati_given) |> Map.put(:identifier, field)
 
     quote do
       @doc """
@@ -125,8 +117,8 @@ defmodule Ithibati.Schema.Invitation do
         * `:unique_index` — whether Ithibati should create that index.
       """
       def __ithibati_invitation__(:identifier), do: unquote(field)
-      def __ithibati_invitation__(:constraint), do: unquote(constraint)
-      def __ithibati_invitation__(:unique_index), do: unquote(unique_index)
+      def __ithibati_invitation__(:constraint), do: unquote(given.constraint)
+      def __ithibati_invitation__(:unique_index), do: unquote(given.unique_index)
 
       @doc """
       Returns a changeset with the identifier validated, a token prepared and an expiry set.
@@ -151,31 +143,20 @@ defmodule Ithibati.Schema.Invitation do
           invitation_or_changeset,
           attrs,
           opts,
-          unquote(field),
-          unquote(Macro.escape(format)),
-          unquote(format_message),
-          unquote(Macro.escape(constraint))
+          unquote(Macro.escape(given))
         )
       end
     end
   end
 
   @doc false
-  def __changeset__(
-        invitation_or_changeset,
-        attrs,
-        opts,
-        field,
-        format,
-        format_message,
-        constraint
-      ) do
+  def __changeset__(invitation_or_changeset, attrs, opts, given) do
     invitation_or_changeset
-    |> Identifier.steps(attrs, field, format, format_message)
-    |> validate_unclaimed(field)
+    |> Identifier.steps(attrs, given.identifier, given.format, given.format_message)
+    |> validate_unclaimed(given.identifier)
     |> put_token()
     |> put_expiry(opts)
-    |> unique_constraint(:token_hash, Identifier.unique_opts(constraint))
+    |> unique_constraint(:token_hash, Identifier.unique_opts(given.constraint))
   end
 
   # A query from a schema module, which is otherwise `Ithibati.Identity.*`'s job, and the exception

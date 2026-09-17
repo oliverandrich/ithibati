@@ -92,7 +92,7 @@ if Code.ensure_loaded?(Credo.Check) do
     # What a consumer legitimately calls on one of this library's modules, whoever wrote it:
     # reflection a `use` put there. Named by what may be called, not by who generated it,
     # because the two are not the same question. `__changeset__/0` is Ecto's and fair game, while
-    # `__changeset__/6` is this library's own and marked by hand.
+    # the schema macros' changeset helpers are this library's own and marked by hand.
     @reflection [
       {:__schema__, 1},
       {:__schema__, 2},
