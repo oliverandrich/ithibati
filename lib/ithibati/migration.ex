@@ -9,6 +9,9 @@ defmodule Ithibati.Migration do
         def down, do: Ithibati.Migration.down(version: 2)
       end
 
+  Use explicit `up/0` and `down/0`, not `change/0`: catalogue checks flush queued DDL and
+  cannot be reversed automatically by Ecto.
+
   Create the account table and identifier column first. If invitations are configured, their
   table must also exist when `up/1` validates the application tables.
 
@@ -479,7 +482,7 @@ defmodule Ithibati.Migration do
       table = source(Config.user_schema())
       column = references(table, type: type).column
 
-      case Catalogue.column(repo(), {:mysql, table}, column) do
+      case Catalogue.column(repo(), table_ref!(table), column) do
         {"bigint unsigned", _unique} -> :"bigint unsigned"
         _signed_or_invalid -> :bigint
       end

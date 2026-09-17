@@ -20,6 +20,8 @@ defmodule Ithibati.MixProject do
     [
       app: :ithibati,
       version: @version,
+      # ExSlop requires 1.18. Keep one supported floor for consumers and the development checks,
+      # rather than silently omitting lint rules on an older toolchain.
       elixir: "~> 1.18",
       build_path:
         if(probe,

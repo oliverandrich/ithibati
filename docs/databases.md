@@ -94,9 +94,11 @@ Use the same identifier semantics for invitations and accounts.
 ### Transactions
 
 Set READ COMMITTED on every connection before starting transactions. Ithibati checks session
-isolation before its credential transactions; do not override it for individual transactions
-that call Ithibati. MySQL's default REPEATABLE READ can retain an earlier application snapshot
-even after a nested transaction starts and is unsupported for these operations.
+isolation on the active connection at each identity transaction entry, including within a
+caller-owned transaction. Internal updates reuse that preparation; no connection state is
+cached. Do not override isolation for individual transactions that call Ithibati. MySQL's default
+REPEATABLE READ can retain an earlier application snapshot even after a nested transaction starts
+and is unsupported for these operations.
 
 MySQL has no mutation `RETURNING`. Ithibati locks the matching row, checks the conditional write
 and reads the result in one transaction. Account locks serialize recovery-code replacement and

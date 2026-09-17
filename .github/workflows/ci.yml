@@ -144,6 +144,10 @@ jobs:
       - name: Run the gate
         run: mise run "$GATE"
 
+      - name: Run PostgreSQL capability probes
+        if: matrix.name == 'check'
+        run: mise run probe-postgres
+
       # The gate compiling proves the compiler task exists; it does not prove a consumer can import
       # anything. This is the file that import resolves to, and the name inside it is what a
       # template's `phx-hook` has to say.

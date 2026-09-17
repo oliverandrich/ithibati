@@ -503,7 +503,7 @@ defmodule Ithibati.Identity.Passkeys do
         query = from k in UserKey, where: k.id == ^key.id, select: k
 
         with {:ok, touched} <-
-               Mutations.update_one(
+               Mutations.update_one_in_transaction(
                  repo,
                  query,
                  [set: [last_used_at: DateTime.utc_now()]],

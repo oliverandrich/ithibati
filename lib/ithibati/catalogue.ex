@@ -21,9 +21,18 @@ defmodule Ithibati.Catalogue do
 
   defp adapter(repo) do
     case repo.__adapter__() do
-      Ecto.Adapters.Postgres -> Postgres
-      Ecto.Adapters.SQLite3 -> SQLite
-      Ecto.Adapters.MyXQL -> MySQL
+      Ecto.Adapters.Postgres ->
+        Postgres
+
+      Ecto.Adapters.SQLite3 ->
+        SQLite
+
+      Ecto.Adapters.MyXQL ->
+        MySQL
+
+      other ->
+        raise ArgumentError,
+              "Ithibati requires PostgreSQL, SQLite or MySQL; #{inspect(repo)} uses #{inspect(other)}."
     end
   end
 
@@ -34,12 +43,7 @@ defmodule Ithibati.Catalogue do
   only key column is this column. Additional included columns are allowed; for example,
   `PRIMARY KEY (id) INCLUDE (email)` qualifies.
   """
-  def column(repo, {:mysql, table}, column), do: MySQL.column(repo, table, column)
-
-  def column(repo, {:sqlite, table}, column),
-    do: SQLite.column(repo, table, column)
-
-  def column(repo, oid, column), do: Postgres.column(repo, oid, column)
+  def column(repo, reference, column), do: adapter(repo).column(repo, reference, column)
 
   @doc "Returns the table name, qualified with `prefix` when one is supplied, for diagnostic text."
   def qualified(nil, table), do: table
@@ -52,8 +56,8 @@ defmodule Ithibati.Catalogue do
   uniqueness. Both migration and doctor checks use this result so they agree on the schema
   Ithibati can reference.
   """
-  def key_column(repo, oid, table, column) do
-    case column(repo, oid, column) do
+  def key_column(repo, reference, table, column) do
+    case column(repo, reference, column) do
       nil ->
         {:error,
          "#{table} has no column #{column}, which is where this library's foreign keys point. " <>

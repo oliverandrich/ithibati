@@ -65,7 +65,10 @@ if Application.get_env(:ithibati, :probe_adapter) == Ecto.Adapters.MyXQL do
 
         try do
           Ecto.Migrator.up(Repo, 11, AdapterLibraryMigration, log: false)
-          assert {"bigint", _} = Catalogue.column(Repo, {:mysql, "ithibati_keys"}, :user_id)
+
+          assert {"bigint", _} =
+                   Catalogue.column(Repo, Catalogue.table(Repo, nil, "ithibati_keys"), :user_id)
+
           user = Repo.insert!(%User{id: 4_294_967_296, email: "large@example.test"})
           key = key(user)
           assert Repo.get!(Ithibati.UserKey, key.id).user_id == 4_294_967_296

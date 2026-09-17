@@ -5,6 +5,31 @@ if Application.get_env(:ithibati, :probe_adapter) == Ecto.Adapters.MyXQL do
     alias Ithibati.Identity.{Passkeys, RecoveryCodes}
     alias Ithibati.Schema.User, as: UserSchema
 
+    test "recovery redemption validates isolation once before its credential writes" do
+      account = user()
+      [code] = RecoveryCodes.regenerate(account, count: 1)
+
+      assert_one_isolation_check(fn ->
+        assert {:ok, _, nil} = RecoveryCodes.redeem(code, refill: false)
+      end)
+    end
+
+    test "passkey authentication validates isolation once" do
+      account = user()
+      credential = Ithibati.TestCredentials.credential()
+      assert {:ok, _} = Passkeys.add_key(account, credential)
+
+      assert {:ok, challenge} =
+               Passkeys.authentication_challenge("localhost", "http://localhost:4000")
+
+      assertion = Ithibati.TestCredentials.assertion(credential, challenge)
+
+      assert_one_isolation_check(fn ->
+        assert {:ok, authenticated} = Passkeys.verify_authentication(assertion, challenge)
+        assert authenticated.id == account.id
+      end)
+    end
+
     test "doctor accepts the configured MySQL database" do
       results = Doctor.examine(:ithibati)
 
@@ -192,6 +217,31 @@ if Application.get_env(:ithibati, :probe_adapter) == Ecto.Adapters.MyXQL do
 
       assert UserSchema.identifier_taken?(duplicate)
       assert Repo.get_by!(User, email: "ada@example.test").id == user.id
+    end
+
+    defp assert_one_isolation_check(fun) do
+      parent = self()
+      ref = make_ref()
+      event = Repo.config()[:telemetry_prefix] ++ [:query]
+
+      :telemetry.attach(
+        ref,
+        event,
+        fn _, _, metadata, _ ->
+          if self() == parent and metadata.query == "SELECT @@transaction_isolation" do
+            send(parent, {ref, :isolation})
+          end
+        end,
+        nil
+      )
+
+      try do
+        fun.()
+        assert_received {^ref, :isolation}
+        refute_received {^ref, :isolation}
+      after
+        :telemetry.detach(ref)
+      end
     end
   end
 end

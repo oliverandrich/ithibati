@@ -36,7 +36,7 @@ defmodule Ithibati.Catalogue.SQLite do
   def table(_repo, _prefix, _table),
     do: raise(ArgumentError, "SQLite supports only the unprefixed main database")
 
-  def column(repo, table, column) do
+  def column(repo, {:sqlite, table}, column) do
     column = to_string(column)
 
     rows =

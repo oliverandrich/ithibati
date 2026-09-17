@@ -295,6 +295,11 @@ endpoints. Consumption raises if the entire endpoint request is wrapped in an ap
 transaction, since rollback could restore the record. Transactions inside handler callbacks
 are fine: consumption has already committed before a callback runs.
 
+Every issued challenge writes a database row, including challenges requested before sign-in.
+Apply rate limiting to challenge issuance in your application or gateway to bound write load and
+storage growth. Ithibati defaults to a 60-second challenge lifetime; expiry prevents verification
+but does not delete the row. Abandoned rows remain until cleanup runs.
+
 Schedule `Ithibati.Identity.Challenges.delete_expired/0` in your application's maintenance job
 to remove abandoned challenges. Consumed rows are removed immediately. Expired rows never
 authorize verification, even before cleanup. Direct core integrations still own challenge

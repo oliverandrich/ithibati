@@ -169,7 +169,7 @@ if Application.get_env(:ithibati, :probe_adapter) in [Ecto.Adapters.SQLite3, Ect
         user = user()
 
         assert {:ok, :locked} =
-                 Repo.transaction(fn ->
+                 Concurrency.transaction(Repo, fn ->
                    Repo.get!(User, user.id)
                    Concurrency.lock_account!(user.id)
 

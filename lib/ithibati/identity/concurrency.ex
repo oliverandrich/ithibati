@@ -7,13 +7,21 @@ defmodule Ithibati.Identity.Concurrency do
 
   alias Ithibati.Config
 
-  @doc "Starts credential transactions, reserving SQLite writes and checking MySQL isolation."
+  @doc """
+  Prepares an identity transaction before executing its callback.
+
+  Checks MySQL isolation on the transaction's connection at every entry, including within a
+  caller-owned transaction. Reserves SQLite writes before any callback reads; the explicit
+  reservation also protects callers whose outer transaction began deferred. No connection
+  state is cached. Callbacks are never retried.
+  """
   def transaction(repo, fun) do
     opts = if repo.__adapter__() == Ecto.Adapters.SQLite3, do: [mode: :immediate], else: []
 
     repo.transaction(
       fn ->
         validate_transaction!(repo)
+        if repo.__adapter__() == Ecto.Adapters.SQLite3, do: write_lock!(repo)
         fun.()
       end,
       opts
@@ -21,41 +29,17 @@ defmodule Ithibati.Identity.Concurrency do
   end
 
   @doc """
-  Serializes credential decisions inside a transaction. PostgreSQL locks the account
-  with `FOR NO KEY UPDATE`; MySQL uses `FOR UPDATE` and requires READ COMMITTED. SQLite
-  reserves the database writer before reading the account,
-  including inside caller-owned transactions. A stale SQLite snapshot raises before decisions;
-  callers must restart the entire transaction if they choose to retry.
+  Adds the adapter's row-lock clause without executing any database operations.
 
-  The lock remains held through the outermost transaction.
-
-  A write's `WHERE` condition protects a single row. Decisions across several rows,
-  such as retaining at least one passkey, require all writers to lock a shared account
-  row first. After acquiring that lock, use a separate statement to read credentials:
-  under READ COMMITTED it gets a fresh snapshot that includes preceding commits.
-
-  The locking statement itself does not see rows inserted after its snapshot. Postgres
-  rechecks an existing row's condition after waiting, but the lock does not refresh the
-  whole snapshot.
-
-  `FOR NO KEY UPDATE` conflicts with itself without blocking the `FOR KEY SHARE` lock
-  taken by foreign-key inserts. Table-wide uniqueness, such as the single bootstrap
-  claim, is enforced by a unique index instead.
+  Execute the returned query inside `transaction/2`, which checks MySQL isolation and reserves
+  SQLite's writer before reads. SQLite needs no row-lock clause. Constructing this query does
+  not acquire a lock; executing it does. Locks remain held through the outermost transaction.
   """
   def lock_rows(query) do
-    repo = Config.repo()
-
-    case repo.__adapter__() do
-      Ecto.Adapters.SQLite3 ->
-        write_lock!(repo)
-        query
-
-      Ecto.Adapters.MyXQL ->
-        validate_transaction!(repo)
-        lock(query, "FOR UPDATE")
-
-      _row_locking_adapter ->
-        lock(query, "FOR NO KEY UPDATE")
+    case Config.repo().__adapter__() do
+      Ecto.Adapters.SQLite3 -> query
+      Ecto.Adapters.MyXQL -> lock(query, "FOR UPDATE")
+      Ecto.Adapters.Postgres -> lock(query, "FOR NO KEY UPDATE")
     end
   end
 
@@ -78,7 +62,13 @@ defmodule Ithibati.Identity.Concurrency do
   end
 
   @doc """
-  Locks the account row by id within the current transaction.
+  Locks the account row by id inside a transaction prepared by `transaction/2`.
+
+  All writers of an invariant spanning credential rows must lock the account first, then read
+  credentials in a separate statement to obtain a fresh READ COMMITTED snapshot. The locking
+  statement itself does not see rows inserted after its snapshot. PostgreSQL uses
+  `FOR NO KEY UPDATE`, which serializes these decisions without blocking foreign-key inserts;
+  MySQL uses `FOR UPDATE`. SQLite already holds the writer reservation.
 
   Selects a constant because callers need the lock, not the account data. Raises
   `Ecto.NoResultsError` if the account no longer exists; callers must not continue

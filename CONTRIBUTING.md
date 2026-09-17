@@ -73,8 +73,10 @@ suites are separate commands.
 CI runs the adapter suite for SQLite with text UUIDs, binary UUIDs and integer account keys,
 and for MySQL 8.4 with UUID and integer account keys. Each variant has its own build cache;
 each MySQL job starts a fresh service container on a dynamically assigned host port. SQLite
-uses a local file without a service container. The existing PostgreSQL jobs continue to cover
-UUID and integer account keys, the minimum Elixir version and the core without Phoenix.
+uses a local file without a service container. The main check job also runs
+`mise run probe-postgres`, exercising the PostgreSQL branches of `adapter_test/` against its
+PostgreSQL service. The main-suite jobs cover UUID and integer account keys, the minimum Elixir
+version and the core without Phoenix.
 
 For a disposable MySQL test server, these commands match the local probe defaults. Keep the
 container dedicated to tests; the probes create databases and clear their own tables:

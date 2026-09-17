@@ -42,7 +42,7 @@ defmodule Ithibati.Catalogue.MySQL do
   def table(_repo, _prefix, _table),
     do: raise(ArgumentError, "MySQL supports only the selected database without schema prefixes")
 
-  def column(repo, table, column) do
+  def column(repo, {:mysql, table}, column) do
     case repo.query!(
            "SELECT COLUMN_TYPE FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?",
            [table, to_string(column)],

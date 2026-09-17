@@ -20,11 +20,15 @@ upgrading to one of those releases.
 - Challenge consumption now rejects outer application transactions, which could restore a
   consumed challenge on rollback. Transactions inside handler callbacks remain supported.
   See [Challenge storage](docs/ceremonies.md#challenge-storage).
-- Require Elixir 1.18 or newer.
+- Require Elixir 1.18 or newer because the ExSlop development checks require it. The project
+  deliberately keeps one supported floor for consumers and development tooling.
 - Removed `table_oid/3` from `Ithibati.Catalogue`; use `Ithibati.Catalogue.table/3` instead.
 
 ### Changed
 
+- Prepare identity transactions before lock queries and avoid redundant MySQL isolation checks
+  within prepared operations; connection isolation is still checked at each identity entry point.
+- Route all catalogue metadata through the repo's adapter and report unsupported adapters clearly.
 - Database catalogue queries and storage types live in separate PostgreSQL, SQLite and MySQL
   modules.
 
@@ -51,7 +55,8 @@ upgrading to one of those releases.
 - MySQL 8.4/InnoDB support with exact UUID/BIGINT foreign-key types, bounded binary indexes,
   migration preflight and partial-installation cleanup, and transactional mutation results.
   Requires READ COMMITTED on every connection; deadlocks and timeouts are not retried.
-- CI coverage for SQLite text/binary UUIDs and integer keys, and MySQL 8.4 UUID/integer keys.
+- CI coverage for PostgreSQL capability probes, SQLite text/binary UUIDs and integer keys,
+  and MySQL 8.4 UUID/integer keys.
 - Concise setup for all three databases in [Configuration](docs/configuration.md#databases),
   with storage, transaction and migration recovery details in [Database behavior](docs/databases.md).
 

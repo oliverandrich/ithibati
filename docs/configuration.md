@@ -174,6 +174,9 @@ migrated database in agreement.
 
 ## Migrations
 
+Wrap `Ithibati.Migration.up/1` and `down/1` in explicit `up/0` and `down/0`, not `change/0`:
+catalogue checks flush queued DDL and cannot be reversed automatically.
+
 Your application creates the account table and identifier column. Ithibati creates its own
 tables and, by default, the identifier's unique index:
 

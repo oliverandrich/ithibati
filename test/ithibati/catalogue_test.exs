@@ -2,6 +2,20 @@ defmodule Ithibati.CatalogueTest do
   use Ithibati.DataCase, async: true
   alias Ithibati.Catalogue
 
+  defmodule UnsupportedRepo do
+    def __adapter__, do: Ecto.Adapters.Tds
+  end
+
+  test "unsupported adapters raise an actionable error for every metadata entry point" do
+    for call <- [
+          fn -> Catalogue.table(UnsupportedRepo, nil, "users") end,
+          fn -> Catalogue.types(UnsupportedRepo, :id) end,
+          fn -> Catalogue.column(UnsupportedRepo, {:mysql, "users"}, :id) end
+        ] do
+      assert_raise ArgumentError, ~r/requires PostgreSQL, SQLite or MySQL.*Tds/, call
+    end
+  end
+
   test "PostgreSQL table references resolve column metadata" do
     TestRepo.query!("CREATE TEMP TABLE catalogue_contract (id uuid PRIMARY KEY)")
     oid = Catalogue.table(TestRepo, nil, "catalogue_contract")

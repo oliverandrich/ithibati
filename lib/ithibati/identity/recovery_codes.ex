@@ -104,7 +104,12 @@ defmodule Ithibati.Identity.RecoveryCodes do
     query =
       from(r in RecoveryCode, where: r.code_hash == ^digest and is_nil(r.used_at), select: r)
 
-    Mutations.update_one(Config.repo(), query, [set: [used_at: DateTime.utc_now()]], :invalid)
+    Mutations.update_one_in_transaction(
+      Config.repo(),
+      query,
+      [set: [used_at: DateTime.utc_now()]],
+      :invalid
+    )
   end
 
   # The account lock serializes spending different code rows. Count after acquiring it so
