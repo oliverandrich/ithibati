@@ -1,6 +1,9 @@
 defmodule Ithibati.UserKey do
   @moduledoc """
-  One WebAuthn credential: the public half of a passkey, and the label a person recognises it by.
+  Stores a passkey's credential ID, serialized public key, label and last-use timestamp.
+
+  Use `Ithibati.Identity.Passkeys` to enrol, list, rename and revoke credentials. A blank or absent
+  label is stored as `"Passkey"`; labels are limited to `label_max/0` graphemes.
   """
   use Ecto.Schema
 
@@ -8,10 +11,7 @@ defmodule Ithibati.UserKey do
 
   alias Ithibati.Config
 
-  # The label is supplied, not generated: either the authenticator's own name or one the browser
-  # sent with the registration. It arrives from a hook's params, where a validation error has
-  # nowhere to appear and would fail the whole registration over a nickname. So it is cut
-  # and not refused. The column takes any length; this is what a person can read in a list.
+  # Truncate display labels instead of rejecting otherwise valid enrolment over a long nickname.
   @label_max 100
 
   @primary_key {:id, :binary_id, autogenerate: true}
@@ -26,18 +26,18 @@ defmodule Ithibati.UserKey do
     timestamps(type: :utc_datetime_usec)
   end
 
-  # WebAuthn Level 2, §5.1.3: a relying party must reject a credential id longer than this. The
-  # ceremony refuses one, and so does the write. A row stored past it is a passkey no sign-in can
-  # ever reach, because the lookup short-circuits before it queries.
+  # Verification, storage and lookup share this credential-ID byte limit.
   @credential_id_max 1023
 
   @doc """
-  How much of a label is kept. Ithibati cuts a longer one instead of refusing it, and the column
-  itself has no limit.
+  Returns the maximum label length in graphemes.
+
+  Enrolment and rename truncate labels to this length before trimming whitespace. The database
+  column itself has no length limit.
   """
   def label_max, do: @label_max
 
-  @doc "The longest credential id Ithibati stores."
+  @doc "Returns the maximum stored credential-ID length in bytes."
   def credential_id_max, do: @credential_id_max
 
   @doc false
@@ -51,27 +51,18 @@ defmodule Ithibati.UserKey do
     |> foreign_key_constraint(:user_id)
   end
 
-  # Every write path goes through here, which is why the fallback lives here and not at the one
-  # caller that happens to assemble a credential: a person who leaves the nickname box alone sends a
-  # blank string, not an absent one, and a nameless row in the passkey list is the case a fallback
-  # exists for. There is deliberately no third source for the name.
+  # Use the same fallback for a missing or blank label during enrolment and rename.
   @fallback "Passkey"
 
-  # `put_change/3`, not `update_change/3`, which only fires for a field the changeset already
-  # regards as changed. Casting `nil` over `nil` is not a change, so the row that needs the
-  # fallback most is the one `update_change/3` skips.
+  # `update_change/3` skips an unchanged nil field. `put_change/3` also supplies the fallback
+  # when no label was cast.
   defp put_label(changeset) do
     put_change(changeset, :label, label(get_field(changeset, :label)))
   end
 
   @doc false
-  # Public because a rename writes through `update_all`, which never builds a changeset. The cut
-  # and the fallback have to be the same rule on both paths, or a list shows two kinds of row.
-  #
-  # Anything that is not a string gets the fallback instead of raising, which is what the enrolment
-  # path does too: there `cast/3` refuses the value, `get_field/2` then answers `nil`, and the
-  # fallback applies. A rename has no cast in front of it, and a form posting `name[]=x` hands over
-  # a list.
+  # Renaming uses `update_all/2` and bypasses the changeset, so both paths call this normalizer.
+  # Non-string rename input gets the fallback; enrolment still retains any cast validation error.
   def label(label) when is_binary(label) do
     case label |> String.slice(0, @label_max) |> String.trim() do
       "" -> @fallback

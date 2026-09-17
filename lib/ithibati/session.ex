@@ -1,8 +1,10 @@
 defmodule Ithibati.Session do
   @moduledoc """
-  One signed-in session. The cookie carries the secret and this row carries only its sha256, so
-  the table is not a set of usable sessions. The row is what makes a sign-in revocable: deleting
-  it ends the session for new requests and new mounts.
+  Stores a session token's SHA-256 digest, account reference and creation time.
+
+  `Ithibati.Identity.Sessions` issues and validates tokens. Deleting the row revokes the token
+  for subsequent requests and LiveView mounts. Disconnecting already-open sockets is handled
+  separately by `Ithibati.Web.Gate`.
   """
   use Ecto.Schema
 

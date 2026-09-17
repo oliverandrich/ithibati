@@ -2,24 +2,19 @@
 if Code.ensure_loaded?(Phoenix.Component) do
   defmodule Ithibati.Web.Hooks do
     @moduledoc """
-    The colocated route for Ithibati's JavaScript.
+    Exports the passkey browser hook through LiveView's colocated manifest.
 
-    An application whose bundler resolves `phoenix-colocated` imports the hooks from
-    `phoenix-colocated/ithibati` and needs no path into `deps/`. The alternative is to import
-    `priv/static/ithibati.js` directly; [Registering and signing
-    in](ceremonies.md#the-javascript) shows both.
+    Set `ITHIBATI_COLOCATED_HOOKS=1` when building and recompile Ithibati to generate
+    `phoenix-colocated/ithibati`. That import and the plain `ithibati` package both register
+    `Ithibati.Web.Hooks.PasskeyCeremony` and use the same client implementation.
 
-    The hook body re-exports the client code instead of repeating it, so the two routes cannot
-    disagree about what a ceremony does. A test reads both files and holds them to the same name,
-    because a hook registered under the wrong name does not fail, it never mounts.
+    [Browser imports](ceremonies.md#browser-imports) covers both options. Applications importing
+    the plain package do not need to enable the colocated compiler.
     """
     use Phoenix.Component
 
-    # Nothing renders this, and `@doc false` keeps it out of the published documentation where it
-    # would read as something to call. It exists so that compiling this module runs LiveView's
-    # extraction, which is what writes the manifest a consumer imports as
-    # `phoenix-colocated/ithibati`. A colocated script tag is removed from the output, so calling it
-    # would produce nothing anyway.
+    # The component gives LiveView's compiler a colocated script to extract. It renders no UI
+    # and is not an application API.
     @doc false
     def hooks(assigns) do
       ~H"""

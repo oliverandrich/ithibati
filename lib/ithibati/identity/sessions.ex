@@ -1,14 +1,14 @@
 defmodule Ithibati.Identity.Sessions do
   @moduledoc """
-  The revocable half of being signed in: what an account is issued once it has proved who it is.
+  Issues, looks up and revokes server-side sessions.
 
-  `generate_session_token/1` returns URL-safe text, and the row holds only its sha256, so a
-  database dump is not a set of live sessions. `Ithibati.Web.Gate` is what calls all three
-  functions; an application reaches them through it, not directly.
+  `generate_session_token/1` returns a plaintext token while storage keeps its SHA-256 digest.
+  `get_user_by_session_token/1` returns the account only while that session remains valid.
+  `delete_session_token/1` revokes one token.
 
-  A session is the only credential this table holds. An API token for an extension or a native
-  client is a different thing — scopes, rotation, a page to revoke one on — and building it is
-  the application's, or another library's.
+  `Ithibati.Web.Gate` connects these calls to a browser session and LiveView sockets. Direct calls
+  here do not update cookies or broadcast socket disconnections. API tokens with scopes or
+  rotation are separate application concerns.
   """
 
   import Ecto.Query
@@ -27,9 +27,13 @@ defmodule Ithibati.Identity.Sessions do
   @units [:second, :minute, :hour, :day, :week]
 
   @doc """
-  Mints a session token for the account and returns it as URL-safe text.
+  Stores a new session and returns its plaintext, URL-safe token.
 
-  What comes back is the only copy. The database gets its digest.
+  The account must belong to the configured schema and exist in the database. The row stores
+  only a digest, so retain the returned token for the client. Invalid session validity raises
+  `ArgumentError`; an invalid insert raises `Ecto.InvalidChangesetError`.
+
+  This call does not revoke other sessions or update a browser cookie.
   """
   def generate_session_token(account) do
     %{id: user_id} = Config.account!(account)
@@ -49,12 +53,14 @@ defmodule Ithibati.Identity.Sessions do
   end
 
   @doc """
-  The account behind this session token, or `nil`.
+  Returns the account for a valid session token, or `nil`.
 
-  `nil` covers every way there is not to have a valid session: an unknown token, a revoked one,
-  one older than the configured validity, and `nil` itself. A missing session key gives you
-  `nil`, and making each call site write `token && …` around that only moves the omission
-  somewhere less visible.
+  Unknown, revoked and expired tokens all return `nil`. A `nil` input also returns `nil` without
+  reading configuration or querying the database.
+
+  Validity is measured from session creation using `config :ithibati, session_validity:` and
+  defaults to `{60, :day}`. Lookup does not extend a session. Invalid validity settings raise
+  `ArgumentError` when looking up a string token.
   """
   # Two clauses, not one with a guard and an `if`. The `nil` path then provably reads no
   # configuration, so a page nobody is signed in to cannot answer 500 for a setting it never
@@ -74,7 +80,7 @@ defmodule Ithibati.Identity.Sessions do
     |> Config.repo().one()
   end
 
-  @doc "Revokes a session token: a logout. Revoking one that was never minted is not an error."
+  @doc "Revokes one token and returns `:ok`, including for `nil` or an unknown token."
   def delete_session_token(nil), do: :ok
 
   def delete_session_token(token) when is_binary(token) do

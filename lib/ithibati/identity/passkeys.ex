@@ -1,24 +1,20 @@
 defmodule Ithibati.Identity.Passkeys do
   @moduledoc """
-  The WebAuthn ceremony, both halves: enrolling a browser's credential as an account's passkey, and
-  proving possession of one afterwards. It also covers what an account can do with the credentials
-  it holds: list them, rename one, revoke one.
+  Registers and verifies passkeys and manages an account's stored credentials.
 
-  Each half is three calls: a challenge, the options the browser reads, and a verification.
+  Registration uses `registration_challenge/3`, `registration_options/3` and
+  `verify_registration/2`. Authentication uses `authentication_challenge/3`,
+  `authentication_options/1` and `verify_authentication/2`.
 
-      challenge = registration_challenge(rp_id, origin, opts)
-      options = registration_options(challenge, identifier_or_account, rp_name: "MyApp")
-      # hand `options` to the browser, keep `challenge` until its answer comes back
-      {:ok, key_attrs} = verify_registration(credential, challenge)
+  Registration verification returns attributes for a new credential; authentication verification
+  returns the account that owns it. The caller decides what to store or issue afterwards.
+  Neither verification function creates a session.
 
-  Signing in is `authentication_challenge/3`, `authentication_options/1` and
-  `verify_authentication/2`. `Ithibati.Web.PasskeyController` is that sequence wired to routes, and
-  `docs/ceremonies.md` shows it without Phoenix.
+  Use `add_key/2`, `list_keys/1`, `rename_key/3` and `delete_key/3` for an existing account's
+  passkeys. Create an account with its first passkey and recovery codes through
+  `Ithibati.Identity.Grant.with_key_and_codes/3`.
 
-  A verification answers the credential to store on registration, and the account that holds it on
-  authentication. It never answers a session. Whatever is issued afterwards is a separate call —
-  `Ithibati.Identity.Sessions` for a browser, and whatever the application decided for anything
-  else.
+  [Registering and signing in](ceremonies.md) shows both the Phoenix integration and direct calls.
   """
 
   import Ecto.Query
@@ -30,46 +26,36 @@ defmodule Ithibati.Identity.Passkeys do
   alias Ithibati.Schema.User
   alias Ithibati.UserKey
 
-  # `Wax` does not refuse an over-long credential id, and what arrives here is the browser's,
-  # which makes the size somebody else's choice. The length prefix is 16 bits, so an
-  # authenticator may claim up to 65535. Read from the schema so that the refusal on the way in and the
-  # one on the way out cannot come apart; a literal, because guards cannot call a function.
+  # Share the storage limit with verification and lookup. A module attribute is needed because
+  # guards cannot call `UserKey.credential_id_max/0`.
   @credential_id_max UserKey.credential_id_max()
 
-  # Compared as strings by Wax, which is why an atom cannot be allowed through: `:required` renders
-  # as `"required"` in the JSON the browser reads and matches nothing on the server, so the browser
-  # enforces user verification and this library quietly does not.
+  # Wax compares these values as strings. An atom can serialize correctly for the browser
+  # yet fail to enable the corresponding server-side check.
   @user_verification ["required", "preferred", "discouraged"]
 
-  # How long a challenge stays acceptable. Both ceremonies take it, and both tell the browser the
-  # same number by reading it back off the challenge.
   @default_seconds 60
 
   @doc """
-  Mints a registration challenge for this relying party, and answers it.
+  Returns a `Wax.Challenge` for passkey registration.
 
-  It returns a `Wax.Challenge` on its own and not a tuple, because nothing here can refuse a
-  registration and there is nothing to answer with. Keep the challenge until the browser replies,
-  because `verify_registration/2` needs it, and spend it once, whether that reply verified or not.
+  `rp_id` is the relying-party ID. `origin` is an expected origin or a non-empty list of accepted
+  origins. Supply both explicitly from trusted application settings; do not reflect client input.
 
-  `verify_trust_root: false` and `attestation: "none"` go together. Ithibati does not police
-  authenticator models, so it does not ask for an attestation it would not check. An authenticator
-  that honoured the request would be refused for its trouble.
+  ## Options
 
-  Ithibati passes every option its behaviour depends on, never leaving one out.
-  `Wax.Challenge.new` fills any option it was *not* given from `Application.get_all_env(:wax_)`, so
-  an application that configures `wax_` directly would otherwise decide the relying party, how long
-  a ceremony may take, and which attestation types are trusted. A trusted-types list that does not
-  name `:none` refuses every registration.
+    * `:user_verification` — `"required"`, `"preferred"` (default) or `"discouraged"`.
+      These values are strings, not atoms.
+    * `:seconds` — challenge lifetime as a positive integer; defaults to `60`.
 
-  `origin` may be a list, and for a client that is not a browser page it usually is. An extension
-  has a different stable origin in each browser, and an assertion carries whichever one it was made
-  at. Every entry is accepted, and none of them is preferred.
+  Invalid option values raise `ArgumentError`. Registration does not require an existing account
+  or credential, so this function returns the challenge directly rather than an `:ok` tuple.
 
-  `:user_verification` is the one choice here that belongs to the application and not to
-  Ithibati: whether the authenticator must confirm who is holding it. It defaults to `"preferred"`,
-  and `registration_options/3` reads it back off the challenge, so the browser can never be asked
-  for something the server will refuse. `:seconds` is how long the challenge stays acceptable.
+  Ithibati requests no attestation and does not verify authenticator trust roots. It supplies the
+  WebAuthn options it depends on explicitly so `wax_` application defaults do not alter them.
+
+  Retain the challenge for `verify_registration/2`. The caller must enforce single use, including
+  when verification fails.
   """
   def registration_challenge(rp_id, origin, opts \\ [])
       when is_binary(rp_id) and (is_binary(origin) or (is_list(origin) and origin != [])) do
@@ -85,29 +71,18 @@ defmodule Ithibati.Identity.Passkeys do
   end
 
   @doc """
-  Builds the browser's `PublicKeyCredentialCreationOptions`, binary fields base64url-encoded.
+  Returns `PublicKeyCredentialCreationOptions` with binary fields encoded as unpadded base64url.
 
-  It takes the account, or the identifier the invitation was addressed to when the account does not
-  exist yet. The only option is `:rp_name`, which is required and is the name a passkey dialog
-  shows.
+  Pass the configured account struct when adding a passkey, or an approved identifier when
+  creating an account. An account populates `excludeCredentials` from its stored passkeys;
+  an identifier produces an empty exclusion list.
 
-  The credentials to exclude come from Ithibati's own table, not from an argument. Their
-  purpose is that one authenticator cannot enrol itself twice, and an argument that can be forgotten
-  defeats that at the call site which adds a second passkey.
+  The required `:rp_name` option supplies the display name of the relying party. User verification,
+  attestation and timeout are taken from the challenge. The browser timeout is in milliseconds.
 
-  Three of the values are not negotiable, and the reasons are here, not in the map. A
-  **discoverable** credential is required, and `required`, not `preferred`: sign-in names no
-  credential, so one the authenticator kept to itself would be invisible there, and a system with no
-  passwords cannot leave the property it depends on to the authenticator's discretion.
-  `requireResidentKey` is the same wish in the older spelling, and WebAuthn L2 asks for it alongside
-  `residentKey`. A client implementing only L1 ignores `residentKey` and hands back a server-side
-  credential that never appears at sign-in. **`credProps`** is how the client answers a wish an
-  authenticator may refuse, and `verify_registration/2` acts on that answer.
-
-  The algorithms offered are ES256 and RS256, the two every authenticator in circulation supports.
-  Ed25519 is deliberately absent, not forgotten. Nothing here has met an authenticator that
-  offers it and not one of these two, and a list an application can extend is a published option
-  Ithibati has no caller for yet.
+  Ithibati requires discoverable credentials because sign-in does not ask for an identifier.
+  It sets both `residentKey` and `requireResidentKey` and requests the `credProps` extension.
+  The offered algorithms are ES256 and RS256.
   """
   def registration_options(challenge, account_or_identifier, opts) do
     subject = subject(account_or_identifier)
@@ -122,18 +97,12 @@ defmodule Ithibati.Identity.Passkeys do
         %{type: "public-key", alg: -7},
         %{type: "public-key", alg: -257}
       ],
-      # `required`, not `preferred`: sign-in names no credential, so one the authenticator kept to
-      # itself would be invisible there. A system with no passwords cannot leave the property it
-      # depends on to the authenticator's discretion.
-      #
-      # `requireResidentKey` is the same wish in the older spelling, and WebAuthn L2 asks for both:
-      # a client implementing only L1 ignores `residentKey` and hands back a server-side credential
-      # that then never appears at sign-in.
+      # Sign-in discovers credentials without an identifier. Require resident credentials in both
+      # current and legacy option forms so older clients receive the same requirement.
       authenticatorSelection: %{
         residentKey: "required",
         requireResidentKey: true,
-        # Read off the challenge, all three, so the browser cannot be asked for something the server
-        # will refuse. That disagreement is silent and looks like a broken authenticator.
+        # Keep browser requirements aligned with server verification.
         userVerification: challenge.user_verification
       },
       extensions: %{credProps: true},
@@ -145,26 +114,24 @@ defmodule Ithibati.Identity.Passkeys do
   end
 
   @doc """
-  Verifies a registration and answers the credential to store.
+  Verifies a registration credential and returns attributes ready to store.
 
-  It answers `{:ok, %{key_id: binary, public_key: binary}}`, which `add_key/2` takes as it is and
-  `key_attrs/2` takes to put a label on.
+  `credential` is the decoded JSON object produced by the browser's `credential.toJSON()`;
+  its keys are strings and its binary fields are base64url-encoded. Pass the retained
+  registration challenge as the second argument.
 
-  A refusal is `{:error, reason}`, and `reason` is not always an atom: Ithibati's own refusals
-  are atoms, and `wax_` answers with an exception struct, which passes through unchanged. Match
-  on the atoms you handle and treat the rest as a failed verification, which is what
-  `Ithibati.Web.PasskeyController` does.
+  Returns `{:ok, %{key_id: binary, public_key: binary}}` or `{:error, reason}`. Pass successful
+  attributes to `add_key/2` or `Ithibati.Identity.Grant.with_key_and_codes/3`; use `key_attrs/2`
+  to add a label first. Verification does not write a credential.
 
-  It takes the `PublicKeyCredential` the browser produced, parsed: what `JSON.parse` gives for
-  `credential.toJSON()`. Base64url decoding happens here, not at the caller, for the same
-  reason `registration_options/3` builds the browser's dictionary here. It is protocol detail,
-  and protocol detail belongs in one place, not in every caller.
+  Library validation failures use atom reasons, including `:malformed_credential`,
+  `:not_discoverable`, `:no_attested_credential` and `:credential_id_too_long`. Errors from
+  `wax_` can be exception structs. Handle known atoms and provide a fallback for other reasons.
 
-  Whether the credential is discoverable comes from `clientExtensionResults.credProps.rk`, which is
-  where the browser puts it. An explicit `false` refuses. A credential that sign-in can never
-  name is turned away now, not at the person's next visit, where the platform says "no passkey
-  available" and nothing explains it. An absent value means the client does not implement the
-  extension, which is silence and not denial.
+  An explicit `false` or `"false"` in `clientExtensionResults.credProps.rk` is rejected. An absent
+  extension result is accepted for clients that do not report discoverability.
+
+  The caller must consume the stored challenge on every verification attempt, successful or not.
   """
   def verify_registration(credential, challenge)
 
@@ -189,36 +156,39 @@ defmodule Ithibati.Identity.Passkeys do
 
   def verify_registration(_credential, _challenge), do: {:error, :malformed_credential}
 
-  # Matched, not walked. `get_in/2` raises for a `"clientExtensionResults"` that is a string,
-  # a number or a list, and those are bodies a client can post. Absent, or present in a shape this
-  # library did not ask for, is a client that did not answer. That is silence, not denial.
+  # Pattern matching tolerates malformed extension containers without raising before verification.
   defp discoverable(%{"clientExtensionResults" => %{"credProps" => %{"rk" => reported}}}),
     do: reported
 
   defp discoverable(_credential), do: nil
 
   @doc """
-  The attributes of a credential to store, with whatever the browser called it.
+  Adds `label` to verified credential attributes.
 
-  There is deliberately no third source for the name. Naming the authenticator's make would mean
-  mapping its AAGUID against a list nobody licenses.
+  Accepts the map returned by `verify_registration/2` and returns a map containing `:key_id`,
+  `:public_key` and `:label`. Label trimming, truncation and the `"Passkey"` fallback are applied
+  when the credential is stored, not by this function.
   """
   def key_attrs(%{key_id: key_id, public_key: public_key}, label) do
     %{key_id: key_id, public_key: public_key, label: label}
   end
 
   @doc """
-  Enrols a credential on an account that already exists: a second device, or a replacement.
+  Stores a verified passkey on an existing account.
 
-  It does for an existing account what `Ithibati.Identity.Grant.with_key_and_codes/3` does for one
-  being created. It takes what `key_attrs/2` returned and answers `{:ok, key}`.
+  `account` must be a struct of the configured account schema. `key_attrs` must contain the
+  verified `:key_id` and `:public_key`, with an optional `:label`. Use `verify_registration/2`
+  and optionally `key_attrs/2` to obtain these attributes.
 
-  `{:error, :already_enrolled}` is the one refusal, and it should be rare.
-  `registration_options/3` puts this account's credentials in `excludeCredentials`, so a browser
-  that honours it never offers an authenticator it has already enrolled here. The unique index
-  answers for a browser that does not, and for the same authenticator arriving on a *different*
-  account. That is the same collision, because a credential identifies a device, not a
-  person.
+  Returns `{:ok, key}` or `{:error, :already_enrolled}` when the credential ID already exists,
+  including on another account. Other invalid changesets raise `Ecto.InvalidChangesetError`,
+  including a foreign-key failure if the account was deleted before the insert.
+
+  Labels are truncated to `Ithibati.UserKey.label_max/0` graphemes and trimmed. A missing or blank
+  label is stored as `"Passkey"`.
+
+  For a new account, compose `Ithibati.Identity.Grant.with_key_and_codes/3` into its creation
+  transaction instead.
   """
   def add_key(account, key_attrs) do
     key_attrs
@@ -227,25 +197,17 @@ defmodule Ithibati.Identity.Passkeys do
     |> already_enrolled?()
   end
 
-  # `mode: :savepoint` inside somebody's transaction, because the refusal below is a constraint
-  # violation and Postgres aborts the surrounding transaction on one: without it a caller who
-  # composed this into a transaction of their own would get `{:error, :already_enrolled}` and
-  # then `25P02` on their next statement.
-  #
-  # And *only* inside one, because Ecto raises `transaction is not started` for a savepoint with
-  # nothing to hang it on. That is every standalone call, the one the documentation shows. The
-  # suite could not see that: the sandbox wraps each test in a transaction, so the savepoint
-  # always had one. `Ithibati.Identity.PasskeysUnwrappedTest` runs without it.
+  # A uniqueness failure must not abort the caller's enclosing transaction. Use a savepoint
+  # only when a transaction exists; standalone inserts cannot open one.
+  # `Ithibati.Identity.PasskeysUnwrappedTest` covers the standalone path.
   defp insert_mode do
     if Config.repo().in_transaction?(), do: [mode: :savepoint], else: []
   end
 
   defp already_enrolled?({:ok, key}), do: {:ok, key}
 
-  # The unique index is the only failure a caller can act on. A foreign key that no longer points
-  # anywhere, say an account deleted between the read and this write, raises instead.
-  # `generate_session_token/1` does the same; `Ithibati.Config.account!/1` checks the struct's
-  # module, not that its row still exists.
+  # Credential-ID collisions have a public error code. Other invalid writes raise, including
+  # a deleted account: `Config.account!/1` validates the struct, not its continued existence.
   defp already_enrolled?({:error, changeset}) do
     if Concurrency.collided?(changeset, :key_id),
       do: {:error, :already_enrolled},
@@ -253,12 +215,10 @@ defmodule Ithibati.Identity.Passkeys do
   end
 
   @doc """
-  The credentials this account has, oldest first.
+  Returns the account's passkeys as a list of `Ithibati.UserKey` structs.
 
-  It answers full rows, because a person is shown the label and when the credential was last used.
-  The ordering carries a tiebreaker on purpose: Postgres gives equal sort keys no defined order, so
-  two rows that do share an `inserted_at` could come back either way round, and a list whose order
-  moves between renders is one nobody can click in.
+  Rows are ordered by `inserted_at`, then `id`, both ascending. The ID provides a stable order
+  when timestamps are equal. Each row includes its label and `last_used_at` value.
   """
   def list_keys(account) do
     account = Config.account!(account)
@@ -271,16 +231,13 @@ defmodule Ithibati.Identity.Passkeys do
   end
 
   @doc """
-  Gives one of this account's passkeys the name a person chose, and answers `{:ok, key}`.
+  Renames a passkey belonging to the account and returns `{:ok, key}`.
 
-  The name goes through the same cut and the same fallback as an enrolment's, so a list cannot end
-  up showing two kinds of row. `{:error, :not_found}` covers a credential that does not exist and
-  one that belongs to somebody else, which are the same answer to the person asking. It also covers
-  an id that is not an id at all, because an id arrives from a route a person can type into.
+  The label is truncated to `Ithibati.UserKey.label_max/0` graphemes, then trimmed. Blank and
+  non-string values become `"Passkey"`. The update also changes `updated_at`.
 
-  The account rides the `WHERE` of the update, and `user_id` is not among the columns written, so a
-  rename cannot move a credential to another account. That is a property of the statement rather
-  than of a validation a later edit could drop.
+  Returns `{:error, :not_found}` for a missing key, a key owned by another account or an invalid
+  UUID. The update is scoped to the supplied account and cannot transfer ownership.
   """
   def rename_key(account, id, name) do
     account = Config.account!(account)
@@ -297,23 +254,16 @@ defmodule Ithibati.Identity.Passkeys do
   end
 
   @doc """
-  Revokes one of this account's passkeys, and answers `{:ok, key}`.
+  Deletes a passkey belonging to the account and returns `{:ok, key}`.
 
-  It refuses the last one with `{:error, :last_key}`. Pass `last: :allow` to delete it anyway.
+  Returns `{:error, :not_found}` for a missing key, a key owned by another account or an invalid
+  UUID. By default, deleting the account's last passkey returns `{:error, :last_key}`. This
+  protection also applies to concurrent deletions through this function.
 
-  That refusal is a default, not an invariant, and the difference is the one that
-  matters: recovery codes still reach the account, so an application that overrides it breaks
-  nothing
-  Ithibati guarantees. The default is set this way because of what follows the deletion. A single
-  sheet of one-time codes becomes the whole way in, and the person revoking a passkey is rarely
-  the person who will go looking for that sheet. On a single-account instance the sign-in page
-  empties too: `authentication_challenge/3` answers `{:error, :no_credentials}` once no passkey
-  is left.
-
-  `{:error, :not_found}` covers a credential that does not exist, one that belongs to somebody
-  else, and an id that is not an id. Ithibati keeps it apart from `:last_key` deliberately. Hearing
-  "that is your last one" about a credential that was never theirs sends somebody hunting for a
-  device they do not have.
+  The `:last` option accepts `:refuse` (default) or `:allow`. Other values raise `ArgumentError`.
+  With `last: :allow`, an account can be left without passkeys and must use recovery codes to
+  sign in. If no credentials remain anywhere in the deployment, `authentication_challenge/3`
+  returns `{:error, :no_credentials}`.
   """
   def delete_key(account, id, opts \\ []) do
     account = Config.account!(account)
@@ -322,9 +272,8 @@ defmodule Ithibati.Identity.Passkeys do
     with {:ok, id} <- key_id(id) do
       repo = Config.repo()
 
-      # The refusal is the transaction's *value*, not a `rollback/1`. Unlike `RecoveryCodes.redeem/2`,
-      # this path has written nothing when it refuses, so aborting a caller's enclosing transaction
-      # would be a side effect of saying no.
+      # Return a refusal as the transaction value: no write occurred, and rolling back would also
+      # abort a caller's enclosing transaction.
       {:ok, outcome} = repo.transaction(fn -> revoke(repo, account, id, last) end)
 
       outcome
@@ -338,13 +287,10 @@ defmodule Ithibati.Identity.Passkeys do
     end
   end
 
-  # Two statements, and that is the mechanism, not a tidiness: one statement evaluates against
-  # one snapshot, so an `EXISTS` sitting beside the `FOR NO KEY UPDATE` would be computed from the
-  # stand before the wait and the lock would buy nothing. The delete has to be the second statement,
-  # taking a fresh snapshot after it.
+  # Under READ COMMITTED, the delete needs a new statement snapshot after the account lock is
+  # acquired. Combining the lock and sibling check in one statement would retain the pre-wait snapshot.
   defp revoke(repo, account, id, last) do
-    # The lock exists for the invariant, so it is taken only where there is one: with `last: :allow`
-    # there is no set a second deleter could empty, and nothing to queue on.
+    # The account lock is needed only when protecting the final passkey.
     if last == :refuse, do: Concurrency.lock_account!(account.id)
 
     case repo.delete_all(deletable_key(account, id, last)) do
@@ -353,16 +299,12 @@ defmodule Ithibati.Identity.Passkeys do
     end
   end
 
-  # The one place a key is named together with the account allowed to touch it. Written once because
-  # it is the authorization boundary of all three functions below, and a fourth reader that forgets
-  # a term would not crash. It would answer about somebody else's row.
+  # All management queries must bind the key ID to its owner to prevent cross-account access.
   defp own_key(account, id) do
     from k in UserKey, as: :key, where: k.id == ^id and k.user_id == ^account.id
   end
 
-  # `id` is a `binary_id`, and Ecto raises instead of matching nothing when what it is handed is not
-  # a UUID, so a hand-edited address would be a 500 where the documented answer is a refusal. Asked
-  # before the transaction opens, so nothing is locked on the way to saying no.
+  # Validate before querying so malformed route IDs return `:not_found` instead of an Ecto cast error.
   defp key_id(id) do
     case Ecto.UUID.cast(id) do
       {:ok, uuid} -> {:ok, uuid}
@@ -370,12 +312,8 @@ defmodule Ithibati.Identity.Passkeys do
     end
   end
 
-  # "The owner has another one" rides the `WHERE` of the delete, so no count is read and then acted
-  # on. Why it needs the lock above as well is `Ithibati.Identity.Concurrency.lock_rows/1`'s to
-  # explain: the two deletes aim at different rows and so wait on nothing.
-  #
-  # `parent_as(:key)`, not the account's id again. The outer `WHERE` has pinned the owner
-  # already, and reading it off that row keeps the two halves from disagreeing.
+  # Check for a sibling in the delete predicate after taking the account lock. Bind the sibling
+  # through `parent_as(:key)` so both parts of the query use the same owner.
   defp deletable_key(account, id, :allow), do: account |> own_key(id) |> select([key], key)
 
   defp deletable_key(account, id, :refuse) do
@@ -393,11 +331,8 @@ defmodule Ithibati.Identity.Passkeys do
     |> select([key], key)
   end
 
-  # A second statement, and on READ COMMITTED a second snapshot. Sharing the transaction with the
-  # delete buys no agreement between the two. That is acceptable because of what is being decided:
-  # not whether to delete, which already happened, but which of two refusals to name. A key removed
-  # by some other route in between is reported as `:not_found`, which by then is the true answer.
-  # Nothing deleted has only one cause once the last one may go, so there is nothing to ask.
+  # This lookup classifies an unsuccessful delete; it does not authorize one. A key removed
+  # between statements can correctly be reported as `:not_found`. With `:allow`, no lookup is needed.
   defp refusal(_repo, _account, _id, :allow), do: {:error, :not_found}
 
   defp refusal(repo, account, id, :refuse) do
@@ -407,23 +342,17 @@ defmodule Ithibati.Identity.Passkeys do
   end
 
   @doc """
-  Mints an authentication challenge: `{:ok, %Wax.Challenge{}}`, or `{:error, :no_credentials}` on
-  an instance that has no passkey at all.
+  Returns `{:ok, challenge}` for authentication, or `{:error, :no_credentials}` if no passkey exists.
 
-  Ithibati asks whether *any* credential exists with `exists?` instead of loading them, because
-  loading them is the query this call is here to prevent. The answer is not a secret either way: a
-  sign-in page on an instance with no account has nothing to offer.
+  The existence check covers the entire configured credential table. Credentials are not
+  partitioned by relying-party ID or tenant in that table. This check is independent of
+  `Ithibati.Identity.Instance.needs_setup?/0`, which reports the bootstrap claim state.
 
-  It is also not the question `Ithibati.Identity.Instance.needs_setup?/0` answers, which says how
-  the two differ and when they disagree.
+  `rp_id`, `origin` and the options have the same meanings as in `registration_challenge/3`.
+  Ithibati explicitly disables silent authentication, so a `wax_` application setting cannot
+  allow assertions without user presence.
 
-  Read the answer carefully, though: it is about the **deployment**, not about this relying party or
-  this tenant. `ithibati_keys` carries no relying-party column, so an application serving several of
-  them from one database gets an answer about all of them together.
-
-  The options are `registration_challenge/3`'s, with one more pinned instead of offered.
-  `silent_authentication_enabled` stays off. Wax fills it from `config :wax_` when it is not passed,
-  and it accepts an assertion made without the person being present.
+  Retain the challenge for `verify_authentication/2` and enforce single use on every attempt.
   """
   def authentication_challenge(rp_id, origin, opts \\ [])
       when is_binary(rp_id) and (is_binary(origin) or (is_list(origin) and origin != [])) do
@@ -442,10 +371,11 @@ defmodule Ithibati.Identity.Passkeys do
   end
 
   @doc """
-  Builds the browser's `PublicKeyCredentialRequestOptions`, binary fields base64url-encoded.
+  Returns `PublicKeyCredentialRequestOptions` with binary fields encoded as unpadded base64url.
 
-  `allowCredentials` is empty, and it is sent that way and not omitted, because the shape the
-  browser reads should say what it means. See `authentication_challenge/3` for why it names nothing.
+  `allowCredentials` is empty so the browser can offer discoverable passkeys for the relying
+  party. User verification and timeout come from the challenge; timeout is converted to
+  milliseconds for the browser.
   """
   def authentication_options(challenge) do
     %{
@@ -458,32 +388,24 @@ defmodule Ithibati.Identity.Passkeys do
   end
 
   @doc """
-  Verifies an assertion and answers the account that owns the credential.
+  Verifies an assertion and returns `{:ok, account}` or `{:error, reason}`.
 
-  It answers `{:ok, account}`, the account struct the application configured. Nothing has been
-  issued to that account yet; that is `c:Ithibati.Web.Handler.authenticate/2`'s decision.
+  `credential` is the decoded JSON object produced by the browser's `credential.toJSON()`.
+  Pass the retained authentication challenge as the second argument. The returned account is
+  an instance of the configured account schema; no session or token is issued.
 
-  A refusal is `{:error, reason}`, and `reason` is not always an atom. See
-  `verify_registration/2`, which says what to do about it.
+  On success, the credential's `last_used_at` is updated without changing `updated_at`.
+  A credential removed before that update is reported as `:unknown_credential`.
 
-  It takes the `PublicKeyCredential` the browser produced, parsed, and decodes it here. See
-  `verify_registration/2` for why that is Ithibati's job and not the caller's.
+  Library validation errors use atom reasons. `wax_` errors may be exception structs; see
+  `verify_registration/2` for error handling. Ithibati does not store or compare authenticator
+  signature counters.
 
-  Ithibati looks the credential up *before* `Wax.authenticate/6` and hands it over, which is the
-  resident-key path: the challenge names no credential, so Wax takes the public key from that
-  argument. The order is not a preference. Asked afterwards, Wax refuses every sign-in with
-  `:credential_id_mismatch`, having nothing on the challenge to match against.
-
-  > #### The caller must delete the challenge after verifying, success or failure {: .warning}
+  > #### Consume the challenge once {: .warning}
   >
-  > A challenge lives wherever the caller put it, and left in place the same assertion signs in
-  > again for as long as it is young enough. Ithibati cannot hold that property for you: it
-  > never sees where the challenge was put.
-
-  Ithibati deliberately neither stores nor compares the signature counter an authenticator
-  reports. It exists to detect a cloned authenticator, and a synced passkey reports zero forever,
-  so a comparison either says nothing or locks out the person whose credential moved between
-  devices.
+  > The caller owns challenge storage and must prevent reuse, including concurrent attempts.
+  > A failed verification must also consume the challenge. Leaving it available permits another
+  > attempt with the same assertion while it remains valid.
   """
   def verify_authentication(credential, challenge)
 
@@ -503,10 +425,8 @@ defmodule Ithibati.Identity.Passkeys do
          {:ok, client_data} <- decode(client_data),
          {:ok, signature} <- decode(signature),
          {:ok, key} <- fetch_key(credential_id),
-         # Decoded *inside* the rescue, not beside it: a truncated or unreadable stored key raises,
-         # and out here that is a crash with a stale challenge instead of the refusal every other bad
-         # assertion gets. `:safe` blocks atom and function creation; the binary is one this library
-         # wrote itself.
+         # Deserialize inside `safe_wax/1` so corrupt stored keys return verification errors.
+         # The safe option restricts decoding of this library-owned serialized term.
          {:ok, _auth_data} <-
            safe_wax(fn ->
              cose_key = :erlang.binary_to_term(key.public_key, [:safe])
@@ -521,8 +441,7 @@ defmodule Ithibati.Identity.Passkeys do
 
   def verify_authentication(_credential, _challenge), do: {:error, :malformed_credential}
 
-  # Unpadded, which is the alphabet the browser writes and `*_options/1` reads back. A field that is
-  # not that is the browser's input like any other. It is refused, never raised on.
+  # Malformed client encoding should return an error tuple rather than raise.
   defp decode(value) when is_binary(value) do
     case Base.url_decode64(value, padding: false) do
       {:ok, decoded} -> {:ok, decoded}
@@ -540,22 +459,12 @@ defmodule Ithibati.Identity.Passkeys do
     end
   end
 
-  # Longer than any authenticator may issue, so it matches no row. Answered here and not by
-  # asking, which keeps a body-sized parameter out of a bytea index lookup. `key_id` is `:binary`
-  # and would accept it; the saving is the query, not a refusal Postgres would have made.
+  # Reject oversized IDs before querying to avoid unnecessary large bytea index lookups.
   defp fetch_key(_credential_id), do: {:error, :unknown_credential}
 
-  # The write is the answer, and it brings the account back with it. Two properties in one statement:
-  # a passkey revoked between the lookup above and this update would otherwise still sign in, and
-  # Postgres reads the joined row in the same round trip, so a sign-in costs two round trips, not three.
-  # On a database that is not on this host, that saves a whole network round trip per sign-in.
-  #
-  # `updated_at` is deliberately left where it is, unlike a rename's: signing in is not a change to
-  # the credential, and moving it would make "when was this row last edited" mean two things.
-  #
-  # No test in this suite can reach that revocation window; it needs a second writer committing
-  # inside this one's transaction. The correctness comes from the shape of the statement, not
-  # from a green run.
+  # Update and return the account in one statement. A credential deleted before the update
+  # then produces `:unknown_credential`, rather than authenticating from the earlier lookup.
+  # Only `last_used_at` changes; `updated_at` continues to describe credential edits.
   defp touch(key) do
     query =
       from(k in UserKey,
@@ -570,13 +479,8 @@ defmodule Ithibati.Identity.Passkeys do
   end
 
   @doc false
-  # The one place a credential row is shaped. `Ithibati.Identity.Grant` writes the first passkey of
-  # an invited account and would otherwise restate this field list, which is how the grant path ends
-  # up storing something subtly different from the registration path.
-  #
-  # `key_attrs` is rebuilt, never merged into. A caller whose map carries a string `"user_id"`
-  # would otherwise get an atom one beside it, and which of the two Ecto reads is a detail of
-  # `Ecto.Changeset`'s parameter handling. The account is the caller's to name, not the map's.
+  # The grant and standalone enrolment share this field mapping. Rebuild the map explicitly
+  # so an untrusted `user_id` entry cannot override the account supplied by the caller.
   def credential_changeset(key_attrs, account) do
     %{key_id: key_id, public_key: public_key} = attrs = normalise(key_attrs)
 
@@ -596,10 +500,8 @@ defmodule Ithibati.Identity.Passkeys do
             "got #{inspect(other)}"
   end
 
-  # An authenticator that sets no attested-credential-data flag leaves this `nil`, and `Wax` does
-  # not refuse it. The registration simply carries no credential. Matched, never assumed:
-  # the input is the browser's, and reading a field off `nil` would raise outside the rescue above,
-  # which is the crash-with-a-stale-challenge this whole path exists to avoid.
+  # Attested credential data may be absent. Match it before field access so malformed input
+  # returns an error rather than raising outside `safe_wax/1`.
   defp attested_credential(%{
          attested_credential_data: %Wax.AttestedCredentialData{} = credential
        }) do
@@ -610,37 +512,22 @@ defmodule Ithibati.Identity.Passkeys do
 
   defp attested_credential(_auth_data), do: {:error, :no_attested_credential}
 
-  # An authenticator that says it did *not* store a discoverable credential is turned away here,
-  # ahead of Wax: nothing about the attestation matters once the credential is one that sign-in can
-  # never name, and the person is better told now than at their next visit, where the platform says
-  # "no passkey available" and nothing explains it.
-  #
-  # Only an explicit `false` refuses. `nil` is a client that does not implement `credProps`. That
-  # is silence, not a denial, and turning it away would lock out every browser that has not caught
-  # up. `"false"` counts as the same denial: a form-encoded body, or anything routed through a DOM
-  # attribute, hands over a string, and a guard matching the atom alone would wave it through with
-  # the whole suite green.
+  # Reject explicit discoverability denials, including the string form. Missing extension
+  # results remain compatible with clients that do not implement `credProps`.
   defp check_discoverable(reported) when reported in [false, "false"],
     do: {:error, :not_discoverable}
 
   defp check_discoverable(_reported), do: :ok
 
-  # Checked the way every other entry point that takes an account checks it: an application with two
-  # schemas using this library would otherwise build a ceremony against the wrong one's handle.
+  # Reject structs from another schema before deriving a credential handle.
   defp subject(%_{} = account), do: Config.account!(account)
 
-  # Through the same normalisation the identifier will go through when the account row is written,
-  # so the derived handle is the same on a second attempt whatever case the invitation link carried.
+  # Use the same normalization as storage so repeated registration attempts derive the same handle.
   defp subject(identifier) when is_binary(identifier), do: Identifier.normalize(identifier)
 
-  # The account's own key once there is a row, and before that a value derived from the identifier
-  # and not a fresh random one: an authenticator replaces a discoverable credential only when
-  # the relying party and this handle both match, so a random one would leave a second passkey
-  # behind every time somebody cancels an invitation and opens it again.
-  #
-  # It is deliberately *not* the identifier itself, because WebAuthn says a user handle must not be
-  # personally identifying. It does not agree with the account id that the same person gets
-  # afterwards either. Nothing here resolves a credential by handle; sign-in goes by credential id.
+  # Use a stable handle so retrying registration for one subject does not create a new handle
+  # each time. Before account creation, hash the normalized identifier instead of sending it
+  # as the handle. Existing accounts use their ID; authentication resolves by credential ID.
   defp handle(%_{id: id}), do: to_string(id)
   defp handle(identifier) when is_binary(identifier), do: Secrets.digest(identifier)
 
@@ -650,8 +537,7 @@ defmodule Ithibati.Identity.Passkeys do
 
   defp existing_credentials(_identifier), do: []
 
-  # Wax raises on some malformed input instead of answering. A caller gets the same error tuple
-  # either way, because the alternative is a crash with a stale challenge left behind it.
+  # Normalize raised verification errors into the same tuple shape as returned failures.
   defp safe_wax(fun) do
     fun.()
   rescue

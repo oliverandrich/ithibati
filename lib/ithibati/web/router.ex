@@ -2,7 +2,9 @@
 if Code.ensure_loaded?(Phoenix.Component) do
   defmodule Ithibati.Web.Router do
     @moduledoc """
-    The five routes the ceremonies need, wired in one call.
+    Mounts registration, authentication and recovery endpoints in a Phoenix router.
+
+    Import this module and use a pipeline that accepts JSON, fetches the session and checks CSRF:
 
         pipeline :ceremony do
           plug :accepts, ["json"]
@@ -15,30 +17,25 @@ if Code.ensure_loaded?(Phoenix.Component) do
           ithibati_routes handler: MyAppWeb.Auth, rp_name: "MyApp"
         end
 
-    The suffixes belong to Ithibati and not to each application, so that there is no way to
-    wire half of a ceremony: a mount chooses the prefix and nothing else. They are API from the
-    first release, and changing one costs a major version.
-
-    Four of the routes are the passkey ceremonies. The fifth, `/recovery`, takes a recovery code
-    and ends in `c:Ithibati.Web.Handler.recovered/3`. That is the same place a verified assertion
-    ends, reached the other way.
+    The mount adds five POST paths relative to its scope: `/registration/challenge`,
+    `/registration`, `/authentication/challenge`, `/authentication` and `/recovery`.
+    Their suffixes are fixed; the application chooses the scope prefix.
     """
 
     @doc """
-    Generates the ceremony routes, dispatching to `handler`.
+    Generates the five POST routes with settings local to this mount.
 
-    `:handler` implements `Ithibati.Web.Handler`, and `:rp_name` is the name a passkey dialog
-    shows. Both are required. `:user_verification` and `:seconds` are the two WebAuthn choices
-    that belong to the application and not to Ithibati: whether the authenticator
-    must confirm who is holding it, and how long a challenge stays acceptable. They default to
-    `"preferred"` and sixty seconds.
+    ## Options
 
-    The macro records all of this on the routes instead of reading it from application
-    configuration, so that two mounts (an administrative one and a public one, say) can answer to
-    different rules.
+      * `:handler` — required module implementing `Ithibati.Web.Handler`.
+      * `:rp_name` — required relying-party display name for passkey dialogs.
+      * `:user_verification` — `"required"`, `"preferred"` (default) or `"discouraged"`.
+      * `:seconds` — positive integer challenge lifetime; defaults to `60`.
 
-    Naming the handler does not make your router compile-depend on it. Write it as an alias, the
-    way you would write any module.
+    Different mounts can use different handlers and ceremony settings. The controller derives the
+    relying-party ID and origin from the endpoint unless the handler overrides `relying_party/2`.
+
+    A handler alias is resolved without introducing a compile-time dependency on that handler.
     """
     defmacro ithibati_routes(opts) do
       handler = resolved(Keyword.fetch!(opts, :handler), __CALLER__)
@@ -49,8 +46,7 @@ if Code.ensure_loaded?(Phoenix.Component) do
       quote bind_quoted: [handler: handler, rp_name: rp_name, ceremony: ceremony] do
         @ithibati_mounts handler
 
-        # On the scope, not on each route. A sixth route added here without the handler would
-        # be exactly the half-wired ceremony this exists to rule out.
+        # Scope-level settings apply consistently to every generated endpoint.
         scope "/", Ithibati.Web,
           private: %{ithibati: %{handler: handler, rp_name: rp_name, ceremony: ceremony}} do
           post("/registration/challenge", PasskeyController, :registration_challenge)
@@ -70,8 +66,7 @@ if Code.ensure_loaded?(Phoenix.Component) do
       end
     end
 
-    # Registered here, and written in the quote above, where `bind_quoted` has already reduced
-    # every form the macro accepts to the module itself.
+    # Register once even when a router mounts several handlers; the quoted code records each mount.
     defp collecting(module) do
       unless Module.has_attribute?(module, :ithibati_mounts) do
         Module.register_attribute(module, :ithibati_mounts, accumulate: true)

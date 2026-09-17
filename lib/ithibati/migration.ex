@@ -1,32 +1,32 @@
 defmodule Ithibati.Migration do
   @moduledoc """
-  Creates Ithibati's tables, as code and not as a file to copy.
+  Creates or removes Ithibati's versioned database schema from an application migration.
 
-  You write an ordinary migration of your own and call this from it.
-  [Getting started](getting_started.md#4-the-migration) carries the template and the configuration
-  it reads. What follows is what the two functions take.
+      defmodule MyApp.Repo.Migrations.AddIthibati do
+        use Ecto.Migration
+
+        def up, do: Ithibati.Migration.up(version: 1)
+        def down, do: Ithibati.Migration.down(version: 1)
+      end
+
+  Create the account table and identifier column first. If invitations are configured, their
+  table must also exist when `up/1` validates the application tables.
 
   ## Options
 
-    * `:version` — the schema version to build. Required. An unpinned call builds a different set
-      of tables depending on when it runs, and a rollback that undoes neither.
-    * `:from` — the version already present, exclusive. Defaults to `0`, a database with none of
-      these tables. A release that adds to the schema reaches an application as a second migration
-      of its own saying where it starts. Ecto records what has already been applied in that
-      application's own `schema_migrations`.
+    * `:version` — required target schema version supported by the installed release.
+    * `:from` — existing version, exclusive; defaults to `0`. A later upgrade uses a new
+      application migration with the original version as `:from`.
 
-  Table names are deliberately **not** options. The migration reads them from the schemas that go
-  on to query these tables: Ithibati's own, and the account schema that `config :ithibati,
-  user_schema:` names. The two therefore cannot disagree. An argument could have built
-  `x_sessions` while `Ithibati.Session` went on looking for `ithibati_sessions`, and nothing
-  would have failed
-  at the time the mistake was made.
+  Keep versions pinned in applied migrations. `current_version/0` reports the newest version
+  this release supports. `down/1` removes the changes covered by the matching range.
 
-  The foreign key's type is not an option either. `config :ithibati, users_key_type:` is compiled
-  into the schemas, and this migration reads it back out of one of them. An application can still
-  configure a type its own account table does not have, so the migration asks the column these
-  foreign keys will point at what it is before it builds anything, and refuses a disagreement
-  instead of half-applying it.
+  Table names and account foreign-key types come from the configured schemas. `up/1` verifies
+  required columns, key types and unique indexes before creating its tables. The application
+  continues to own its account and invitation tables.
+
+  [Getting started](getting_started.md#4-the-migration) shows initial setup;
+  [Configuration and schemas](configuration.md#migrations) covers index ownership and upgrades.
   """
   use Ecto.Migration
 
@@ -61,54 +61,42 @@ defmodule Ithibati.Migration do
     Enum.each(opts.version..(opts.from + 1)//-1, &step(&1, :down, opts))
   end
 
-  # `:id` is the schema-side name for an integer key, and Ecto renders it as `integer` in a
-  # migration. But the Phoenix default it describes is `bigserial`, so a foreign key declared that
-  # way holds accounts only up to two billion and then fails on insert. Named here, and not left to
-  # `references(type: :bigserial)`, which reaches the same column through a Postgres-only branch of
-  # the adapter.
   @doc """
-  The columns an invitation table has to carry, for the migration that creates it.
+  Adds the required invitation columns inside an application's `create table` block.
 
-  This is the counterpart to `Ithibati.Schema.Invitation.ithibati_invitation/0`. That macro
-  declares the fields, and this one adds the columns behind them. Both read the identifier off
-  the schema you configured, so the two cannot name different things. That is the mistake this
-  replaces: a `token_hash` written `:string` instead of `:binary` migrates without complaint and
-  fails at the first invitation.
-
-  Call it inside a `create table/2` of your own:
+  The configured invitation schema supplies the identifier field name. `version:` is required
+  and must name a supported schema version.
 
       create table(:invitations) do
         Ithibati.Migration.invitation_columns(version: 1)
 
-        add :role, Ecto.Enum, values: [:admin, :author]
+        add :role, :string
         timestamps(type: :utc_datetime_usec)
       end
 
-  It adds exactly four columns, and this list is the whole of it:
+  Declare `field :role, Ecto.Enum, values: [:admin, :author]` in the application's Ecto schema
+  when using that string column as an enum.
 
-    * the identifier your invitation schema declares, `:string`, `null: false`
+  The helper adds exactly four columns:
+
+    * the identifier, `:string`, `null: false`
     * `:token_hash`, `:binary`, `null: false`
     * `:expires_at`, `:utc_datetime_usec`, `null: false`
-    * `:accepted_at`, `:utc_datetime_usec`, nullable. `NULL` is what "not accepted yet" means,
-      and `Ithibati.Identity.Invitations.fetch/1` reads it that way
+    * `:accepted_at`, `:utc_datetime_usec`, nullable for pending invitations
 
-  The virtual `:token` the schema declares is not among them, because Ithibati never stores the
-  secret.
+  The schema's virtual `:token` is not stored. Add application-specific fields and timestamps
+  separately. For an identifier with another database type, write the columns explicitly.
+  `up/1` validates an existing invitation table as well.
 
-  `version:` is required, for the reason `up/1` gives. A migration is a record of what was built,
-  and an unpinned call expands against whichever release is installed the next time somebody sets
-  up a database from scratch.
-
-  Nothing here is compulsory. `up/1` checks an invitation table that already exists, or one you
-  would rather write out, either way.
+  This function does not create the token index; use `invitation_index/1` when adding invitations
+  after Ithibati's initial migration.
   """
   def invitation_columns(opts) do
     pinned!(opts, "invitation_columns/1")
 
     identifier = identifier(Config.invitation_schema!())
 
-    # Ecto prints `create table invitations` and nothing about what went into it, so a reader
-    # who wants to know what this added otherwise has to ask the database afterwards.
+    # Include the columns because Ecto logs only the enclosing table operation.
     Logger.info("ithibati: adding #{identifier}, token_hash, expires_at, accepted_at")
 
     add(identifier, :string, null: false)
@@ -118,12 +106,10 @@ defmodule Ithibati.Migration do
   end
 
   @doc """
-  The unique index on an invitation table's `token_hash`, for a migration of your own.
+  Creates or verifies the invitation table's unique `token_hash` index.
 
-  `up/1` creates this index as part of its own run, so an application that configured
-  `invitation_schema:` before migrating never needs this function. It exists for the case where
-  you turn invitations on *afterwards*: `up/1` has been recorded as applied and will not run
-  again, and the token in an invitation link is a bearer secret looked up by that digest.
+  Use this when adding invitations after Ithibati's initial migration has already run.
+  `version:` is required, and the configured invitation table must exist.
 
       defmodule MyApp.Repo.Migrations.AddInvitations do
         use Ecto.Migration
@@ -131,7 +117,6 @@ defmodule Ithibati.Migration do
         def change do
           create table(:invitations) do
             Ithibati.Migration.invitation_columns(version: 1)
-
             timestamps(type: :utc_datetime_usec)
           end
 
@@ -139,24 +124,20 @@ defmodule Ithibati.Migration do
         end
       end
 
-  It is safe to call either way. It creates the index only if it is not already there, and `up/1`
-  does the same, so the two cannot collide however they are ordered.
+  `up/1` also maintains this index. Both paths create it only when absent and verify its
+  uniqueness. If the schema uses `unique_index: false`, the application must create the index;
+  this call checks it without creating it.
   """
   def invitation_index(opts) do
     pinned!(opts, "invitation_index/1")
 
-    # Through the same description and the same create-and-confirm `up/1` uses. No second spelling
-    # of the index here: the promise above, that the two paths cannot collide however they are
-    # ordered, rests on them building the same thing, and on both noticing when
-    # `create_if_not_exists` matched a name that is not ours.
+    # Use the same index definition as `up/1` so either migration order is safe.
     %{invitation: Config.invitation_schema!()}
     |> invitation_indexes()
     |> Enum.each(&maintain_index/1)
   end
 
-  # `version:` is required, and pinned, for the reason `up/1` gives. One check, not one per
-  # entry point. The range is `@current_version`'s to state, and three copies of it is three
-  # places to edit when it gains a second value.
+  # Require a pinned version at every migration entry point.
   defp pinned!(opts, caller) do
     version = Keyword.get(opts, :version)
 
@@ -181,9 +162,7 @@ defmodule Ithibati.Migration do
 
     from = Keyword.get(opts, :from, 0)
 
-    # Refused, never tolerated. A version this release does not know reaches no clause, and a
-    # starting point at or above it builds nothing at all while Ecto records the migration as
-    # applied. A consumer would find out at the first query.
+    # Reject empty or unsupported ranges before Ecto can record a migration that did no work.
     require!(version, 1..@current_version//1, "version", "1..#{@current_version}")
     require!(from, 0..(version - 1)//1, "from", "0..#{version - 1}")
 
@@ -267,20 +246,11 @@ defmodule Ithibati.Migration do
     opts |> application_indexes() |> Enum.reverse() |> Enum.each(&drop_index/1)
   end
 
-  # Every index this library maintains on a table it does not own, as a list, so that a third such
-  # table is an entry and not another pair of functions. Why it maintains them at all: a
-  # changeset cannot keep an identifier unique against a concurrent insert, so the uniqueness has
-  # to be the database's.
+  # Database indexes enforce uniqueness across concurrent inserts; changesets alone cannot.
   defp application_indexes(opts), do: [account_index(opts) | invitation_indexes(opts)]
 
-  # Two people registering the same identifier at the same moment both pass the changeset's
-  # uniqueness check and both insert, unless the database refuses the second. So the unique index
-  # is not decoration, and leaving it to an application to remember would be requiring something
-  # and then hoping. `Ithibati.Schema.User.identifier_taken?/1` is how the application learns
-  # that this is what a refused insert collided on.
-  #
-  # `unique_index: false` is how an application says it maintains its own: a partial, expression or
-  # composite index this library has no business guessing at. The index is then checked instead.
+  # `unique_index: false` leaves index creation to the application, but still requires
+  # a unique index on the identifier alone across the whole table.
   defp account_index(opts) do
     %{
       schema: opts.schema,
@@ -291,9 +261,7 @@ defmodule Ithibati.Migration do
     }
   end
 
-  # Empty for a consumer who invites nobody: no invitation schema, no such table, nothing to index.
-  # Otherwise the digest in a link is looked up the same way an identifier is, so it wants the same
-  # kind of index.
+  # Invitation indexes are needed only when an invitation schema is configured.
   defp invitation_indexes(%{invitation: nil}), do: []
 
   defp invitation_indexes(%{invitation: schema}) do
@@ -308,16 +276,8 @@ defmodule Ithibati.Migration do
     ]
   end
 
-  # `create_if_not_exists`, so that the order stops mattering: a consumer who turned invitations
-  # on later made this index in a migration of their own with `invitation_index/1`, and one who
-  # rebuilds that database from scratch runs both. Neither should collide with the other.
-  #
-  # The confirmation afterwards is what that costs. Postgres matches `IF NOT EXISTS` on the index
-  # *name* alone, so an index of the application's that happens to carry the name Ecto derives
-  # turns the create into a silent no-op where plain `create` raised. `UNIQUE (email) WHERE
-  # deleted_at IS NULL` is the shape that does it, and it permits exactly the two rows the account
-  # lookup cannot survive. So both branches end in the same question: is the column uniquely
-  # indexed now.
+  # Allow both `up/1` and a later invitation migration to request the same index.
+  # Postgres checks only the name for `IF NOT EXISTS`, so verify the resulting index too.
   defp maintain_index(index) do
     if index.create?, do: create_if_not_exists(index_for(index))
 
@@ -333,19 +293,10 @@ defmodule Ithibati.Migration do
   # `name: nil` is not a missing name. `Ecto.Migration.index/3` fills it in with the one it derives.
   defp index_for(index), do: unique_index(index.table, [index.column], name: index.name)
 
-  # Asked of `pg_index`, not of the name. `to_regclass` answers for any relation that happens
-  # to be called that: a table, a view, a non-unique index, an index on another column would all
-  # pass. What the account lookup needs is a unique index over exactly this column.
+  # Verify uniqueness on the required column, not merely the existence of a relation name.
   defp confirm_index!(index) do
-    # `create/1` only queues; the query below runs at once, so flush first or it cannot see an index
-    # the calling migration has just asked for. `confirm_tables!/1` has already flushed by the time
-    # this runs, and this one stays anyway: a check that depends on a flush somewhere else is a check
-    # that breaks when two lines are swapped, and flushing an empty queue costs nothing.
-    #
-    # A partial index is the one a consumer is most likely to have: `UNIQUE (email) WHERE
-    # deleted_at IS NULL` looks like a unique index and lets two rows share the value, which is
-    # the `Ecto.MultipleResultsError` this check exists to prevent. `Ithibati.Catalogue` rules it
-    # out along with the rest, which is why this asks the same question the account key is asked.
+    # Flush queued DDL before inspecting the catalogue. A matching name may hide a partial
+    # or otherwise unsuitable index; Catalogue verifies its actual shape.
     flush()
 
     match?(
@@ -369,15 +320,8 @@ defmodule Ithibati.Migration do
       "this library create the index the account lookup needs."
   end
 
-  # What Postgres calls the column a foreign key of this type can point at. An `:id` account table
-  # is `bigserial` by default but `serial` is a legal choice, and Postgres references across the
-  # integer widths happily. They share an operator family.
-
-  # What `references/2` will demand of the account table, asked before anything is built and not
-  # discovered from inside it. The column it points at has to exist, be a type this foreign key can
-  # compare against, and carry a unique index. A unique index is what Postgres requires of any
-  # referenced column, not a primary key, so a composite primary key with `UNIQUE (id)` beside it
-  # is a legal account table, and this is why it passes.
+  # Check the referenced column before building library tables. A compatible type and
+  # a unique index suffice; the column need not be the primary key.
   defp confirm_tables!(opts) do
     # Nothing to confirm while tearing down, and `flush/0` refuses to run in that direction at all.
     # A consumer whose `change/0` calls `up/1` would otherwise fail its rollback here.
@@ -396,9 +340,7 @@ defmodule Ithibati.Migration do
     end
   end
 
-  # The column is the application's to add; the index on it is this library's to create. That line
-  # is not obvious from the outside, so a column that is not there is answered with where it
-  # belongs, and not with the `undefined_column` Postgres raises when the index is built.
+  # Check application-owned columns before creating indexes so failures name the missing column.
   defp confirm_indexed_column!(index) do
     oid = table_oid!(index.table)
 
@@ -411,13 +353,8 @@ defmodule Ithibati.Migration do
       )
   end
 
-  # The three columns beyond the identifier that an invitation table has to carry, with what
-  # Postgres has to call them. The schema declares all four and the migration indexes one, so
-  # without this a `token_hash` somebody wrote as `:string` migrates green and fails at the first
-  # invitation, later and further from the mistake than any other disagreement here.
-  #
-  # The identifier is deliberately absent: `citext` is a shape this library supports, and an
-  # application whose accounts use it wants its invitations to match.
+  # Validate invitation storage types before the first runtime query. Leave the identifier
+  # type open so applications can use `citext` for both accounts and invitations.
   @invitation_columns [
     {:token_hash, ["bytea"]},
     {:expires_at, ["timestamp without time zone", "timestamp(6) without time zone"]},
@@ -457,9 +394,7 @@ defmodule Ithibati.Migration do
     end
   end
 
-  # Read off the reference, never assumed. Ecto points a foreign key at `:id` unless the repo
-  # moves it with `:migration_foreign_key`, and a check that guessed would pass tables the migration
-  # then fails on.
+  # Respect the repository’s `:migration_foreign_key` configuration when checking the target column.
   defp account_key_column(opts) do
     references(opts.users_table, type: key_type()).column
   end

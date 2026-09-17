@@ -1,15 +1,10 @@
 defmodule Ithibati.Catalogue do
   @moduledoc """
-  What Postgres says about the tables an application owns.
+  Reads PostgreSQL table, column and uniqueness metadata.
 
-  Two callers ask these two questions, and they must not be allowed to disagree.
-  `Ithibati.Migration` asks them before it points a foreign key at somebody's account table, and
-  `Ithibati.Doctor` asks them afterwards, to say whether what was built still matches what is
-  configured. A second copy of either query would answer the same question differently the first
-  time somebody corrected one of them.
-
-  Everything here takes its repo and prefix as arguments. The migration has `Ecto.Migration`'s
-  `repo/0` and `prefix/0` to hand, and nothing outside a migration does.
+  `Ithibati.Migration` and `Ithibati.Doctor` use these queries to apply the same checks during
+  migration and setup diagnosis. Functions receive the repo explicitly; table lookup also takes
+  a PostgreSQL schema prefix.
   """
 
   alias Ithibati.Config
@@ -18,12 +13,10 @@ defmodule Ithibati.Catalogue do
   @key_columns %{binary_id: ["uuid"], id: ["smallint", "integer", "bigint"]}
 
   @doc """
-  The oid of a table, or `nil` when there is none under that prefix.
+  Returns the relation OID for `table`, or `nil` if the name does not resolve.
 
-  This resolves the name the way Ecto resolves the `REFERENCES` clause it emits: qualified when
-  there is a prefix, and through the search path when there is not. Postgres does the quoting
-  and Ithibati does not, so a table whose name is not lower case answers for itself instead of
-  being downcased into a different one.
+  With a prefix, lookup uses that PostgreSQL schema. With `nil`, it uses the connection's search
+  path. Identifiers are quoted in PostgreSQL so mixed-case names retain their meaning.
   """
   def table_oid(repo, prefix, table) do
     %{rows: [[oid]]} =
@@ -37,13 +30,11 @@ defmodule Ithibati.Catalogue do
   end
 
   @doc """
-  A column's type and whether one unique index covers it alone, or `nil` when there is no such
-  column.
+  Returns `{database_type, unique?}` for a column, or `nil` if it does not exist.
 
-  A domain resolves to what it is built on, because that is what a foreign key compares against.
-  The index has to cover that column and nothing else, and it must not be partial, which Postgres
-  refuses as a reference target. `indnkeyatts` counts key columns only, so
-  `PRIMARY KEY (id) INCLUDE (email)` still qualifies.
+  Domains resolve to their underlying type. `unique?` requires a non-partial unique index whose
+  only key column is this column. Additional included columns are allowed; for example,
+  `PRIMARY KEY (id) INCLUDE (email)` qualifies.
   """
   def column(repo, oid, column) do
     %{rows: rows} =
@@ -72,18 +63,16 @@ defmodule Ithibati.Catalogue do
     end
   end
 
-  @doc "A table's name as a message should show it, carrying the prefix when there is one."
+  @doc "Returns the table name, qualified with `prefix` when one is supplied, for diagnostic text."
   def qualified(nil, table), do: table
   def qualified(prefix, table), do: "#{prefix}.#{table}"
 
   @doc """
-  Whether a table's key column can carry Ithibati's foreign keys. It answers
-  `{:ok, description}`, or a sentence saying what is wrong.
+  Returns `{:ok, description}` when the column meets the configured account-key requirements.
 
-  The judgement travels with the query for the reason the query travelled here. The migration
-  decides this before it builds and the doctor decides it afterwards, and the two disagreeing is
-  worse than either being wrong. A wrong answer out of the SQL is loud. A disagreement about
-  *which types are acceptable* means one of them blesses a database the other refuses.
+  Returns `{:error, description}` for a missing column, an incompatible database type or missing
+  uniqueness. Both migration and doctor checks use this result so they agree on the schema
+  Ithibati can reference.
   """
   def key_column(repo, oid, table, column) do
     case column(repo, oid, column) do

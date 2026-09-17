@@ -2,13 +2,15 @@ defmodule Mix.Tasks.Ithibati.Doctor do
   @shortdoc "Says what is wrong with this application's Ithibati setup"
 
   @moduledoc """
-  Prints what `Ithibati.Doctor` answers, and exits non-zero when something is wrong.
+  Starts the consuming application, prints setup findings and fails if any check reports an error.
 
       mix ithibati.doctor
 
-  The task starts the application first, and that is not incidental. Several of the questions are
-  about modules the application owns, and an unstarted application answers "no such thing" for
-  every one of them.
+  Run the task inside the application that configures Ithibati, not at an umbrella root. It needs
+  working configuration and a reachable database for the database checks.
+
+  The output labels findings `ok`, `bad` or `skip`. A run with no errors prints `Nothing to fix.`.
+  See [Setup checks](doctor.md) for interpreting and correcting failures.
   """
 
   use Mix.Task

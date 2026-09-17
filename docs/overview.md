@@ -2,30 +2,54 @@
 
 ![Ithibati](assets/logo.png)
 
-Passkey authentication for Elixir applications: accounts, WebAuthn credentials, recovery codes and
-revocable tokens. It has no opinion about what an account may do. The web half is optional and
-built for Phoenix.
+Ithibati provides passkey authentication, recovery codes and revocable sessions for Elixir
+applications. Start with [Getting started](getting_started.md) to add them to a Phoenix
+application with open registration.
 
-[Swahili, *ithibati*](https://en.wiktionary.org/wiki/ithibati): proof, evidence. In WebAuthn's own vocabulary, attestation.
+## How the pieces fit
 
-Ithibati is the half of an accounts context that knows *who someone is and how they prove it*: the
-account row, its passkeys, its recovery codes, its tokens. It knows nothing about what that
-account may then do, and that is the point of the split. [Getting started](getting_started.md)
-walks an empty Phoenix application through to a working sign-in. This page is the map of
-everything else.
+Your application owns the account schema, its table and the rules for creating an account.
+`Ithibati.Schema.User` adds the identifier and credential associations that Ithibati needs.
+Roles, teams and permissions remain application concerns.
 
-## Where to go next
+The identity core verifies WebAuthn credentials through `wax_`, manages passkeys and recovery
+codes, and stores sessions. Verification returns an account. Issuing a session or another
+credential is a separate decision made by the caller.
 
-- **[Getting started](getting_started.md)** — an empty `phx.new` application walked through to
-  a working sign-in: the dependency, the schema, the migration, the handler, the routes, the
-  browser hook and the recovery-codes page.
-- **[Registering and signing in](ceremonies.md)** — the endpoints, the four callbacks you
-  implement, the JavaScript that drives the browser, and how to do all of it without Phoenix.
-- **[Passkeys](passkeys.md)** — enrolling a second device, listing, renaming, revoking, and the
-  one you cannot delete.
-- **[Recovery codes](recovery.md)** — for the day a passkey is gone, and the callback that
-  signs somebody in with one.
-- **[Invitations, and the first account](invitations.md)** — claiming an empty instance, and
-  letting somebody in.
-- **[`mix ithibati.doctor`](doctor.md)** — what it asks, and the questions only it can ask.
-- **[Credo checks](credo.md)** — three rules a consuming project can switch on.
+The optional web layer adds Phoenix endpoints, a handler behaviour, a session gate and a
+LiveView browser hook. Phoenix, LiveView and Plug are taken together. The core also works
+without that layer; [direct ceremonies](ceremonies.md#without-the-web-half) show the calls.
+
+Account creation uses `Ecto.Multi`: the application inserts its account and any related rows,
+then Ithibati appends the first passkey and recovery codes. Everything commits together.
+Invitations follow the same arrangement: your table records what the invitation grants, and
+Ithibati supplies the token and acceptance step.
+
+## Design decisions
+
+- **The application owns its account and invitation tables.** Ithibati supplies schema macros,
+  changeset functions and checks for the columns it uses. Your application can add its own fields.
+- **Verification and credential issuance are separate.** The same verified account can lead to
+  a browser session, an application-owned API token or another application step.
+- **The relying party is supplied per call.** The core receives `rp_id` and `origin` explicitly.
+  The web layer derives defaults from your endpoint and offers a callback for other trusted
+  clients. These values never come from Ithibati or `wax_` configuration.
+- **PostgreSQL is required.** Migrations inspect its catalogue to verify existing columns and
+  uniqueness constraints before adding references to application-owned tables.
+
+## Choose a guide
+
+| Task | Guide |
+| --- | --- |
+| Build a working Phoenix sign-in | [Getting started](getting_started.md) |
+| Change identifiers, indexes or configuration | [Configuration and schemas](configuration.md) |
+| Wire callbacks, routes, sessions and browser events | [Registering and signing in](ceremonies.md) |
+| Add, rename or revoke a passkey | [Passkeys](passkeys.md) |
+| Issue, redeem and display recovery codes | [Recovery codes](recovery.md) |
+| Restrict registration to invitations | [Invitations and the first account](invitations.md) |
+| Diagnose an installation | [Setup checks](doctor.md) |
+| Check integration code automatically | [Credo checks](credo.md) |
+
+The repository includes complete [open-registration](https://github.com/oliverandrich/ithibati/tree/main/examples/open_registration)
+and [invitation-only](https://github.com/oliverandrich/ithibati/tree/main/examples/invitation_only)
+applications. CI runs their suites, including browser tests.

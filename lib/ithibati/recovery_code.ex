@@ -1,9 +1,9 @@
 defmodule Ithibati.RecoveryCode do
   @moduledoc """
-  One single-use code, stored as a hash, for the day a passkey is gone.
+  Stores a recovery code's digest, account reference and usage timestamp.
 
-  Ithibati marks a spent code instead of deleting it. The row is what makes a second use
-  refusable, and how many are left is a question the holder gets asked.
+  `used_at` is `nil` until redemption. `Ithibati.Identity.RecoveryCodes` checks and marks the code
+  in the same write so concurrent callers cannot both redeem it. Plaintext codes are not stored.
   """
   use Ecto.Schema
 

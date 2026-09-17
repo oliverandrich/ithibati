@@ -1,11 +1,12 @@
 defmodule Ithibati.Identity.RecoveryCodes do
   @moduledoc """
-  Single-use codes, for the day a passkey is gone.
+  Issues and redeems single-use recovery codes for accounts without an available passkey.
 
-  A passkey-only account has one credential set, and one lost keychain would otherwise be the end of
-  it. Recovery codes are the second set: twelve codes by default, shown once, each good for exactly
-  one sign-in. The application sets how many, and whether spending the last one brings a fresh
-  batch.
+  A batch contains twelve codes by default. Issuance returns plaintext codes while storage keeps
+  only their SHA-256 digests. The application must display or deliver the plaintext at issuance.
+
+  Spending the last unused code refills the batch by default. Redemption returns the account and
+  any fresh codes; the caller decides whether to issue a session.
   """
 
   import Ecto.Query
@@ -15,10 +16,8 @@ defmodule Ithibati.Identity.RecoveryCodes do
   alias Ithibati.Identity.Secrets
   alias Ithibati.RecoveryCode
 
-  # Twelve is what fits a printed sheet, and eighty bits each is more than a guess can reach.
-  # Sixteen lowercase base32 characters: one case, one alphabet, no separators. RFC 4648 keeps `i`,
-  # `l`, `o` and `b`, so it is not the variant that removes the confusable glyphs. It is the one
-  # Elixir ships, and hand-rolling Crockford to gain four letters is not a trade this library makes.
+  # Ten random bytes produce sixteen lowercase base32 characters (80 bits).
+  # The built-in encoder uses the RFC 4648 alphabet, including visually similar letters.
   @count 12
   @bytes 10
 
@@ -30,21 +29,24 @@ defmodule Ithibati.Identity.RecoveryCodes do
   end
 
   @doc """
-  Issues a fresh batch, and invalidates every code the account already had, spent or not.
+  Returns a fresh list of plaintext codes and invalidates all previous codes for the account.
 
-  An account gets its first batch the same way, with nothing to invalidate yet. What comes back is
-  the plaintext, once. The rows hold digests, and nothing can recover the plaintext afterwards.
+  The `:count` option defaults to `12` and accepts a non-negative integer. `count: 0` invalidates
+  the previous batch without issuing replacements. Other values raise `ArgumentError`.
 
-  `:count` says how many, and defaults to twelve.
+  The account must belong to the configured schema and exist in the database. Replacement is
+  transactional and serialized with other regeneration and redemption calls for that account.
+
+  Only digests are stored. Display or deliver the returned codes now; they cannot be retrieved
+  from the database later.
   """
   def regenerate(account, opts \\ []) do
     account = Config.account!(account)
 
     {:ok, codes} =
       Config.repo().transaction(fn ->
-        # Behind the same lock as a redemption, and for a reason of its own: a `DELETE` can only take
-        # rows its snapshot can see, so two regenerations at once leave two live batches. Measured:
-        # twenty rounds in twenty.
+        # Serialize regeneration with redemption and other regenerations. Without the account lock,
+        # concurrent replacements can each miss the other batch and leave both active.
         Concurrency.lock_account!(account.id)
         replace(account, opts)
       end)
@@ -53,20 +55,23 @@ defmodule Ithibati.Identity.RecoveryCodes do
   end
 
   @doc """
-  Redeems a code: marks it spent and answers the account that held it.
+  Spends a recovery code and returns `{:ok, account, fresh_codes}` or `{:error, :invalid}`.
 
-  It answers `{:ok, account, codes}`, where `codes` is a fresh batch when this was the account's
-  **last** unused code and `nil` otherwise. The result has three elements, not an optional
-  key, so a caller cannot match the common case and silently drop the batch in the one case it
-  exists for.
+  `fresh_codes` is `nil` while unused codes remain. When the last one is spent, the same
+  transaction issues a replacement batch and returns its plaintext list. Preserve that list
+  for display; it cannot be recovered from the stored digests.
 
-  That refill happens in the same transaction, and `refill: false` turns it off. It is on by default
-  because of the shape of the failure. An account with no passkey and no codes left is locked out of
-  a self-hosted instance for good, and the only moment anybody can write down a new batch is the one
-  where they have just used the last old one.
+  ## Options
 
-  `{:error, :invalid}` covers a code nobody holds and one already spent. Nothing tells the two
-  apart, deliberately.
+    * `:refill` — defaults to `true`; pass `false` to disable replacement.
+    * `:count` — size of a replacement batch, default `12`. Accepts a non-negative integer;
+      invalid values raise when a replacement batch is needed.
+
+  Unknown and already-spent codes both return `{:error, :invalid}`. A `nil` input returns the
+  same error; other non-string inputs do not match the function's clauses.
+
+  Redemption does not create a session. Concurrent redemption and regeneration are serialized
+  on the account row so spending and refilling use a consistent ordering.
   """
   def redeem(code, opts \\ [])
 
@@ -75,10 +80,8 @@ defmodule Ithibati.Identity.RecoveryCodes do
     repo = Config.repo()
 
     repo.transaction(fn ->
-      # The account is locked before the code is spent. Taken in the other order, a redemption and a
-      # regeneration on one account can each end up holding what the other needs. (`issue!/3` is
-      # the exception and says so: it is called from inside a caller's own transaction, which has
-      # already established the account.)
+      # Lock the account before updating a code. Regeneration takes locks in that order too;
+      # reversing it here would allow the two operations to deadlock.
       with account when account != nil <- lock_owner(digest),
            {:ok, _spent} <- spend(digest) do
         {account, refill(account, opts)}
@@ -92,14 +95,10 @@ defmodule Ithibati.Identity.RecoveryCodes do
     end
   end
 
-  # `nil` is what a missing form field gives you, and answering it is kinder than crashing. Anything
-  # else is a caller passing the wrong thing, and that should surface as one and not as somebody
-  # mistyping their code.
+  # Missing form values are invalid codes. Other non-string inputs remain caller errors.
   def redeem(nil, _opts), do: {:error, :invalid}
 
-  # "Unused" rides the `WHERE` of the update that spends the code, and the row comes back from the
-  # same statement, so a second caller cannot find it unused. The predicate alone is enough
-  # here and not for the count below, which is what `Ithibati.Identity.Concurrency` is for.
+  # Keep the unused predicate in the update so concurrent attempts cannot both spend one code.
   defp spend(digest) do
     query =
       from(r in RecoveryCode, where: r.code_hash == ^digest and is_nil(r.used_at), select: r)
@@ -108,23 +107,17 @@ defmodule Ithibati.Identity.RecoveryCodes do
     |> Concurrency.one_affected(:invalid)
   end
 
-  # Counted behind the account's lock, and this is what the lock is for: two callers spending two
-  # *different* codes aim at different rows, so nothing makes them wait, each sees the other's code
-  # as still unused, and neither refills. Measured before the lock went in: eighteen rounds in
-  # twenty left the account holding nothing at all.
+  # The account lock serializes spending different code rows. Count after acquiring it so
+  # the final redemption observes previous spends and performs the refill.
   defp refill(account, opts) do
     if Keyword.get(opts, :refill, true) and remaining(account) == 0,
       do: replace(account, opts)
   end
 
   @doc false
-  # Public for `Ithibati.Identity.Grant`, which writes through the transaction's own repo. It takes
-  # no lock: the caller is provisioning an account nobody else has a handle on yet.
-  #
-  # One statement, not one per code: measured at 0.29 ms against 1.10 ms, and the round trips
-  # a database on another host charges a full network round for. `insert_all/2` fills the primary
-  # key and skips the changeset, which has nothing to do here. Both fields are built in this
-  # function.
+  # The grant passes its transaction repo while provisioning an account. It needs no extra
+  # lock because that account is not yet available to concurrent redemption.
+  # Bulk insertion avoids a database round trip per code; IDs and timestamps are supplied here.
   def issue!(repo, account, opts \\ []) do
     account = Config.account!(account)
     now = DateTime.utc_now()
@@ -146,9 +139,8 @@ defmodule Ithibati.Identity.RecoveryCodes do
 
   defp replace(account, opts), do: issue!(Config.repo(), account, opts)
 
-  # One statement for the owner and the lock: the digest rides a sub-`SELECT`, which Postgres does
-  # not lock rows through, so the code row stays free while the account row is taken. That is the
-  # ordering the paragraph in `redeem/2` is about.
+  # The subquery finds the account without locking the code row, preserving the account-first
+  # lock order shared with regeneration.
   defp lock_owner(digest) do
     owner = from(r in RecoveryCode, where: r.code_hash == ^digest, select: r.user_id)
 

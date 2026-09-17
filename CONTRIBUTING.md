@@ -32,6 +32,10 @@ $ cd examples/open_registration && mix precommit
 The examples are documentation that either compiles or does not, and their own suites drive them
 in a real browser. They are the only place `priv/static/ithibati.js` is executed.
 
+To preview the documentation locally, run `mise run docs` and open `http://127.0.0.1:8000`.
+This builds the docs and serves them with Python 3. Stop with Ctrl+C. After editing, run
+`mix docs --warnings-as-errors` in another terminal and refresh the page.
+
 ## Architecture — do not violate
 
 - **`Ithibati.Identity` may not name another context.** It is the half that knows who someone is

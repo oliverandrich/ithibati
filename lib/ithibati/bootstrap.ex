@@ -1,19 +1,13 @@
 defmodule Ithibati.Bootstrap do
   @moduledoc """
-  The record that an instance has been set up, and by whom.
+  Stores the one-time bootstrap claim and the account that made it.
 
-  A row here is the claim, and there can be at most one. This is a table of Ithibati's, not
-  a flag on the account for two reasons, and the second one decides it.
+  A unique index on `:claimed` permits one claim through `Ithibati.Identity.Instance.claim/2`.
+  The row belongs to Ithibati so its migration maintains that constraint.
 
-  The application would have to create the flag itself, on a table Ithibati does not own, together
-  with a partial unique index that is the entire guarantee. Forgetting that index fails nothing
-  until two people register at the same moment. Here `Ithibati.Migration.up/1` creates the index,
-  so nobody can forget it.
-
-  A boolean on an account also conflates two different facts: *this instance has been set up* and
-  *this account set it up*. Delete that account and both vanish, which makes a second setup
-  possible again. `user_id` is nullable and nilified on delete, so the row goes on saying that the
-  instance is set up even when the account that set it up is gone.
+  Deleting the account nulls `user_id` while preserving the claim. Initial setup therefore stays
+  closed after the first account is removed. Use `Ithibati.Identity.Instance` to read or claim
+  this state.
   """
   use Ecto.Schema
 
@@ -33,10 +27,11 @@ defmodule Ithibati.Bootstrap do
   end
 
   @doc """
-  Claims the instance for an account.
+  Builds a bootstrap changeset with the account reference and database constraints.
 
-  Insert it and read the outcome. The second caller of two gets an error on `:claimed`, which is
-  what tells "somebody else was first" apart from "this form is wrong".
+  This function does not insert the row. An insert can report a unique-constraint error on
+  `:claimed` or a foreign-key error on `:user_id`. Application registration flows should use
+  `Ithibati.Identity.Instance.claim/2` to handle these within their transaction.
   """
   def changeset(bootstrap, attrs) do
     bootstrap

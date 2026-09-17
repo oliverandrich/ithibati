@@ -1,33 +1,19 @@
 # Registering and signing in
 
-Both ceremonies run the same four steps: the browser asks for a challenge, the authenticator
-answers it, the browser posts what it produced, and Ithibati verifies it. What happens after a
-successful verification is yours.
+A passkey ceremony has four steps: request a challenge, ask the authenticator to answer it,
+post the credential, and verify it. Ithibati handles these steps; your application decides
+who may register and what to do with the verified account.
+
+For a complete application, start with [Getting started](getting_started.md). This page is the
+reference for routes, callbacks, browser events and sessions. The final section shows the
+[core calls without Phoenix](#without-the-web-half).
 
 ## The routes
 
-Five endpoints, wired in one call. They are all `POST`, and the paths are relative to the scope
-you mount them in:
-
-| | |
-| --- | --- |
-| `POST /registration/challenge` | asks your handler who this is, then mints a challenge |
-| `POST /registration` | verifies what the authenticator made, then calls your handler |
-| `POST /authentication/challenge` | mints a challenge naming no credential |
-| `POST /authentication` | verifies the assertion, then calls your handler |
-| `POST /recovery` | spends a recovery code, then calls your handler |
-
-Under `scope "/auth"` those become `/auth/registration/challenge` and so on, which is what the
-hook element's `data-` attributes carry. The suffixes are this library's, not yours, so
-there is no way to wire half a ceremony, and they are meant to stay put: changing one breaks
-every mounted consumer at once.
-
-
+Import `Ithibati.Web.Router` in your router and mount the endpoints in a JSON pipeline:
 
 ```elixir
 pipeline :ceremony do
-  # Not `["html"]`. These endpoints answer JSON, and a `:browser` pipeline would refuse the hook's
-  # request with a 406 before the controller is reached.
   plug :accepts, ["json"]
   plug :fetch_session
   plug :protect_from_forgery
@@ -39,253 +25,64 @@ scope "/auth" do
 end
 ```
 
-Give them their own pipeline, not your `:browser` one. Every plug in it is load-bearing.
-The challenge waits in the session between the two round-trips, so something has to have fetched
-one. `protect_from_forgery` is what the hook answers with the `x-csrf-token` header. A JSON body
-is not exempt. And the format list is `json`, which is what these endpoints speak.
-
-`:rp_name` is the name a passkey dialog shows. Two more options belong to a mount and not to
-Ithibati: `:user_verification`, whether the authenticator must confirm who is holding it, and
-`:seconds`, how long a challenge stays acceptable. They default to `"preferred"` and sixty.
-
-`MyAppWeb.Auth` implements `Ithibati.Web.Handler`. That is where the decisions Ithibati
-deliberately does not make become yours: who may start a registration, what an account is made of
-once a credential verifies, and what is issued after an assertion. A session cookie is one
-answer; a bearer token for an extension or a native client is another, and choosing one for you
-would rule out the other.
-
-`/recovery` is the odd one out, and it earns its place here instead of in your own controller:
-it ends where a verified assertion ends, at an account whose holder has proved who they are. It
-takes a `code`, spends it, and calls `c:Ithibati.Web.Handler.recovered/3`. That is a separate callback
-from [`authenticate/2`](`c:Ithibati.Web.Handler.authenticate/2`) because it carries a third thing,
-the fresh batch that a spent *last* code
-produces and that nobody can be shown twice. There is no challenge and no authenticator; the
-whole exchange is one request.
-
-### The relying party
-
-Ithibati takes `rp_id` and `origin` per call, never from its own configuration. That is what
-lets one deployment answer differently for a browser page and an extension. What the routes hand
-it by default is derived from your endpoint's configured `:url`, not from the connection: behind
-a proxy that terminates TLS those two disagree, and the browser signs what it saw.
-
-[`relying_party/2`](`c:Ithibati.Web.Handler.relying_party/2`) is the optional callback that
-changes it. A browser served from your own URL
-wants the default, so the usual implementation adds to it instead of replacing it. The same
-passkey has to keep working in the browser:
-
-```elixir
-def relying_party(_conn, {rp_id, origin}), do: {rp_id, [origin | @extension_origins]}
-```
-
-Implement it when the client's origin is not your URL. A native app's assertion arrives with the
-origin of an associated domain, an extension's with the origin of the extension, and one
-relying-party id serves all of them. Which of those you accept is your decision, which is why you
-are asked, never configured.
-
-The origin may be a list, and for an extension it usually is: the same extension has a different
-stable origin in each browser, `chrome-extension://<id>` and `moz-extension://<hash>`, and an
-assertion carries whichever one it was made at.
-
-**Return values from a fixed set.** If you read the `origin` request header and hand it back, the
-check compares the client's claim against itself and matches whatever arrives: a credential
-registered for your site could then be asserted from any page its holder visits. Nothing fails
-when you get this wrong, because the origin always
-matches.
-
-### Getting it right in production
-
-The default is your endpoint's `:url`, so that setting is the one that decides whether passkeys
-work. For an application at `https://auth.example.com` behind a TLS-terminating proxy:
-
-```elixir
-config :my_app, MyAppWeb.Endpoint,
-  url: [host: "auth.example.com", scheme: "https", port: 443]
-```
-
-which gives `rp_id` `"auth.example.com"` and origin `"https://auth.example.com"`. Three things
-follow, and the last one is the expensive one:
-
-- **The `rp_id` may be a registrable suffix of the origin's host, never anything else.** An
-  application served from `app.example.com` may use `example.com` as its relying party, which
-  lets a passkey work across `app.` and `admin.`; it may not use `example.org`, and the browser
-  refuses the ceremony if it tries.
-- **`www.example.com` and `example.com` are two relying parties**, as far as an authenticator is
-  concerned. Pick one and redirect the other, the way you would for cookies.
-- **Changing the relying-party id invalidates every passkey ever registered.** They are bound to
-  it. Moving from `example.com` to `example.dev` is not a redirect and a DNS change. Every
-  account has to enrol again, and recovery codes are how they get in to do it. If you might
-  move, registering under the apex from the start is the cheap insurance.
-
-One property of the ceremony is easy to lose: a challenge is single-use, and **spending it is
-the caller's**, because a challenge
-lives wherever the caller put it and nothing in `Ithibati.Identity.Passkeys` can reach it there.
-Drive the ceremony yourself and that becomes yours to do.
-
-### What a refusal says
-
-Every failure reaches the browser as `{"error": "<code>"}` with a 4xx, and the hook pushes it to
-your LiveView as `ithibati:failed` with that code **as a string**. Your handler's atoms are
-stringified on the way out. Turning them into sentences is yours; a library that shipped the
-wording would be choosing the tone of somebody else's product.
-
-What Ithibati itself can send:
-
-| Code | Means |
+| Endpoint under this scope | Purpose |
 | --- | --- |
-| `no_credentials` | nobody has enrolled a passkey on this instance yet |
-| `no_challenge` | the session holds no challenge. It expired, or was already spent |
-| `malformed_credential` | the posted credential is not the shape WebAuthn describes |
-| `not_discoverable` | the authenticator kept the credential to itself, so sign-in could never find it |
-| `unknown_credential` | the assertion names a credential this instance does not have |
-| `no_attested_credential` | the attestation carried no credential to store |
-| `credential_id_too_long` | longer than the column takes |
-| `already_enrolled` | that authenticator is already on an account |
-| `invalid_code` | a recovery code nobody holds, or one already spent. The same answer on purpose |
-| `verification_failed` | the catch-all, when a step answered something that is not an atom |
-| `ceremony_cancelled` | somebody dismissed the passkey prompt |
-| `ceremony_failed` | the browser refused and this library has no word for it. `exception` names it |
-| `recovery_failed` | the recovery request never finished, so no code was spent |
-| `unknown` | an endpoint answered with no body to name a reason and no status to report |
+| `POST /auth/registration/challenge` | Approve a registration subject and issue its challenge |
+| `POST /auth/registration` | Verify the credential and call `register/4` |
+| `POST /auth/authentication/challenge` | Issue a challenge without naming a credential |
+| `POST /auth/authentication` | Verify the assertion and call `authenticate/2` |
+| `POST /auth/recovery` | Redeem a code and call `recovered/3` |
 
-The last four come from the browser and never reach the server. `already_enrolled` is the one word
-both halves send: a browser that honours `excludeCredentials` refuses before the server hears
-anything, and one that ignores it is refused by the insert. Signing in is not that situation, so
-the same `InvalidStateError` from an assertion is `ceremony_failed`.
+The scope prefix is yours; the five suffixes are fixed. The pipeline must accept JSON, fetch
+the session and apply CSRF protection. The hook supplies the `x-csrf-token` header from the
+page's CSRF meta tag.
 
-Two more are families rather than codes, because a suffix is built into them as they are sent.
-`http_<status>` says an endpoint answered something unexpected, and `missing_data_<attribute>` says
-the hook element is missing one of the five URLs it reads. Match on the prefix, or leave them to
-your catch-all. [`Ithibati.Ceremony.families/0`](`Ithibati.Ceremony.families/0`) names both.
+Mount options are `handler:`, `rp_name:`, `user_verification:` and `seconds:`. User verification
+defaults to `"preferred"`; challenge lifetime defaults to sixty seconds. Set
+`user_verification: "required"` if your application requires authenticator user verification.
 
-Anything else is a code **your** handler returned. Those are yours to name and yours to phrase.
+## The handler
 
-[`Ithibati.Ceremony.codes/0`](`Ithibati.Ceremony.codes/0`) is this table as a list. A test over it
-goes red the day a release adds a word, which is when to decide what your page says about it.
+Implement `Ithibati.Web.Handler` and name the module in `ithibati_routes/1`.
 
-### The name the browser gave
+| Callback | Return on success | Application decision |
+| --- | --- | --- |
+| `registration_subject(conn, params)` | `{:ok, identifier_or_account}` | Who may start registration |
+| `register(conn, key_attrs, subject, params)` | `{:ok, conn}` | How to store the verified credential |
+| `authenticate(conn, account)` | `{:ok, conn}` | What a successful sign-in issues |
+| `recovered(conn, account, fresh)` | `{:ok, conn}` | How to sign in and display any replacement codes |
 
-`ithibati:failed` carries `exception` alongside the code: the `DOMException` name when a browser
-refused, and `nil` otherwise. This library does not translate it, because one name does not mean
-one thing. `InvalidStateError` already means two, which is why the table above has it under two
-codes.
+All four callbacks may return `{:error, reason}`. Atom reasons become error-code strings in
+JSON responses; other reasons are reported as `verification_failed`.
 
-It is worth showing somewhere a developer will see it. `SecurityError` is the one to know: it is
-what a relying-party id disagreeing with the origin produces, and the commonest thing to get wrong
-while setting up. Without the name it is `ceremony_failed`, the same as a broken authenticator.
+For a new account, `registration_subject/2` should validate and normalize the identifier with
+your changeset before returning it. For another passkey on an existing account, return the
+signed-in account itself; that lets Ithibati populate `excludeCredentials`. See
+[Adding a passkey](passkeys.md#adding-a-passkey-through-phoenix).
 
-## Who is signed in
+`register/4` receives the subject approved at the challenge step. Use that subject when
+building the account. The browser posts parameters again, so an identifier or invitation token
+in the second request is not evidence of what was approved in the first.
 
-`Ithibati.Web.Gate` answers that on a plain connection and in a LiveView, from one module,
-because two answers that drift apart is the failure this shape exists to prevent.
+Verification issues no session by itself. A typical handler creates one explicitly:
 
 ```elixir
-pipeline :browser do
-  plug :fetch_session
-  plug Ithibati.Web.Gate, :current_account
-end
-
-live_session :admin, on_mount: [{Ithibati.Web.Gate, {:require_account, to: ~p"/sign-in"}}] do
-  live "/admin", AdminLive
-end
+@impl true
+def authenticate(conn, account),
+  do: {:ok, conn |> Gate.log_in(account) |> json(%{redirect: "/inside"})}
 ```
 
-There are two modes and no others. `:current_account` assigns `@current_account`, or `nil`, and
-always continues. `:require_account` refuses when there is nobody: the plug redirects if you give it `:to` and
-answers `401` if you do not, which is what a cookie-authenticated API route wants. Both modes
-read the session and nothing else. A route behind a bearer header is a plug of yours, reading
-the `authorization` header and answering for itself. The `on_mount` requires `:to`, because a LiveView that halts with nowhere to send a person is a dead end.
+Here `Gate` aliases `Ithibati.Web.Gate` and `json/2` is imported from `Phoenix.Controller`.
+Return a JSON `redirect` field for the hook to perform a full page load. A controller HTTP
+redirect is not equivalent: the hook expects JSON. Other successful response bodies are sent
+to the LiveView as `ithibati:done`.
 
-An unrecognised mode raises where it is written. A gate that listed its modes and let anything
-else through would turn a typo into a page that refuses nobody, which is protection that never
-fails visibly.
-
-### Signing in and out
-
-`Gate.log_in(conn, account)` is what a handler's `authenticate/2` usually ends with. It stores a
-session token under Ithibati's key, after renewing the session against fixation.
-
-[`Gate.log_out/1`](`Ithibati.Web.Gate.log_out/1`) revokes the token instead of merely forgetting
-it, so a copied cookie stops
-working for new requests and new mounts. It also ends the sockets that session opened, so a
-LiveView left running in another tab does not go on answering as somebody who signed out. That
-second half needs two things a `mix phx.new` application already has: a `:pubsub_server` on your
-endpoint, and the live socket declared with the session in its `connect_info`:
-
-```elixir
-socket "/live", Phoenix.LiveView.Socket,
-  websocket: [connect_info: [session: @session_options]]
-```
-
-That session is where LiveView looks for the socket's `id`. Without the pubsub server the gate
-writes no socket id and says nothing, and you are back to the first half alone. Without the
-`connect_info`, nothing subscribes and the broadcast reaches nobody. No error, just a socket
-that outlives its session.
-
-Signing in clears the session and the CSRF token with it, so **the flow has to end in a full page
-load**. Answer from your handler with `%{redirect: …}` and the hook follows it. A page that stays
-put after signing in holds a token the new session has never heard of, and its next form post is
-refused.
-
-Neither function is imposed. A handler issuing a bearer token for an extension calls neither, and
-the gate then finds nobody, which is the right answer.
-
-The gate is about authentication and stops there. What an account may **do** is your question.
-
-### The table underneath
-
-`Ithibati.Identity.Sessions` is what the gate calls, and an application rarely calls it directly:
-
-```elixir
-alias Ithibati.Identity.Sessions
-
-Sessions.generate_session_token(account)   # the plaintext, once
-Sessions.get_user_by_session_token(token)  # the account, or nil
-Sessions.delete_session_token(token)       # revoke it
-```
-
-The row holds the token's sha256 and nothing else that could sign anybody in, so a database dump
-is not a set of live sessions. `get_user_by_session_token/1` answers `nil` for every way there is
-not to have one: unknown, revoked, older than the configured validity, and `nil` itself, which is
-what a missing session key gives you.
-
-A session lasts sixty days unless you say otherwise:
-
-```elixir
-config :ithibati, session_validity: {30, :day}
-```
-
-The units are `:second`, `:minute`, `:hour`, `:day` and `:week`. `:month` and `:year` are missing
-because neither has a fixed length, and a validity that moves with the calendar is not what
-anybody means by ninety days. A value this library cannot read is refused where a session is
-minted and where one is read, so a broken setting fails at the sign-in instead of quietly
-letting everybody stay signed in forever. A page nobody is signed in to is unaffected.
-
-There is no "sign out everywhere". `delete_session_token/1` revokes the one token you hand it,
-and ending an account's other sessions means deleting its rows:
-
-```elixir
-MyApp.Repo.delete_all(Ecto.assoc(account, :sessions))
-```
-
-`Ithibati.Credo.NoDirectTableAccess` leaves that line alone, because it reaches the rows
-through an association on an account this library handed you, not through the table. Naming the
-schema, `delete_all(Ithibati.Session)`, is what the rule reports.
-
-This table holds sessions and nothing else. An API token for an extension or a native client is a
-different object, and building it is yours or another library's.
+`recovered/3` receives `nil` or a fresh recovery-code batch as its third argument. Do not drop
+that batch; [Recovery codes](recovery.md#signing-in-with-one) shows the two branches.
 
 ## The JavaScript
 
-The ceremonies need a little client code: the browser's API wants buffers where Ithibati sends
-unpadded base64url, and it hands back a credential that has to be serialised the way the
-verifications expect. That code is `priv/static/ithibati.js`.
-
-There are two ways to reach it. They differ in one string and both register the same hook name.
-
-The hook talks to the endpoints [`ithibati_routes/1`](`Ithibati.Web.Router.ithibati_routes/1`)
-generated, and reads their paths off the
-element, because you chose the scope they are mounted under:
+Add an element with a stable ID and the endpoint URLs for the exchanges the page starts:
 
 ```heex
 <div
@@ -299,103 +96,239 @@ element, because you chose the scope they are mounted under:
 ></div>
 ```
 
-Set the pair for each ceremony that element starts. A missing one is reported as
-`missing_data_registration_url`, not as a ceremony that failed.
+| LiveView event to push | Payload |
+| --- | --- |
+| `ithibati:register` | Registration parameters, such as `%{username: username}` or `%{token: token}` |
+| `ithibati:authenticate` | `%{}` |
+| `ithibati:recover` | `%{code: code}` |
 
-Push `ithibati:register`, `ithibati:authenticate` or `ithibati:recover` from your LiveView to
-start one. That is where the identity fields are and where you have validated them. The hook pushes back
-`ithibati:done` with whatever your handler answered, or `ithibati:failed` with a reason. The one
-answer it acts on itself is `%{redirect: …}`: a handler that sends somewhere, such as the page
-that shows the recovery codes, is obeyed and not reported. Everything in between is a `fetch`
-to the endpoints and not a LiveView event, because signing in ends in a session cookie and
-only a controller can set one.
+The hook sends registration parameters with both requests. Authentication does not ask for an
+identifier: the browser lets the person select a discoverable passkey.
 
-This half runs on somebody else's machine, so it is driven and not described. Both example
-applications carry Wallaby feature tests in `test/features/` that put this file in a real browser
-against a real WebAuthn ceremony, including the reasons the hook distinguishes when one does not
-finish. They are part of each example's own `mix test`, so CI runs them on every push. Chromium
-only: the virtual authenticator is Chrome DevTools Protocol's, which is the one that hands the
-page a credential real enough for `toJSON()`.
+Handle `ithibati:failed` for errors and `ithibati:done` for successful responses without a
+redirect. The hook uses HTTP requests to let the controller update the session cookie.
 
-**From the package**, which always works. The specifier is bare because Ithibati ships a
-`package.json`, the same way `phoenix` and `phoenix_live_view` do, and a Phoenix 1.8 application
-already has `deps` on esbuild's `NODE_PATH`:
+### Browser imports
+
+With the Hex dependency and Phoenix 1.8's generated esbuild setup, import the package in
+`assets/js/app.js` and merge its hooks into the existing socket options:
 
 ```javascript
 import {hooks as ithibatiHooks} from "ithibati"
 
-let liveSocket = new LiveSocket("/live", Socket, {hooks: {...ithibatiHooks}})
+let liveSocket = new LiveSocket("/live", Socket, {
+  params: {_csrf_token: csrfToken},
+  hooks: {...colocatedHooks, ...ithibatiHooks},
+})
 ```
 
-**From the colocated manifest**, if you would rather LiveView kept track of it. Set
-`ITHIBATI_COLOCATED_HOOKS=1` in the environment that builds your project, so that Ithibati runs
-LiveView's compiler and writes the manifest:
+Keep the generated `Socket`, `LiveSocket`, `csrfToken` and `colocatedHooks` definitions, and
+any other hooks or options your application uses.
+
+For a **local path dependency**, Mix does not create `deps/ithibati`. Add an esbuild alias that
+points from the configured asset working directory to the library file. For sibling application
+and library directories, with esbuild running from the application's `assets/`, this is:
+
+```text
+--alias:ithibati=../../ithibati/priv/static/ithibati.js
+```
+
+For the **colocated manifest**, set `ITHIBATI_COLOCATED_HOOKS=1` in the build environment and
+recompile the dependency with `mix deps.compile ithibati --force`. Then use:
 
 ```javascript
 import {hooks as ithibatiHooks} from "phoenix-colocated/ithibati"
 ```
 
-Then build Ithibati again with `mix deps.compile ithibati --force`. Mix does not rebuild a
-dependency because an environment variable changed, and the manifest is only written while
-compiling. Without that step the import resolves to nothing and the bundler says so without
-saying why.
+The environment-variable change alone does not make Mix rebuild the dependency. Both imports
+register the same hook name.
 
-If you are not using LiveView, import `register` and `authenticate` from the same package instead
-of the hook. They take the options Ithibati produced, drive `navigator.credentials`, and return
-what the verifications expect.
+For browser code without LiveView, the package also exports `register` and `authenticate`.
+They take WebAuthn options, call the browser credential API and return the credential data to
+post to your server. They do not provide your application's HTTP transport.
+
+## The relying party
+
+The web layer derives the default relying-party ID and origin from your endpoint's configured
+`:url`. Configure the public URL, including when a proxy terminates TLS:
+
+```elixir
+config :my_app, MyAppWeb.Endpoint,
+  url: [host: "auth.example.com", scheme: "https", port: 443]
+```
+
+This produces `rp_id: "auth.example.com"` and origin `"https://auth.example.com"`.
+Keep the relying-party ID stable: existing passkeys are bound to the ID used at registration.
+A different ID requires enrolment for that ID; changing a redirect does not migrate credentials.
+
+The optional `relying_party/2` handler callback receives the defaults. Use it to select values
+for additional trusted clients, for example by adding an application-defined list of origins:
+
+```elixir
+def relying_party(_conn, {rp_id, origin}), do: {rp_id, [origin | @extension_origins]}
+```
+
+Choose origins from a fixed trusted set. Never reflect the request's `origin` header into this
+return value: verification must compare the credential against your expected origin. Support
+for an extension or native client also depends on that client's WebAuthn integration.
+
+The core receives both values per call. Setting `config :wax_, origin: ...` or `rp_id: ...`
+does not configure Ithibati.
+
+## Who is signed in
+
+`Ithibati.Web.Gate` reads the session and assigns `@current_account` on a connection or LiveView.
+
+| Mode | Behaviour |
+| --- | --- |
+| `:current_account` | Assign the account or `nil`, then continue |
+| `:require_account` | Refuse access when there is no account |
+
+A plug in `:require_account` mode redirects when given `to:` and otherwise returns `401`.
+A LiveView mount in that mode requires `to:`:
+
+```elixir
+live_session :members,
+  on_mount: [{Ithibati.Web.Gate, {:require_account, to: "/"}}] do
+  live "/inside", InsideLive
+end
+```
+
+The gate authenticates sessions. Your application checks permissions and handles any bearer-token
+authentication separately.
+
+### Signing in and out
+
+`Gate.log_in(conn, account)` renews the session and stores a new session token. It clears the
+old session contents and CSRF token, so complete sign-in with a full page load.
+
+`Gate.log_out(conn)` revokes that token and clears the session. With the endpoint's PubSub and
+LiveView socket configured, it also disconnects sockets opened by that session. Keep the
+generated socket's session connection information:
+
+```elixir
+socket "/live", Phoenix.LiveView.Socket,
+  websocket: [connect_info: [session: @session_options]]
+```
+
+The endpoint must have a `:pubsub_server`. Without those pieces, new requests lose access but
+already-connected LiveViews are not disconnected by logout.
+
+### Session storage and expiry
+
+The gate uses these core calls:
+
+```elixir
+alias Ithibati.Identity.Sessions
+
+Sessions.generate_session_token(account)
+Sessions.get_user_by_session_token(token)
+Sessions.delete_session_token(token)
+```
+
+Issuance returns the plaintext token; the row stores its SHA-256 digest. Lookup returns an
+account or `nil` for a missing, unknown, revoked or expired token. Revocation returns `:ok`.
+Sessions last sixty days by default; [Configuration](configuration.md#configuration) describes
+`session_validity`.
+
+There is no combined “sign out everywhere” function. Deleting the account's session rows
+revokes them for future lookups:
+
+```elixir
+MyApp.Repo.delete_all(Ecto.assoc(account, :sessions))
+```
+
+This database operation does not broadcast socket disconnections. If your application needs
+immediate disconnection across all sessions, implement that alongside the revocation.
+
+## Handling failures
+
+Controller failures return a JSON `error` string and a 4xx response. Browser failures use the
+same vocabulary. The hook delivers both as `ithibati:failed`; your application supplies the
+message shown to the person.
+
+| Code | Meaning |
+| --- | --- |
+| `no_credentials` | No passkey is registered on this instance |
+| `no_challenge` | No matching stored challenge is available |
+| `malformed_credential` | The posted credential has an unexpected shape |
+| `not_discoverable` | The credential was reported as not discoverable |
+| `unknown_credential` | The credential is not stored on this instance |
+| `no_attested_credential` | The attestation contains no credential to store |
+| `credential_id_too_long` | The credential ID exceeds the storage limit |
+| `already_enrolled` | The browser excluded this credential, or it already exists in storage |
+| `invalid_code` | A recovery code is unknown or already spent |
+| `verification_failed` | Verification or a handler returned a reason without a dedicated atom code |
+| `ceremony_cancelled` | The browser reported `NotAllowedError`, including cancellation or timeout |
+| `ceremony_failed` | Another browser or request failure prevented completion |
+| `recovery_failed` | The recovery exchange did not complete successfully in the browser |
+| `unknown` | The hook had neither an error code nor a status to report |
+
+A failed network response does not prove the server did no work. In particular,
+`recovery_failed` does not guarantee that the recovery code remains unused.
+
+Two families carry a suffix: `http_<status>` for an unexpected HTTP response and
+`missing_data_<attribute>` for a missing hook URL. Handle them by prefix or with a fallback.
+Your handler can return additional atom codes.
+
+`Ithibati.Ceremony.codes/0` lists the fixed codes and `Ithibati.Ceremony.families/0` lists the
+families. Use them to check that your application's messages cover the library's vocabulary.
+
+The event also carries `exception`, the browser's `DOMException` name or `nil`. Preserve it
+for diagnosis. For example, `SecurityError` can point to a relying-party or origin mismatch.
+`InvalidStateError` maps to `already_enrolled` during registration and `ceremony_failed` during
+authentication.
 
 ## Without the web half
 
-Everything above is Phoenix, which is the ordinary case. Without it the ceremony is the same
-calls; what the routes add is the HTTP around them, somewhere to keep the challenge, and a
-handler to dispatch to. You now pass the relying party yourself, where the routes were deriving
-it from your endpoint. This is the route for a native client, a browser extension, or a server that is
-not Phoenix, and it is a first-class route, not an afterthought.
-
-Registering, with `alias Ithibati.Identity.Passkeys`:
+Call `Ithibati.Identity.Passkeys` directly when you provide the transport and challenge storage.
+For registration on an existing account:
 
 ```elixir
+alias Ithibati.Identity.Passkeys
+
 challenge = Passkeys.registration_challenge(rp_id, origin, user_verification: "preferred")
-options = Passkeys.registration_options(challenge, identifier, rp_name: "MyApp")
-# hand `options` to the client, and keep `challenge` until its answer arrives
-
-{:ok, key_attrs} = Passkeys.verify_registration(credential, challenge)
-{:ok, _key} = Passkeys.add_key(account, key_attrs)
+options = Passkeys.registration_options(challenge, account, rp_name: "MyApp")
 ```
 
-An account that does not exist yet is created in one transaction with its first passkey and its
-recovery codes; [Invitations, and the first account](invitations.md) shows that composition.
-
-Signing in:
+Send `options` to the client and retain the challenge and approved subject. When the credential
+returns, consume the stored challenge and verify it:
 
 ```elixir
-{:ok, challenge} = Passkeys.authentication_challenge(rp_id, origin)
-options = Passkeys.authentication_options(challenge)
-
-{:ok, account} = Passkeys.verify_authentication(credential, challenge)
+with {:ok, key_attrs} <- Passkeys.verify_registration(credential, challenge) do
+  Passkeys.add_key(account, key_attrs)
+end
 ```
 
-[`authentication_challenge/3`](`Ithibati.Identity.Passkeys.authentication_challenge/3`) answers
-`{:error, :no_credentials}` on an instance where nobody has
-enrolled one, which is the case a sign-in page has to say something about.
+For a new account, approve an identifier and pass it to `registration_options/3` instead of an
+account. After verification, insert the account and append `Grant.with_key_and_codes/3` in a
+single transaction, as shown in [Getting started](getting_started.md#5-the-handler).
 
-Three things the controller does that are now yours:
+For authentication, start with:
 
-- **Keep the challenge between the two requests.** The controller puts it in the session. A
-  client that has no cookie needs something else: a row, a cache entry, or a signed value it
-  hands back. Whatever it is has to be spent once and not replayable.
-- **Decide what a verification issues.**
-  [`verify_authentication/2`](`Ithibati.Identity.Passkeys.verify_authentication/2`) answers the
-  account and stops there. `Ithibati.Identity.Sessions.generate_session_token/1` is one answer,
-  and it is the only one this library has. A bearer token for a device is yours to mint, store
-  and revoke.
-- **Pass the relying party per call.** They are arguments, not configuration, so one deployment
-  can serve a browser page and an extension with different answers. Per call does not mean *from
-  the request*: choose from a set you decided in advance, the way `relying_party/2` does above.
-  Reading the `origin` header and handing it back makes the check compare the client's claim
-  against itself. `origin` may be a list, and for a client that is not a browser page it usually
-  is.
+```elixir
+case Passkeys.authentication_challenge(rp_id, origin) do
+  {:ok, challenge} ->
+    options = Passkeys.authentication_options(challenge)
+    {challenge, options}
 
-The client half needs no framework either: `register` and `authenticate` are exported from
-`priv/static/ithibati.js` alongside the LiveView hook, which is a wrapper around them. They take
-the options these calls produced and return what the verifications expect.
+  {:error, :no_credentials} ->
+    {:error, :no_credentials}
+end
+```
+
+After the client responds, consume the stored challenge and call:
+
+```elixir
+Passkeys.verify_authentication(credential, challenge)
+```
+
+That returns `{:ok, account}` or `{:error, reason}`. Your integration must:
+
+- Retain the challenge and approved subject between requests, and consume the challenge once,
+  including after a failed verification. A signature on stored data alone does not prevent replay.
+- Keep registration and authentication challenges separate and bind them to the intended flow.
+- Supply a trusted relying-party ID and origin on every challenge call.
+- Decide whether to issue a session or an application-owned credential after verification.
+
+These fragments show the core calls; they are not a complete transport or challenge store.

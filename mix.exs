@@ -198,7 +198,7 @@ defmodule Ithibati.MixProject do
   # extras by their group, so naming each page again under `extras:` would add nothing but the
   # chance of listing one in a group it is not in — which renders as a page under no group at all,
   # without erroring.
-  @guides ~w(docs/overview.md docs/getting_started.md docs/ceremonies.md docs/passkeys.md
+  @guides ~w(docs/overview.md docs/getting_started.md docs/configuration.md docs/ceremonies.md docs/passkeys.md
              docs/invitations.md docs/recovery.md)
   @tooling ~w(docs/doctor.md docs/credo.md)
   @about ["CHANGELOG.md", "LICENSE"]

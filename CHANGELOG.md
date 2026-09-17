@@ -4,108 +4,110 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-A release that raises the database schema version says so here and names the new number, because
-that is the one thing you have to act on: it means writing a migration of your own that calls
-`Ithibati.Migration.up(from: <old>, version: <new>)`.
+Releases that change the database schema state the new schema version and the required
+migration. Add a migration calling `Ithibati.Migration.up(from: <old>, version: <new>)` when
+upgrading to one of those releases.
 
 ## Unreleased
 
 ### Added
 
-- `mix ithibati.doctor` asks a thirteenth question: whether the handler each mount names is there
-  and complete. Naming a module that does not exist compiles clean and was silent until somebody
-  signed in.
-- `Ithibati.Ceremony.codes/0` names every code a ceremony can fail with. A test over it tells an
-  application about a new word on the day of the release, instead of leaving a raw atom on
-  somebody's screen.
-- `ithibati:failed` carries `exception`, the `DOMException` name when a browser refused. The
-  library ships no translation for it: `SecurityError`, the commonest thing to get wrong while
-  setting up, used to arrive as `ceremony_failed` and nothing else.
+- `mix ithibati.doctor` checks that each route mount names an available handler with all required
+  callbacks. This catches missing handlers before the first sign-in request.
+- `Ithibati.Ceremony.codes/0` lists the library's ceremony failure codes, so applications can test
+  that their error messages cover each one.
+- `ithibati:failed` includes an `exception` field with the browser's `DOMException` name, or `nil`.
+  This preserves diagnostic details, such as `SecurityError`, alongside the error code.
+- A [configuration and schema reference](docs/configuration.md) covering identifiers, indexes,
+  primary keys and migrations.
+- `mise run docs` builds the documentation and serves a local preview at `http://127.0.0.1:8000`.
+  The preview server requires Python 3.
+
+### Changed
+
+- Reorganized the README and guides around setup and common integration tasks, with configuration
+  variants in a separate reference page.
+- Reworked module and function documentation to state inputs, results and failure behavior.
+  Shortened internal comments while preserving transaction and concurrency guarantees.
 
 ### Fixed
 
-- `recovery_failed` has been sendable since the first release and was documented nowhere.
+- Corrected documentation for `needs_setup?/0`, default passkey labels and identifier-index
+  metadata, and replaced the enum migration example with its database storage type.
+- Documented the existing `recovery_failed` error code and clarified that a failed browser
+  exchange does not establish whether the server spent the code.
+- Completed the invitation walkthrough, including handling invitations that expire or are
+  accepted between the challenge and registration requests.
+- Corrected the identifier-index guidance: an application-managed index must guarantee uniqueness
+  of the identifier alone across the whole table. Partial and composite indexes do not qualify.
 
 ## [0.1.3] - 2026-09-16
 
 ### Fixed
 
-- Naming a handler no longer makes a consumer's router compile-depend on it. Editing the handler,
-  or anything the handler reaches, rebuilt the router and everything downstream of it. Reported by
-  a consumer whose own build refuses such an edge.
+- Naming a handler in a route mount no longer creates a compile-time dependency on that module.
+  Changes to the handler or its dependencies no longer trigger unnecessary router recompilation.
 
 ## [0.1.2] - 2026-09-16
 
-What a consumer found putting their application on 0.1.1.
-
 ### Added
 
-- `format_message:` on `Ithibati.Schema.User` and `Ithibati.Schema.Invitation`, the sentence a
-  refused identifier format carries. Ecto's "has invalid format" was the one piece of wording this
-  library did not leave to the application.
+- `format_message:` on `Ithibati.Schema.User` and `Ithibati.Schema.Invitation` lets applications
+  customize the validation message for an identifier that does not match its format.
 
 ### Fixed
 
-- A browser that refuses to enrol a passkey the authenticator already holds now reaches the page
-  as `already_enrolled`, the same word the server uses when a browser ignores the exclude list.
-  It was `ceremony_failed`, which a page cannot explain.
+- Registration now reports `already_enrolled` when the browser refuses a credential it already
+  holds. Previously, this was reported as `ceremony_failed`. Browser and server refusals now use
+  the same code for an already-enrolled credential.
 
 ### Documentation
 
-- `ithibati_bootstrap` is a singleton behind a unique index, so an application with a singleton of
-  its own has to write to the two in a fixed order. The deadlock otherwise surfaces a long way
-  from its cause. See [Invitations, and the first account](docs/invitations.md).
+- Documented the need for consistent lock ordering when a transaction writes to both Ithibati's
+  bootstrap row and an application-owned singleton row. See
+  [Invitations and the first account](docs/invitations.md#composing-additional-application-steps).
 
 ## [0.1.1] - 2026-09-16
 
-Documentation only. Nothing the library does has changed.
+Documentation-only release; library behaviour is unchanged.
 
 ### Changed
 
-- The README, the guides, the moduledocs and the comments read more plainly.
-- The documentation site carries an OpenGraph image, so a link to it shows a card.
+- Revised the README, guides, module documentation and comments for clarity.
+- Added an OpenGraph image to the documentation site for link previews.
 
 ### Fixed
 
-- Four comments that described the code wrongly: `Ithibati.Config`'s repo check named an error
-  that would never appear, `Ithibati.Doctor`'s callback list was described as read from the
-  behaviour when it is a hand-written copy, and two counts were off by one.
+- Corrected four inaccurate comments about repo validation, the doctor's callback list and
+  internal counts.
 
 ## [0.1.0] - 2026-09-15
 
-First release. Ithibati answers who someone is and how they prove it, and nothing about what
-their account may then do.
+Initial release: passkey authentication for Elixir applications, with authorization left to
+the application.
 
 ### Added
 
-- Passkey registration and authentication (WebAuthn, through
-  [`wax_`](https://hex.pm/packages/wax_)), including the first account on an empty instance, and
-  enrolling further credentials on an account that already has one.
-- Single-use recovery codes, which refill themselves when the last one is spent.
-- Revocable server-side sessions. The cookie carries the secret, the row carries its sha256,
-  and signing out revokes the row. `config :ithibati, session_validity:` says how long one
-  lasts, and defaults to sixty days.
-- Invitations, optional: Ithibati owns the token, its expiry and the redemption; the application
-  owns the table and whatever the invitation grants. `Ithibati.Migration.invitation_columns/1`
-  writes the four columns it needs into a `create table` of yours, and
-  `Ithibati.Migration.invitation_index/1` the unique index, for an application turning
-  invitations on after the migration has already run. The migration checks the columns and their
-  types either way — a `token_hash` written `:string` is refused at migrate time rather than at
-  the first invitation.
-- Schema macros for the account and the invitation table, so the application keeps both.
-- `Ithibati.Migration`, called from a migration of your own rather than copied from a template.
-- An optional Phoenix layer: the ceremony routes, a gate that denies by default, and a LiveView
-  hook. Phoenix, LiveView and Plug are optional dependencies, taken or left together.
-- `mix ithibati.doctor`, twelve checks on a setup, runnable from your own gate. Two of them
-  catch what compiles and migrates anyway: an invitation table whose `token_hash` has no unique
-  index, and a handler missing one of the four callbacks.
-- Signing in with a recovery code: a fifth route, `POST /recovery`, ending in a `recovered/3`
-  callback on your handler. It is separate from `authenticate/2` because it carries the fresh
-  batch a spent last code produces, which is the only copy of it there will ever be.
-- Three Credo checks a consuming project can switch on.
-- The migration refuses a table that is missing the column it indexes — your identifier column,
-  or an invitation table's `token_hash` — and says where the column belongs, rather than failing
-  with Postgres's `undefined_column`.
+- Passkey registration and authentication through WebAuthn and [`wax_`](https://hex.pm/packages/wax_),
+  including first-account setup and additional passkeys on existing accounts.
+- Single-use recovery codes with automatic refill when the last unused code is spent.
+- Revocable server-side sessions. The browser holds the secret and the database stores its
+  SHA-256 digest. Session validity defaults to sixty days and is configurable through
+  `config :ithibati, session_validity:`.
+- Optional invitations with token generation, expiry and redemption. The application owns the
+  invitation table and decides what accepting one grants.
+- Schema macros for application-owned account and invitation tables.
+- Versioned migrations through `Ithibati.Migration`, called from the application's own migrations.
+  Invitation column and index helpers support adding invitations after initial setup. Migrations
+  check required columns and types and report missing identifier or token-hash columns before
+  attempting to index them.
+- An optional Phoenix integration with ceremony routes, a session gate and a LiveView browser
+  hook. Phoenix, LiveView and Plug are optional dependencies used together.
+- `mix ithibati.doctor` with twelve setup checks, including invitation-token uniqueness and
+  required handler callbacks.
+- `POST /recovery` for signing in with a recovery code. The handler's `recovered/3` callback
+  receives the account and any replacement code batch to display.
+- Three optional Credo checks for consuming applications.
 
 [0.1.3]: https://github.com/oliverandrich/ithibati/releases/tag/v0.1.3
 [0.1.2]: https://github.com/oliverandrich/ithibati/releases/tag/v0.1.2

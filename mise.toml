@@ -18,10 +18,18 @@ description = "Everything that has to be green before a change is done"
 # Named so that CI can run the task instead of a second copy of what it contains.
 #
 # `mix docs` is here rather than in `mix precommit` because ex_doc is a `dev` dependency and the
-# alias runs in `test`. It earns its place: the documentation is eight cross-linked pages plus
+# alias runs in `test`. It earns its place: the documentation is cross-linked guides plus
 # every moduledoc, and a reference that no longer resolves — a renamed function, a moved page — is
 # a warning ExDoc prints and nobody reads. `--warnings-as-errors` is what makes it a check.
 run = ["zizmor .github/", "mix precommit", "mix docs --warnings-as-errors"]
+
+[tasks.docs]
+description = "Build the documentation and serve it at http://127.0.0.1:8000 (requires Python 3)"
+env = { MIX_ENV = "dev" }
+run = [
+  "mix docs --warnings-as-errors",
+  "python3 -m http.server 8000 --bind 127.0.0.1 --directory doc",
+]
 
 # What a CI leg runs when its question is only "does this build and behave here". Not `check`:
 # that one's formatter and Credo judge style against the toolchain the tree was written with, so a

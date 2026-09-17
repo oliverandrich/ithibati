@@ -1,44 +1,38 @@
 defmodule Ithibati.Doctor do
   @moduledoc """
-  What an application has to get right before Ithibati works, asked one question at a time.
+  Checks configuration, database state and web integration without changing them.
 
-  Something already refuses each of these: `Ithibati.Config` when a setting is read,
-  `Ithibati.Migration` when it builds, Postgres when a ceremony writes. The trouble is *when*.
-  Each of those speaks at the first request that needed it, about the one thing that request
-  touched, in the words of whichever layer noticed. An application can be wrong in three ways and
-  hear about the first only.
+  `examine/1` returns findings for the configured repo and schemas, required tables and indexes,
+  session validity, ceremony routes and handler callbacks. Database and application processes
+  must be available for the corresponding checks to run.
 
-  So the doctor asks all of them at once, before anybody signs in, and answers about each. It
-  changes nothing and writes nothing, because every question is a read.
-
-  The wording comes from the code that already refuses, because `Ithibati.Config.repo/0` and its
-  siblings raise sentences worth showing. A second set of sentences written here would drift from
-  the first the day either was corrected.
+  The doctor reuses configuration validation and catalogue queries from the integration itself.
+  `mix ithibati.doctor` starts the consuming application and prints these findings.
+  See [Setup checks](doctor.md) for common failures and fixes.
   """
 
   alias Ecto.Adapters.SQL
   alias Ithibati.Catalogue
   alias Ithibati.Config
   alias Ithibati.Identity.Sessions
-  # Lexical only, so it costs nothing in the build that has no web half and no such module.
+  # The alias remains valid when the optional web module is absent.
   alias Ithibati.Web.Handler
 
-  # Named by the schemas that name them, not restated here, so a suffix cannot drift from
-  # the schema that declares it and a table added later cannot be silently unasked about.
-  # `Ithibati.Migration` keeps its own list on purpose: that one is what version 1 created, and it
-  # must not grow when this one does.
+  # Read table names from their schemas. Migration keeps a separate, version-pinned list
+  # that must not grow when a later release adds a table.
   @owned [Ithibati.Bootstrap, Ithibati.RecoveryCode, Ithibati.Session, Ithibati.UserKey]
 
   @doc """
-  Every question, in order, as `{subject, {status, detail}}`.
+  Returns an ordered list of `{subject, {status, detail}}` findings for the application.
 
-  A status is `:ok`, `:error`, or `:skip`. `:skip` marks a question that could not be asked: an
-  application with no repo configured cannot be asked what is in its database, and saying so is a
-  better answer than an exception from three layers down.
+  `app` is the consuming OTP application's name. It is used to discover web integration modules.
+  Other checks read the configured repo and schemas.
 
-  `app` is the application being examined. It is an argument, not something read here
-  because nothing in Ithibati can derive it: `Mix.Project.config/0` knows, and Mix is not there
-  in a release. Only the three questions about the web half use it.
+  A status is `:ok`, `:error` or `:skip`. Checks whose prerequisites are unavailable are skipped;
+  for example, an unreachable repo prevents database-table checks.
+
+  This function neither starts the application nor changes its configuration or database.
+  The Mix task starts the application before calling it.
   """
   def examine(app) do
     repo = answered(&Config.repo/0)
@@ -62,20 +56,20 @@ defmodule Ithibati.Doctor do
     ]
   end
 
-  # The two questions about the database are asked only of a repo that has already answered one.
-  # Otherwise every one of them raises from inside Ecto, and because this list is built before a
-  # line of it is printed, the reader would see nothing at all, not even the answer that
-  # diagnosed it.
+  # Skip database checks when the initial connection check fails, preserving the
+  # original diagnostic instead of raising while building the report.
   defp askable(repo, {:ok, _}), do: repo
   defp askable(_repo, {:skip, _} = unasked), do: unasked
   defp askable(_repo, {:error, _}), do: {:skip, "the repo did not answer"}
 
   @doc """
-  Whether a table's key column is the type Ithibati was configured for, and carries the unique
-  index a foreign key needs to point at it.
+  Checks whether a table's referenced account key matches Ithibati's foreign-key requirements.
 
-  This function is public because it is the one question here with an answer worth testing
-  against a table made for the purpose. `examine/1` asks it about the account table.
+  Returns `{:ok, description}` or `{:error, description}`. Checks the column type against
+  `users_key_type` and requires a unique index on that column alone. The repo's
+  `:migration_foreign_key` option chooses the column, defaulting to `:id`.
+
+  `prefix` is a PostgreSQL schema prefix or `nil`. Queries the supplied repo without modifying it.
   """
   def key_type(repo, prefix, table) do
     case Catalogue.table_oid(repo, prefix, table) do
@@ -91,10 +85,7 @@ defmodule Ithibati.Doctor do
     end
   end
 
-  # The migration creates this index, or confirms one the application said it maintains, but only
-  # while it runs. Nothing asks afterwards, and without the index two accounts can end up sharing
-  # an identifier: the changeset's uniqueness check passes for both of two concurrent registrations
-  # and nothing downstream refuses the second.
+  # Recheck uniqueness after migration to detect missing indexes or configuration changes.
   defp identifier_index(repo) do
     case answered(&Config.user_schema/0) do
       {:error, _} ->
@@ -122,9 +113,7 @@ defmodule Ithibati.Doctor do
     end
   end
 
-  # The one question nothing else can ask. An application that configures `invitation_schema:`
-  # after running the migration never runs it again, so the table it has just written is checked
-  # here or nowhere. What goes unchecked is a unique index on a bearer secret.
+  # Check invitation storage even when invitations were configured after the initial migration.
   defp invitation_table(repo) do
     case answered(&Config.invitation_schema/0) do
       {:ok, nil} -> {:skip, "no invitation schema to ask about"}
@@ -167,9 +156,7 @@ defmodule Ithibati.Doctor do
     end
   end
 
-  # A missing callback is a compiler warning, and an application not built with
-  # `--warnings-as-errors` compiles, migrates, boots and serves without one. What it then fails
-  # is a ceremony, at the request and not at the build.
+  # Applications may compile despite missing-callback warnings. Report them before a request fails.
   defp callbacks(app) do
     if Code.ensure_loaded?(Handler) do
       implemented(app)
@@ -185,21 +172,15 @@ defmodule Ithibati.Doctor do
     end
   end
 
-  # A hand-written copy of the callbacks `Ithibati.Web.Handler` requires. It cannot be asked of
-  # `behaviour_info/1` here: this module also compiles in the build without the optional
-  # dependencies, where that module does not exist and any call to it is a warning this project
-  # runs as an error. `Ithibati.DoctorTest` holds the copy to the behaviour instead, and it runs
-  # where the behaviour is there. Without that test a fifth callback would go unchecked by the one
-  # check whose purpose is to notice a missing one, and the report would go on saying "all 4".
+  # Keep a local callback list because Handler is absent without the optional dependencies.
+  # DoctorTest checks this list against the behaviour when the web half is installed.
   @required [registration_subject: 2, register: 4, authenticate: 2, recovered: 3]
 
   @doc false
   def required_callbacks, do: @required
 
-  # Every `behaviour` attribute, not `attributes[:behaviour]`, which answers with the first one
-  # only. A handler written on a controller has `@behaviour Plug` in front of ours, injected by
-  # `use Phoenix.Controller`, and reading one key would report that nobody implements the
-  # behaviour, from the check whose whole purpose is to notice a missing callback.
+  # Read every behaviour attribute: Phoenix controllers also implement Plug, which may
+  # be the first entry in the keyword list.
   defp handler?(module) do
     Code.ensure_loaded?(module) and Handler in behaviours(module)
   end
@@ -288,9 +269,7 @@ defmodule Ithibati.Doctor do
     end
   end
 
-  # Keyed on the controller, not on the sentinel every module of the web half is guarded
-  # by, because this one cannot sit inside that guard: it has to compile and answer in a consumer
-  # without Phoenix. The controller is the module the routes have to dispatch to anyway.
+  # Doctor also runs without Phoenix, so inspect routes only when their controller is available.
   defp routes(app) do
     if Code.ensure_loaded?(Ithibati.Web.PasskeyController) do
       mounted(app)
@@ -311,7 +290,7 @@ defmodule Ithibati.Doctor do
     end
   end
 
-  # The one question that joins the two above, and `docs/doctor.md` says why nothing else asks it.
+  # Validate the handler actually named by each mount; see docs/doctor.md.
   defp reachable_handlers(app) do
     if Code.ensure_loaded?(Ithibati.Web.PasskeyController) do
       app |> application_modules() |> Enum.filter(&publishes_mounts?/1) |> judge_mounts()
@@ -344,8 +323,7 @@ defmodule Ithibati.Doctor do
   end
 
   @doc false
-  # Not `missing_callbacks/1` alone: `function_exported?/3` answers false for a module that was
-  # never loaded, which reads there as every callback missing at once.
+  # Load the module first so an unavailable handler is distinct from missing callbacks.
   def mount_fault(handler) do
     if Code.ensure_loaded?(handler) do
       case missing_callbacks(handler) do
@@ -369,13 +347,10 @@ defmodule Ithibati.Doctor do
     end
   end
 
-  # The prefix a table lives under when nothing says otherwise, the same one `Ecto.Migration`
-  # falls back to, so this asks about the tables the migration would have built.
+  # Use the same default prefix as Ecto.Migration.
   defp schema_prefix(repo), do: repo.config()[:migration_default_prefix]
 
-  # `:migration_foreign_key` holds options, not a name. `Ecto.Migration.references/2` merges them
-  # and takes `:column` from among them, defaulting to `:id`. Read as a bare name it is a keyword
-  # list, which is not a column and does not survive being turned into one.
+  # Read the target column from the same options Ecto.Migration.references/2 uses.
   defp foreign_key(repo) do
     Keyword.get(repo.config()[:migration_foreign_key] || [], :column, :id)
   end

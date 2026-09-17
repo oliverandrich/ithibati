@@ -1,15 +1,12 @@
 defmodule Ithibati.Schema.Identifier do
   @moduledoc """
-  What an identifier is, for every schema Ithibati injects one into.
+  Provides identifier normalization and built-in validation patterns.
 
-  An account is known by an identifier, through `Ithibati.Schema.User`. So is an invitation, which
-  is addressed to one before the account exists, through `Ithibati.Schema.Invitation`. Both let
-  the application name the field, and both hand the value through the same steps. That agreement
-  matters: an invitation addressed to something an account could never be called is one nobody can
-  accept. So the steps live here, once, and not in whichever macro was written first.
+  `normalize/1`, `username_format/0` and `email_format/0` are available to applications.
+  The account and invitation macros use the same normalization and validation steps so their
+  identifiers can be compared consistently.
 
-  Call `email_format/0`, `username_format/0` and `normalize/1` from an application. The rest is
-  what the two macros use to read their own options.
+  Other functions in this module support schema expansion and are internal to Ithibati.
   """
 
   import Ecto.Changeset
@@ -23,13 +20,13 @@ defmodule Ithibati.Schema.Identifier do
   @email_format ~r"\A[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*\z"
 
   @doc """
-  The pattern to use when the identifier is an email address. Ithibati offers it instead of
-  imposing it.
+  Returns the regex offered for email identifiers.
 
-  It is the pattern the HTML specification publishes for `<input type=email>`, not RFC 5322. An
-  identifier here is a credential, not a mailbox, so the full grammar's quoted local parts
-  with spaces in them would be a hazard. The pattern accepts `you@localhost` and refuses
-  `"a b"@example.com`.
+  The pattern accepts forms such as `you@example.com` and `you@localhost` and rejects quoted
+  local parts such as `"a b"@example.com`. It checks syntax only; it does not verify ownership
+  of a mailbox. Ithibati sends no email.
+
+  Pass it as `format:` to an account or invitation schema, or supply a pattern of your own.
   """
   def email_format, do: @email_format
 
@@ -39,25 +36,18 @@ defmodule Ithibati.Schema.Identifier do
   @username_format ~r/\A[a-z0-9_]{1,30}\z/
 
   @doc """
-  The pattern to use when the identifier is a username. Ithibati offers it instead of imposing
-  it.
+  Returns a regex accepting 1–30 lowercase ASCII letters, digits or underscores.
 
-  The pattern is borrowed, not invented: it is what Mastodon allows a local account, and
-  that rule has survived a large number of people trying to impersonate each other. It allows
-  letters, digits and underscores only, at most thirty characters.
+  The schema changesets normalize identifiers before applying this pattern. Direct callers
+  should do the same if they want to accept mixed-case input. Dots, hyphens, spaces and
+  non-ASCII characters are rejected.
 
-  What it leaves out is the point. Dots and hyphens let `alice.smith` and `alice-smith` stand
-  beside `alicesmith`, and anything beyond ASCII lets a Cyrillic `а` stand beside a Latin `a`.
-  Each of those is a way to be told you are talking to someone you are not. A username is a
-  credential here, and the display name people actually read is a separate field Ithibati knows
-  nothing about.
-
-  The pattern needs no case folding, because `normalize/1` has already lowercased the value. That
-  is also why `Alice` and `alice` cannot become two accounts.
+  This format is optional. Supply your own `format:` when the application's identifier rules
+  differ, and use a separate field for a display name.
   """
   def username_format, do: @username_format
 
-  @doc "An identifier as it is stored: trimmed and lowercased, whatever it is called."
+  @doc "Trims and lowercases a string identifier; returns `nil` for `nil`."
   def normalize(nil), do: nil
   def normalize(value), do: value |> String.trim() |> String.downcase()
 

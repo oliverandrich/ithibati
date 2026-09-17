@@ -2,28 +2,28 @@
 if Code.ensure_loaded?(Phoenix.Component) do
   defmodule Ithibati.Web.Gate do
     @moduledoc """
-    Who is signed in, on a connection and in a LiveView, from one place.
+    Loads the current account from a session and optionally requires authentication.
+
+    Use it as a plug after `fetch_session`, and as an `on_mount` hook for LiveViews:
 
         pipeline :browser do
           plug :fetch_session
           plug Ithibati.Web.Gate, :current_account
         end
 
-        live_session :admin, on_mount: [{Ithibati.Web.Gate, {:require_account, to: ~p"/sign-in"}}] do
-          live "/admin", AdminLive
+        live_session :members,
+          on_mount: [{Ithibati.Web.Gate, {:require_account, to: "/sign-in"}}] do
+          live "/inside", InsideLive
         end
 
-    The gate has two modes and no others. `:current_account` assigns whoever the session names, or
-    `nil`, and always continues. `:require_account` refuses when there is nobody.
+    Both forms assign `:current_account` to the account or `nil`.
 
-    An unrecognised mode raises instead of being ignored. The plug raises from `init/1`, which
-    Phoenix runs at compile time under `init_mode: :compile` and at the first request otherwise;
-    the `on_mount` raises at the mount either way. A gate that listed its modes and let anything
-    else through would turn a typo into a page that refuses nobody, and nothing would report
-    it.
+      * `:current_account` always continues.
+      * `:require_account` refuses unauthenticated access. The plug redirects when given `to:`
+        and otherwise sends `401`. The LiveView hook requires `to:` and redirects there.
 
-    The gate covers authentication and stops there. What an account may *do* is the
-    application's, and Ithibati has no opinion about it.
+    Unknown modes and options raise `ArgumentError`. The gate reads session tokens only;
+    application permissions and bearer-token authentication remain application concerns.
     """
     import Plug.Conn
     import Phoenix.Controller, only: [redirect: 2]
@@ -33,9 +33,7 @@ if Code.ensure_loaded?(Phoenix.Component) do
 
     @session "ithibati_account_token"
 
-    # Phoenix's name, not this library's: `Phoenix.LiveView.Socket.id/1` reads exactly this key out
-    # of the cookie session, so it cannot be namespaced and a consumer's own use of it would
-    # collide. Written out, not derived, because the string is the contract.
+    # LiveView reads this exact session key to subscribe to disconnect broadcasts.
     @live_socket "live_socket_id"
     @modes [:current_account, :require_account]
     @options [:to]
@@ -44,18 +42,19 @@ if Code.ensure_loaded?(Phoenix.Component) do
     def session_key, do: @session
 
     @doc """
-    Signs an account in by storing a session token under Ithibati's session key.
+    Creates a session token, renews and clears the browser session, and returns the connection.
 
-    Ithibati offers this instead of imposing it. An application decides in `Ithibati.Web.Handler`
-    what a verified assertion is worth, and one that issues a bearer token for an extension instead
-    simply never calls this. The gate then finds nothing, which is the right answer. But a gate
-    that read a key nothing here ever wrote would leave every application guessing the convention.
+    `account` must belong to the configured account schema and exist in the database. The new
+    token is stored under `session_key/0`. Existing session contents are cleared; retain anything
+    the next page needs only after this call.
 
-    `log_in/2` renews the session first, because a fixed session id handed to someone before they
-    sign in is a session an attacker already holds afterwards. Renewing clears the CSRF token along
-    with everything else, so **a sign-in has to end in a full page load**. The hook does that when
-    a handler answers with `%{redirect: …}`. A page that stays put after signing in holds a token
-    the new session has never heard of, and its next form post is refused.
+    When the connection's endpoint has a PubSub server, the session also receives the
+    `live_socket_id` used to disconnect this session's LiveViews on logout.
+
+    Complete sign-in with a full page load to refresh the CSRF token. The shipped browser hook
+    does this for a JSON response containing `%{redirect: path}`.
+
+    This call does not revoke the account's other session rows.
     """
     def log_in(conn, account) do
       token = Sessions.generate_session_token(account)
@@ -67,25 +66,22 @@ if Code.ensure_loaded?(Phoenix.Component) do
     end
 
     @doc """
-    The topic the sockets of one session answer on.
+    Returns the LiveView disconnect topic derived from a plaintext session token.
 
-    Ithibati derives the topic from the token's *digest*. A topic reaches logs, telemetry and
-    everything subscribed to the pubsub server, and `phx.gen.auth` puts the live token itself in
-    there. The topic is per token, not per account, so signing out in one browser leaves the
-    same person's other devices alone.
+    The topic contains a URL-safe encoding of the token's digest, so it does not expose the
+    plaintext token to PubSub subscribers or logs. It identifies one session, not every session
+    belonging to an account.
 
-    This function is public for an application that ends a session somewhere other than
-    `log_out/1` and holds the raw token while doing it. It cannot serve "sign out my other
-    devices": that starts from what the database has, which is digests.
+    Use this when implementing a separate revocation path that holds the plaintext token and
+    needs to broadcast `"disconnect"`. Do not pass the digest stored in the database; it would
+    be hashed again and produce a different topic.
     """
     def live_socket_id(token) when is_binary(token) do
       "ithibati_sessions:" <> Secrets.url64(Secrets.digest(token))
     end
 
-    # Only where the endpoint can carry it, and the guard is on the *write* and not on the
-    # broadcast, for a reason worth knowing: `Phoenix.Socket` subscribes to this id when a socket
-    # connects, through the same call that raises without a `:pubsub_server`. An id written into an
-    # application that has none would take down every websocket at connect, not just the sign-out.
+    # Only name a socket when the endpoint has PubSub. Otherwise socket subscription would
+    # fail during connection, before logout is ever attempted.
     defp name_live_socket(conn, token) do
       if pubsub_endpoint(conn),
         do: put_session(conn, @live_socket, live_socket_id(token)),
@@ -93,10 +89,14 @@ if Code.ensure_loaded?(Phoenix.Component) do
     end
 
     @doc """
-    Signs out and revokes the token instead of merely forgetting it.
+    Revokes the current session token, renews and clears the browser session, and returns the connection.
 
-    A session dropped on the client alone leaves a token that still resolves. That is the sign-out
-    counterpart of a replayed assertion, and it fails just as quietly.
+    When the session has a live-socket topic and the endpoint has a PubSub server, this also
+    broadcasts `"disconnect"` to that topic. LiveView sockets must receive session information
+    through `connect_info` to subscribe to it. Without that setup, revocation affects subsequent
+    session lookups but does not disconnect existing sockets.
+
+    A missing token is harmless. Other sessions belonging to the account are unaffected.
     """
     def log_out(conn) do
       conn |> get_session(@session) |> Sessions.delete_session_token()
@@ -105,9 +105,8 @@ if Code.ensure_loaded?(Phoenix.Component) do
       renew_session(conn)
     end
 
-    # Before the session is renewed, because renewing is what takes the topic away. Both halves ask
-    # the same question, but not in the same release: a cookie outlives a deploy that dropped the
-    # pubsub server, so the endpoint is checked here too and not inferred from the key existing.
+    # Read the topic before clearing the session. Recheck PubSub because cookies can survive
+    # a deployment that removes the endpoint's PubSub configuration.
     defp disconnect_live_sockets(conn) do
       with topic when is_binary(topic) <- get_session(conn, @live_socket),
            endpoint when not is_nil(endpoint) <- pubsub_endpoint(conn) do
@@ -115,26 +114,20 @@ if Code.ensure_loaded?(Phoenix.Component) do
       end
     end
 
-    # The endpoint, when it is one that can carry a broadcast. `nil` for an application that
-    # configured no server, and for a connection that never went through an endpoint at all, a plug
-    # called directly in a test, say. The server's *name* is never wanted, only whether there is one.
+    # Direct Plug calls may have no endpoint; endpoints without PubSub cannot broadcast.
     defp pubsub_endpoint(conn) do
       endpoint = conn.private[:phoenix_endpoint]
 
       if endpoint && endpoint.config(:pubsub_server), do: endpoint
     end
 
-    # Both halves, and either alone reads like the whole thing: renewing carries the contents over
-    # to the new id, and clearing leaves the id an attacker may already hold. Signing in and signing
-    # out want the same pair, so they ask for it by name instead of each writing it out.
+    # Renew the session ID and clear its contents together to avoid carrying either across login.
     defp renew_session(conn), do: conn |> configure_session(renew: true) |> clear_session()
 
     @doc false
     def init(mode), do: mode!(mode)
 
-    # Already normalised: Phoenix runs `init/1` at compile time and hands the result here, so
-    # validating again would pay per request for an answer that cannot have changed, and would
-    # give the option check below two homes.
+    # `init/1` has already validated and normalized these options.
     @doc false
     def call(conn, {mode, opts}) do
       account = Sessions.get_user_by_session_token(get_session(conn, @session))
@@ -148,21 +141,22 @@ if Code.ensure_loaded?(Phoenix.Component) do
     end
 
     @doc """
-    The same two modes, for LiveView.
+    Loads `:current_account` during a LiveView mount and enforces the selected mode.
 
-    `:require_account` takes `:to` here and has no default. A LiveView that halts with nowhere to
-    send a person is a dead end, and the path belongs to the application.
+    Returns `{:cont, socket}` in `:current_account` mode and for authenticated mounts in
+    `:require_account` mode. An unauthenticated required mount returns `{:halt, socket}` with a
+    redirect to the required `:to` path.
+
+    A missing `:to`, unknown mode or unknown option raises `ArgumentError`. Account assignment
+    uses `assign_new/3` so an account already loaded by the plug or parent LiveView can be reused.
     """
     def on_mount(mode, _params, session, socket) do
       {mode, opts} = mode!(mode)
-      # Before the branch, not inside it: asked for only on the anonymous path, a missing `:to`
-      # would mount perfectly for everyone who is signed in and raise at the first stranger. That is
-      # a 500 exactly where a redirect was meant, and only in front of the person it was meant for.
+      # Validate the redirect even for signed-in visitors so a missing option does not remain
+      # hidden until the first unauthenticated mount.
       to = if mode == :require_account, do: to!(opts)
 
-      # `assign_new`, not `assign`, and it earns both halves: on the first, disconnected
-      # render LiveView seeds it from `conn.assigns`, so the plug's lookup is not repeated, and a
-      # LiveView nested under one that already answered inherits instead of asking again.
+      # Reuse the plug or parent LiveView assignment to avoid repeating its account lookup.
       socket =
         Phoenix.Component.assign_new(socket, :current_account, fn ->
           Sessions.get_user_by_session_token(session[@session])
@@ -188,14 +182,10 @@ if Code.ensure_loaded?(Phoenix.Component) do
                 "not own your paths."
     end
 
-    # Raised, not returned, and raised from `init/1` so a router says so at compile time:
-    # the alternative is a mode nobody recognises behaving like the most permissive one.
+    # Reject unknown modes instead of silently allowing access.
     defp mode!(mode) when mode in @modes, do: {mode, []}
 
-    # The option list gets what the mode list gets, and for the same reason one level down: `too:`
-    # instead of `to:` would otherwise answer every stranger a bare 401 where a redirect to the
-    # sign-in page was written, and nothing would say so. The plug is the half where that is
-    # silent. `on_mount` already raises on the same typo.
+    # Reject misspelled options so `too:` cannot silently replace an intended redirect with a 401.
     defp mode!({mode, opts}) when mode in @modes and is_list(opts) do
       unknown = if Keyword.keyword?(opts), do: Keyword.keys(opts) -- @options, else: opts
 

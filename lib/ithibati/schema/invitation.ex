@@ -1,12 +1,8 @@
 defmodule Ithibati.Schema.Invitation do
   @moduledoc """
-  What Ithibati puts on an invitation, and what an invitation owes Ithibati.
+  Adds invitation-token fields and validation to an application-owned schema.
 
-  The table belongs to the application, like the accounts table and for the same reason. An
-  invitation says what somebody is being invited *to*, such as a role, a site or a team, and
-  that is exactly what this library keeps out of itself. So you declare the schema in your
-  application, and
-  this macro adds Ithibati's half of it:
+  Declare the invitation's identifier and add your own fields for what accepting it grants:
 
       defmodule MyApp.Accounts.Invitation do
         use Ecto.Schema
@@ -34,17 +30,17 @@ defmodule Ithibati.Schema.Invitation do
         end
       end
 
-  The options are the account macro's. `identifier:` is required, and it is the one you have to
-  write out. `format:` takes a regular expression, and `Ithibati.Schema.Identifier.email_format/0`
-  offers a pattern for addresses. `constraint_name:` and `unique_index:` name the unique index on
-  the token digest and not on the identifier. `format_message:` words the refusal a `format:`
-  reports. You may write each of the four value options inline, or name a module attribute
-  standing above the `use` line.
+  The options match `Ithibati.Schema.User`: required `:identifier`, optional `:format` and
+  `:format_message`, plus `:constraint_name` and `:unique_index`. On invitations, the index
+  options refer to `token_hash`, not the identifier. Non-identifier options can be module
+  attributes declared before `use`; explicit `nil` values are rejected.
 
-  `identifier:` names the field the invitee is addressed by. It has to be the same field the
-  account schema uses, and `Ithibati.Config.invitation_schema/0` refuses the pair when it is not.
-  Ithibati cannot read the field from the account schema instead, because a schema's fields are
-  fixed when the module compiles, and which schema is the account's is read at runtime.
+  The identifier field must match the configured account schema's identifier. That agreement is
+  checked when `Ithibati.Config.invitation_schema/0` reads the application configuration.
+
+  Call `ithibati_invitation/0` inside the schema. The macro generates `invitation_changeset/3`
+  and `__ithibati_invitation__/1`; defining either yourself is rejected at compile time.
+  [Invitations](invitations.md) covers the table, token index and acceptance transaction.
   """
 
   import Ecto.Changeset
@@ -57,12 +53,14 @@ defmodule Ithibati.Schema.Invitation do
   alias Ithibati.Schema.Identifier
 
   @doc """
-  Declares the fields Ithibati owns, inside the schema block.
+  Declares invitation fields inside the application's schema block.
 
-  Four columns and one virtual field. The columns are the invitee's identifier, the token's
-  digest, when the invitation stops being acceptable, and when it was accepted. The virtual field
-  is `:token`, which is not stored. Ithibati puts the plaintext there when the invitation is
-  built, and that is the only copy there will ever be.
+  Adds the configured identifier as `:string`, `:token_hash` as `:binary`, and
+  `:expires_at` and `:accepted_at` as `:utc_datetime_usec`. It also adds a virtual `:token`
+  string for the plaintext token returned when a valid new invitation is built.
+
+  Only the digest is stored. Retain the plaintext token to deliver the invitation link;
+  reloading the row does not recover it.
   """
   defmacro ithibati_invitation do
     quote do
@@ -120,22 +118,30 @@ defmodule Ithibati.Schema.Invitation do
 
     quote do
       @doc """
-      What Ithibati was told about this schema. `:identifier` is the field an invitee is addressed
-      by. `:constraint` is the unique index name on the token digest that the application said it
-      maintains itself, or `nil`.
+      Returns metadata declared by `use Ithibati.Schema.Invitation`.
+
+        * `:identifier` — the invitee identifier field name.
+        * `:constraint` — the configured token-hash index name, or `nil` for Ecto's default name.
+        * `:unique_index` — whether Ithibati should create that index.
       """
       def __ithibati_invitation__(:identifier), do: unquote(field)
       def __ithibati_invitation__(:constraint), do: unquote(constraint)
       def __ithibati_invitation__(:unique_index), do: unquote(unique_index)
 
       @doc """
-      Casts the invitee's identifier, mints the token and sets the expiry.
+      Returns a changeset with the identifier validated, a token prepared and an expiry set.
 
-      It takes a struct or a changeset and answers a changeset, so you compose it into your own.
-      `days:` says how long the invitation stays acceptable. It defaults to seven for a new
-      invitation, and passing it to an existing one moves the expiry, which is how you extend an
-      invitation. Ithibati never mints the token twice, so the link that was already sent still
-      opens an extended invitation.
+      Accepts a struct or changeset and an attributes map. The identifier is trimmed, lowercased,
+      required, checked against any configured format and limited to 254 graphemes. A valid changed
+      identifier is checked against existing accounts; a match adds a `:unclaimed` validation error.
+      That lookup is advisory: the account's unique index remains the final guarantee.
+
+      For a valid new invitation without a stored token digest, the changeset receives a plaintext
+      `:token` and its `:token_hash`. Updating an invitation with a stored digest preserves its token.
+
+      `:days` sets expiry relative to the current time. It defaults to seven days when no expiry
+      exists. Passing it for an existing invitation updates the expiry; omitting it preserves the
+      stored expiry. The token-hash unique constraint is declared on the returned changeset.
       """
       def invitation_changeset(invitation_or_changeset, attrs, opts \\ []) do
         # Written out because this is a quote: Elixir resolves aliases where the code is *written*,
@@ -240,12 +246,10 @@ defmodule Ithibati.Schema.Invitation do
   end
 
   @doc """
-  Whether a module carries what this macro injects.
+  Returns whether the module is loaded and exports the invitation-schema metadata function.
 
-  This is the invitation half of `Ithibati.Schema.User.account_schema?/1`, and it is public for
-  the same reason. An application that configures an invitation schema can ask whether the module
-  is one, instead of checking for the marker function by hand and finding out the next time it
-  is renamed.
+  This identifies the schema integration. `Ithibati.Config.invitation_schema/0` additionally
+  checks agreement with the account identifier; migration and doctor checks inspect the table.
   """
   def invitation_schema?(module),
     do: Code.ensure_loaded?(module) and function_exported?(module, :__ithibati_invitation__, 1)

@@ -1,11 +1,13 @@
 # Credo checks
 
-Three rules you can switch on in your own `.credo.exs`. They ship with Ithibati and cost you
-nothing if you do not name them: they are only defined when Credo is there to define them
-against, so your release does not carry them.
+Ithibati ships three optional checks for consuming applications. Enable them in your existing
+`.credo.exs` configuration to catch direct table access, unused WebAuthn settings and calls to
+internal functions.
 
-A rule you have to switch on is a hint for somebody already being careful, not a boundary. These
-report, and that is all they do.
+## Enable the checks
+
+Include `config/` in the files Credo reads; the WebAuthn configuration check needs it.
+Merge these entries into your configuration:
 
 ```elixir
 # .credo.exs
@@ -27,27 +29,40 @@ report, and that is all they do.
 }
 ```
 
-- `Ithibati.Credo.NoDirectTableAccess` keeps Ithibati's tables behind Ithibati.
-- `Ithibati.Credo.NoWaxConfiguration` reports the two `wax_` settings nothing here reads.
-- `Ithibati.Credo.NoInternalCalls` reports a call to something Ithibati did not document, which
-  is its way of saying that thing will change without notice.
+Run compilation before Credo so the check modules are available:
 
-Each module carries its own reasoning, published here and shown by `mix credo explain`.
+```console
+$ mix compile
+$ mix credo --strict
+```
 
-`NoInternalCalls` leaves reflection alone. That means `__schema__/1`, `__struct__/0` and their
-kind, but not an underscored name Ithibati marked itself, because the underscores say nothing about who
-marked it. Two things it cannot see: a module whose documentation chunk was stripped at build
-time answers nothing, so the rule reports nothing about it and a clean run looks the same; and a
-bare name that two modules in one file alias differently is dropped instead of guessed at, so
-that file loses a finding instead of gaining a wrong one.
+If Credo reports `Ignoring an undefined check`, that check did not run. Confirm that Credo is
+installed in the current environment and Ithibati was compiled with it available.
 
-`NoDirectTableAccess` recognises one of our schemas wherever it is read: piped into a repo,
-joined into somebody else's query, passed to a repo called anything at all. It also recognises one of our
-tables named as a string, resolved against the prefix you configured. It cannot see SQL inside a
-string: `Repo.query!("select … from ithibati_sessions")` passes, and nothing will tell you.
+## What each check reports
 
-One thing about running them: `mix credo` does not compile first. Against a stale build these
-checks are not loaded, Credo prints `Ignoring an undefined check`, and the run reports no issues
-having asked nothing. Put `compile` in front of it, the way your test alias already does.
+| Check | Reports | Use instead |
+| --- | --- | --- |
+| `Ithibati.Credo.NoDirectTableAccess` | Queries and repo operations naming Ithibati-owned schemas or tables | Public identity functions, or supported account associations |
+| `Ithibati.Credo.NoWaxConfiguration` | `wax_` settings for `origin` and `rp_id` | Per-call arguments or the web handler's relying-party callback |
+| `Ithibati.Credo.NoInternalCalls` | Calls to undocumented Ithibati functions | Documented APIs |
 
-Alongside them, [`mix ithibati.doctor`](doctor.md), which asks what a setup is missing.
+Use `mix credo explain` for a finding's explanation. The check modules' documentation describes
+the individual rules.
+
+## Limits
+
+These are static checks, not runtime access controls. Enablement is optional and a clean run
+only describes the code the checks can inspect.
+
+`NoDirectTableAccess` recognizes schema references in queries and repo calls, including joins,
+and table-name strings using your configured prefix. It does not inspect raw SQL inside a
+string. Account associations are allowed; for example, an application may revoke an account's
+sessions with `Repo.delete_all(Ecto.assoc(account, :sessions))`.
+
+`NoInternalCalls` permits generated reflection functions such as `__schema__/1` and
+`__struct__/0`. It cannot classify a module whose documentation chunk was stripped, and it
+skips ambiguous aliases when the same short name means different modules within a file.
+
+Use [`mix ithibati.doctor`](doctor.md) alongside these checks to inspect actual configuration,
+tables, indexes and handler wiring.

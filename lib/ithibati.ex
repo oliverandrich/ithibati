@@ -1,10 +1,12 @@
 defmodule Ithibati do
   @moduledoc """
-  Passkey authentication: the account row, its WebAuthn credentials, its recovery codes and the
-  sessions it is signed in with.
+  Passkey authentication for Elixir applications.
 
-  What an account may *do* belongs to the application: roles, tenancy, memberships. Ithibati is
-  built so that it stays there. An invitation sits on the line between the two. Ithibati holds whom
-  an invitation is addressed to. The application holds what it grants.
+  Ithibati manages WebAuthn credentials, recovery codes and revocable sessions while the
+  application owns its account schema and authorization rules. Optional invitations supply
+  tokens, expiry and redemption; the application decides what accepting one grants.
+
+  [Getting started](getting_started.md) builds a Phoenix integration.
+  [The overview](overview.md) describes the architecture and the guides available.
   """
 end

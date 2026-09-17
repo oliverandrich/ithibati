@@ -1,6 +1,6 @@
 defmodule Ithibati.Schema.User do
   @moduledoc """
-  What Ithibati adds to the account schema an application already owns.
+  Adds an identifier and credential associations to an application-owned account schema.
 
       defmodule MyApp.Accounts.User do
         use Ecto.Schema
@@ -27,41 +27,31 @@ defmodule Ithibati.Schema.User do
 
   ## Options
 
-    * `identifier:` — required, a literal atom: the field an account is known by. You have to
-      write this one out here, because it is the field your schema declares.
-    * `format:` — optional, a regular expression, evaluated once when your module compiles.
-      `Ithibati.Schema.Identifier.email_format/0` offers one for addresses.
-    * `format_message:` — optional, the sentence a refused format carries. Without it Ecto says
-      "has invalid format", which beside an email field is worse than what you would write. It
-      needs a `format:`, since nothing else here reports one.
-    * `constraint_name:` — optional, the name of the unique index on that column. Say it when your
-      naming convention is not the one Ecto derives. Ithibati then creates the index under that
-      name, and the changeset's constraint matches it.
-    * `unique_index: false` — optional, an opt-out. Say it when your application creates that
-      index itself, and Ithibati checks that one exists instead of creating it.
+    * `:identifier` — required literal atom naming the account's identifier field.
+    * `:format` — optional regex checked after normalization. See
+      `Ithibati.Schema.Identifier.username_format/0` and `Ithibati.Schema.Identifier.email_format/0`.
+    * `:format_message` — custom format-error message; requires `:format`.
+      Defaults to Ecto's `"has invalid format"` message.
+    * `:constraint_name` — optional identifier-index name. Used both when creating the index
+      and when translating its constraint error into a changeset error.
+    * `:unique_index` — defaults to `true`. Set `false` when the application creates the index;
+      Ithibati still verifies that it guarantees uniqueness of the identifier column alone.
 
-  You may write each of the four value options inline, or name a module attribute standing above
-  the `use` line. Ithibati refuses an option written as `nil`, because that is what a misspelled
-  attribute looks like.
+  Except for `:identifier`, values can be module attributes declared before `use`. Explicit
+  `nil` values are rejected. See [Configuration and schemas](configuration.md) for examples.
 
-  `identifier_changeset/2` trims and lowercases the values it writes, whatever the field is
-  called.
+  ## Generated fields and functions
 
-  There is no default, and the macro says so when you leave it out: this library never sends
-  mail, so it will not ask you for an address by assumption.
-  `Ithibati.Schema.Identifier.email_format/0` says what the offered email pattern accepts and
-  why it is not RFC 5322.
+  Call `ithibati_account/0` inside the schema block. It declares the identifier as `:string` and
+  adds `:passkeys`, `:recovery_codes` and `:sessions` associations.
 
-  ## What it injects, and what it refuses
+  The macro generates `identifier_changeset/2`, the overridable `passkey_display_name/1`, and
+  `__ithibati__/1` for schema metadata. Identifier validation trims and lowercases the value,
+  requires it, checks any supplied format and limits it to 254 graphemes.
 
-  The macro injects one field, three associations, and three functions: `identifier_changeset/2`,
-  `passkey_display_name/1` (overridable, `nil` by default) and `__ithibati__/1`.
-  `Ithibati.Schema.UserTest` pins that list against a schema that does not use this macro, so a
-  fourth one has to be a decision.
-
-  It refuses two things, both at compile time: a module that never calls `ithibati_account/0`
-  inside its schema block, and one that defines `identifier_changeset/2` or `__ithibati__/1`
-  itself.
+  Compilation fails if the schema omits `ithibati_account/0` or defines its own
+  `identifier_changeset/2` or `__ithibati__/1`. The application creates the database column;
+  `Ithibati.Migration` creates or checks its unique index.
   """
 
   import Ecto.Changeset
@@ -107,15 +97,13 @@ defmodule Ithibati.Schema.User do
       @ithibati_unique_index unquote(given.unique_index)
 
       @doc """
-      A name for this account that a passkey dialog can show, or `nil`.
+      Returns the display name for passkey registration, or `nil` to use the identifier.
 
-      Returning `nil` is the ordinary answer, and Ithibati then shows the identifier. Override this
-      function when the application has something better:
+      Override this function when the application has a separate display field:
 
           def passkey_display_name(account), do: account.name
 
-      An override needs no fallback. An account that has not filled the better name in returns
-      `nil`, which is correct and not broken.
+      A `nil` result falls back to the identifier in `Ithibati.Schema.User.credential_user/1`.
       """
       def passkey_display_name(_account), do: nil
 
@@ -139,18 +127,27 @@ defmodule Ithibati.Schema.User do
 
     quote do
       @doc """
-      What Ithibati was told about this schema. `:identifier` is the field an account is known by.
-      `:constraint` is the unique index name the application said it maintains itself, or `nil`.
+      Returns metadata declared by `use Ithibati.Schema.User`.
+
+        * `:identifier` — the identifier field name.
+        * `:constraint` — the configured identifier-index name, or `nil` for Ecto's default name.
+        * `:unique_index` — whether Ithibati should create that index.
+
+      A named index can be managed by Ithibati or by the application; `:constraint` does not select
+      which one manages it.
       """
       def __ithibati__(:identifier), do: unquote(field)
       def __ithibati__(:constraint), do: unquote(constraint)
       def __ithibati__(:unique_index), do: unquote(unique_index)
 
       @doc """
-      Casts and validates the identifier, and declares the constraint Ithibati relies on.
+      Returns a changeset with the account identifier cast, normalized and validated.
 
-      It takes a struct or a changeset and returns a changeset, so you compose it into your own
-      instead of receiving one that owns the account.
+      Accepts a struct or changeset and an attributes map. Validation requires the identifier,
+      checks the configured regex when present, and limits it to 254 graphemes. The changeset
+      also declares the identifier's unique constraint; the database enforces it on insert or update.
+
+      Compose this into the application's changeset before validating additional fields.
       """
       def identifier_changeset(account_or_changeset, attrs) do
         # Written out because this is a quote: Elixir resolves aliases where the code is *written*,
@@ -176,37 +173,24 @@ defmodule Ithibati.Schema.User do
   end
 
   @doc """
-  Whether a module carries what this macro injects.
+  Returns whether the module is loaded and exports the account-schema metadata function.
 
-  Ithibati offers one predicate, not two spellings of it. The marker function has been
-  renamed once already, and a second caller checking it by hand would be a second thing to find
-  by grep next time.
+  Use this predicate instead of checking Ithibati's generated marker directly. It identifies
+  the schema integration; it does not validate the database table or its indexes.
   """
   def account_schema?(module),
     do: Code.ensure_loaded?(module) and function_exported?(module, :__ithibati__, 1)
 
   @doc """
-  Whether the identifier is what a failed insert collided on.
+  Returns whether the changeset contains a unique-constraint error on the identifier field.
 
-  A transaction that refuses an account hands back an `Ecto.Changeset`, and the application then
-  has to decide what to tell somebody. "That name is taken" comes from a unique index and "that is
-  not a name" comes from the format. Only Ithibati knows which *field* is the identifier, because
-  `ithibati_account/0` declared it.
+  Use this after a failed repo insert or update to distinguish an identifier collision from
+  format errors or uniqueness errors on other application fields. The changeset must belong
+  to a schema using `Ithibati.Schema.User`; otherwise this raises `ArgumentError`.
 
-  The match is on the field, so a uniqueness error on it counts however the index is shaped. An
-  application that scopes the identifier to a tenant gets `true` for a collision inside that
-  tenant, which is what a collision means there.
-
-  The function answers which of the two it was and nothing more. The application turns that into
-  `:username_taken`, a sentence or an HTTP status, the same way `Ithibati.Web.Handler` leaves it
-  what a verified assertion is worth.
-
-  > #### Only after the database has seen it {: .warning}
-  >
-  > A changeset carries a constraint error only after the repo has attempted the insert and been
-  > refused. A changeset built and never given to the repo answers `false` however certainly the
-  > identifier is taken, and that looks exactly like this function not working.
-
+  A changeset that has not reached the database has no constraint error and returns `false`.
+  The predicate checks the field's error metadata; it does not perform a uniqueness query or
+  validate the index definition.
   """
   def identifier_taken?(%Ecto.Changeset{data: %module{}} = changeset) do
     ensure_account_schema!(module)
@@ -215,12 +199,14 @@ defmodule Ithibati.Schema.User do
   end
 
   @doc """
-  The `name` and `displayName` a WebAuthn registration shows, for an account or for an identifier
-  that does not have one yet.
+  Returns `%{name: identifier, display_name: display_name}` for WebAuthn registration.
 
-  Ithibati derives both here instead of leaving them to the caller, because it owns the fallback:
-  an application's `passkey_display_name/1` may answer `nil` and be right. The first registration
-  on an instance has no account at all, which is why the second clause exists.
+  For an account using `Ithibati.Schema.User`, the identifier comes from its declared field.
+  The display name comes from `passkey_display_name/1`, falling back to the identifier when
+  that function returns `nil` or `false`.
+
+  For a string identifier, both values are that string. This function does not normalize it.
+  An account struct without the schema integration raises `ArgumentError`.
   """
   def credential_user(%module{} = account) do
     ensure_account_schema!(module)

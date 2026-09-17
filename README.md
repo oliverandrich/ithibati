@@ -8,120 +8,129 @@ and built for Phoenix.
 
 [Swahili, *ithibati*](https://en.wiktionary.org/wiki/ithibati): proof, evidence. In WebAuthn's own vocabulary, attestation.
 
-## What it is
+## What it provides
 
-Most authentication libraries answer two questions at once. *Who is this*, and *what may they
-do*.
+- Passkey registration and authentication through [WebAuthn and `wax_`](https://hex.pm/packages/wax_).
+- Passkey management: add another passkey, list, rename and revoke existing ones.
+- Single-use recovery codes for signing in when a passkey is unavailable.
+- Revocable server-side sessions. The browser holds a secret; the database stores its digest.
+  Signing out revokes the session in the database.
+- Invitation tokens, expiry and redemption, plus a way to claim the first account on an empty
+  instance. Both open registration and invitation-only applications are supported.
+- Changeset helpers and composable `Ecto.Multi` steps. Create an account, its first passkey and
+  its recovery codes in one transaction, alongside your own application changes.
 
-The second answer is different in every application. Sites, tenants, teams, roles, invitations.
-That is why the first one so rarely gets reused. Ithibati answers only the first:
+## What your application owns
 
-- passkey registration and authentication (WebAuthn, via [`wax_`](https://hex.pm/packages/wax_)),
-  including the first account on an empty instance
-- single-use recovery codes, for the day a passkey is gone
-- revocable server-side sessions. The cookie carries a secret and the database carries its
-  digest. Signing out revokes the row instead of forgetting it
-- invitations: Ithibati brings the token, its expiry and the redemption, you bring the table and
-  whatever the invitation grants
-- changeset helpers and composable `Ecto.Multi` fragments you hang your own steps on
+You keep your account schema and `users` table. Ithibati adds the fields and associations it
+needs through a schema macro. You choose the identifier field: a username, an email address or
+another format your application accepts.
 
-You keep your own `users` table and your own roles, and Ithibati never reads them. Creating an
-account, its first passkey and its recovery codes is one transaction, and you add your own steps
-to it.
+Your application defines roles, memberships and permissions. After Ithibati verifies a passkey,
+your handler decides whether to create a session and where to send the person next.
 
-An account is identified by a username or an email address, whichever your application uses.
-Two patterns ship, `Identifier.username_format/0` and `Identifier.email_format/0`. You can pass
-your own. You declare the field on your own schema.
+You also build the registration, sign-in and recovery-code pages. Ithibati supplies the Phoenix
+endpoints and browser integration; the examples show how to connect them to a working interface.
 
-Open registration and invitation-only both work. Ithibati does not push you either way.
+For invitations, you own the invitation table and decide what accepting one grants. Your
+application delivers the link. Ithibati sends no mail, and choosing an email address as an
+account identifier does not by itself verify ownership of that address. Rate limiting for
+sign-in and recovery endpoints is also the application's responsibility.
 
-It sends no mail, so delivering an invitation link is your job. An invitation token is a bearer
-secret, and whoever has the link accepts it. That also answers address verification. An
-application that mails the link itself has proved the address, because Ithibati refuses an
-account created under any identifier but the one the invitation was addressed to.
+## Requirements
 
-## What using it looks like
+- Elixir 1.17 or newer.
+- PostgreSQL and an Ecto repo. PostgreSQL is required: the migration checks the existing account
+  table through its database catalogue.
+- For the optional web integration: Phoenix 1.8, LiveView 1.1 and Plug. They form one web layer;
+  the identity core can be used without them.
 
-There are five touchpoints, and they are the whole surface. [Getting
-started](https://hexdocs.pm/ithibati/getting_started.html) builds them into a working
-application, step by step, from `mix phx.new` onwards.
+## Getting started
 
-The dependency:
+Add the dependency:
 
 ```elixir
 {:ithibati, "~> 0.1"}
 ```
 
-One line in your account schema names the field an account is known by, and brings the changeset
-that validates it:
+Then follow [Getting started](https://hexdocs.pm/ithibati/getting_started.html). It walks a fresh
+Phoenix application through configuration, the account schema and migration, an auth handler,
+routes, browser integration and pages for signing in and saving recovery codes.
+
+The following excerpts show how the pieces fit together. The guide supplies the surrounding
+modules, imports and configuration.
+
+Your account schema names its identifier and validation format:
 
 ```elixir
+alias Ithibati.Schema.Identifier
+alias Ithibati.Schema.User
+
 use User, identifier: :username, format: Identifier.username_format()
 ```
 
-One line in your router mounts the ceremony endpoints:
+Your router mounts the registration, authentication and recovery endpoints:
 
 ```elixir
 ithibati_routes handler: MyAppWeb.Auth, rp_name: "MyApp"
 ```
 
-Your handler decides what a verified assertion is worth. Ithibati hands you the account and
-issues nothing:
+Your handler receives the verified account. Here it creates a session and returns a redirect:
 
 ```elixir
 @impl true
 def authenticate(conn, account),
-  do: {:ok, conn |> Gate.log_in(account) |> json(%{redirect: "/"})}
+  do: {:ok, conn |> Gate.log_in(account) |> json(%{redirect: "/inside"})}
 ```
 
-And a page starts a ceremony by pushing an event to the browser hook:
+A LiveView starts sign-in by sending an event to the browser hook:
 
 ```elixir
 def handle_event("sign-in", _params, socket),
   do: {:noreply, socket |> assign(error: nil) |> push_event("ithibati:authenticate", %{})}
 ```
 
-There is no password field. There is also no sign-in form. A sign-in challenge names no
-credential, so the browser offers whichever passkeys it holds for your site and the person picks
-one. Registration still needs a form, because the name does not exist yet.
+The browser lets the person choose a passkey for your site. They do not need to enter a username
+first. Registration asks for an identifier to create the account.
 
-Configuration, the migration and the account schema in full are in the guide. `mix
-ithibati.doctor` checks the lot when you are done.
+Once the pieces are in place, run `mix ithibati.doctor` to check configuration, database tables,
+indexes and handler wiring. The guide also shows how to protect a page and sign out.
 
 ## Without Phoenix
 
-Phoenix, LiveView and Plug are optional dependencies. The web half comes with them: the ceremony
-routes, a gate that answers who is signed in, and a browser hook. Most applications want that,
-and both examples are built that way.
+The identity core exposes registration and authentication as ordinary function calls. Your
+integration supplies the relying-party ID and origin, retains the challenge between requests,
+and decides what to issue after verification.
 
-You can skip it. A ceremony is a handful of function calls. The controller only adds HTTP and
-somewhere to park the challenge between two requests. The browser side works without a framework
-too. `priv/static/ithibati.js` exports `register` and `authenticate` as plain functions, and the
-LiveView hook wraps them. Use this for a native client, a browser extension, or a server that is
-not Phoenix. [Registering and signing in](https://hexdocs.pm/ithibati/ceremonies.html) shows both
-ways.
+For browser clients, `priv/static/ithibati.js` exports `register` and `authenticate` as plain
+JavaScript functions. The LiveView hook wraps those same functions.
 
-## Where to go next
+[Registering and signing in](https://hexdocs.pm/ithibati/ceremonies.html) covers the Phoenix
+integration and direct use of the core, including the boundary where a native client or another
+web framework connects.
 
-The [documentation](https://hexdocs.pm/ithibati) covers it properly. [Getting
-started](https://hexdocs.pm/ithibati/getting_started.html), [registering and signing
-in](https://hexdocs.pm/ithibati/ceremonies.html), [recovery
-codes](https://hexdocs.pm/ithibati/recovery.html),
-[passkeys](https://hexdocs.pm/ithibati/passkeys.html), [invitations and the first
-account](https://hexdocs.pm/ithibati/invitations.html) and the
-[tooling](https://hexdocs.pm/ithibati/doctor.html).
+## Examples and documentation
 
-Two example applications compile and run, one for each way of letting people in. Read these when
-the docs and your editor disagree:
+Two complete Phoenix applications show the supported registration flows:
 
-- [`examples/open_registration`](https://github.com/oliverandrich/ithibati/tree/main/examples/open_registration)
-  — anybody who reaches the page picks a username and registers a passkey.
-- [`examples/invitation_only`](https://github.com/oliverandrich/ithibati/tree/main/examples/invitation_only)
-  — the first account claims the instance. Everybody after it needs an invitation link.
+- [Open registration](https://github.com/oliverandrich/ithibati/tree/main/examples/open_registration):
+  anyone who reaches the page can choose a username and register a passkey.
+- [Invitation only](https://github.com/oliverandrich/ithibati/tree/main/examples/invitation_only):
+  the first account claims the instance; subsequent accounts need an invitation link.
 
-CI compiles both, runs their tests and drives them in a browser, so they cannot quietly rot.
+CI compiles both applications, runs their tests and exercises them in a browser.
 
-[CHANGELOG.md](CHANGELOG.md) has what changed between releases.
+The [documentation](https://hexdocs.pm/ithibati) includes guides for:
+
+- [Configuration and schemas](https://hexdocs.pm/ithibati/configuration.html).
+- [Registration and sign-in](https://hexdocs.pm/ithibati/ceremonies.html).
+- [Adding and managing passkeys](https://hexdocs.pm/ithibati/passkeys.html).
+- [Recovery codes](https://hexdocs.pm/ithibati/recovery.html).
+- [Invitations and the first account](https://hexdocs.pm/ithibati/invitations.html).
+- [Checking your setup with `ithibati.doctor`](https://hexdocs.pm/ithibati/doctor.html).
+- [Credo checks for consuming applications](https://hexdocs.pm/ithibati/credo.html).
+
+[CHANGELOG.md](CHANGELOG.md) records changes between releases.
 
 ## Licence
 

@@ -1,24 +1,25 @@
 defmodule Ithibati.Identity.Invitations do
   @moduledoc """
-  Opening an invitation, and accepting one.
+  Finds pending invitations and composes their acceptance into application transactions.
 
-  The invitation itself is the application's row, and `Ithibati.Schema.Invitation` says why. This
-  module holds the half that would otherwise be written by hand and written slightly wrong: finding
-  an invitation by the secret in a link, and marking it accepted in a way two people opening that
-  link at once cannot both get through.
+  The application owns the invitation schema and any membership or permission it grants.
+  Ithibati checks the token, expiry and acceptance state, and binds the invitation's identifier
+  to the account created in the transaction.
 
-  Accepting composes into the caller's own transaction, beside the grant:
+  For acceptance outside a WebAuthn ceremony:
 
-      Ecto.Multi.new()
-      |> Ecto.Multi.insert(:account, MyApp.Accounts.User.changeset(%User{}, account_attrs(invitation)))
+      alias Ecto.Multi
+      alias MyApp.Accounts.User
+
+      Multi.new()
+      |> Multi.insert(:account, User.changeset(%User{}, account_attrs(invitation)))
       |> Ithibati.Identity.Invitations.accept(invitation)
       |> Ithibati.Identity.Grant.with_key_and_codes(key_attrs)
-      |> Ecto.Multi.insert(:membership, fn %{account: account, invitation: invitation} -> … end)
       |> MyApp.Repo.transaction()
 
-  Accept before the grant, for the reason `Ithibati.Identity.Grant.with_key_and_codes/3` warns
-  about. Two people opening one link is the race this step's refusal exists for, so it is not a
-  rare path here.
+  Insert application steps such as membership creation before the grant. In a WebAuthn handler,
+  build the account from the subject approved at the challenge step, rather than rereading its
+  identifier from the final request's invitation. See [Invitations](invitations.md).
   """
 
   import Ecto.Query
@@ -30,10 +31,11 @@ defmodule Ithibati.Identity.Invitations do
   alias Ithibati.Identity.Steps
 
   @doc """
-  The pending invitation this token opens, or `nil`.
+  Returns the pending invitation for a plaintext token, or `nil`.
 
-  Pending means not yet accepted and not past its expiry. An invitation that is not pending is
-  answered the same way as a token nobody holds, deliberately.
+  Pending means unaccepted and unexpired. Unknown, accepted and expired tokens all return `nil`,
+  as do non-string inputs. This lookup does not reserve the invitation; `accept/3` rechecks its
+  state when writing.
   """
   def fetch(token) when is_binary(token) do
     Config.repo().one(
@@ -47,10 +49,10 @@ defmodule Ithibati.Identity.Invitations do
   def fetch(_token), do: nil
 
   @doc """
-  The attributes an account created from this invitation starts with.
+  Returns a map containing the invitation's identifier under its declared field name.
 
-  Only the identifier, under the name the schemas agreed on. An application composing the acceptance
-  therefore does not have to reach into Ithibati to learn what that name is.
+  Use it to initialize an account outside a WebAuthn ceremony. During registration, use the
+  subject supplied to `c:Ithibati.Web.Handler.register/4`, which was approved with the challenge.
   """
   def account_attrs(invitation) do
     field = addressed_by(invitation)
@@ -58,22 +60,25 @@ defmodule Ithibati.Identity.Invitations do
     %{field => Map.fetch!(invitation, field)}
   end
 
-  # Read off the struct, not from the configuration, the same way `claim/2` reads the primary
-  # key: an invitation of some other module would otherwise be read with the configured schema's
-  # field name, which is either a wrong answer or a confusing error.
+  # Read metadata from this invitation's schema, rather than assuming the configured module.
   defp addressed_by(%module{}), do: module.__ithibati_invitation__(:identifier)
 
   @doc """
-  Marks the invitation accepted, as a step named `:invitation` in the caller's transaction.
+  Appends an `:invitation` acceptance step and returns the multi.
 
-  The step answers `{:error, :invalid_invitation}` when the invitation was accepted or expired in
-  the meantime, and that rolls the whole transaction back. The account, its passkey and its codes go
-  with it.
+  Pass an invitation struct, not `nil`; handle a failed `fetch/1` lookup before composing this
+  step. The `:account` option names an earlier account step and defaults to `:account`.
 
-  It also refuses an account being created under a different identifier from the one the invitation
-  was addressed to, with `{:error, :identifier_mismatch}`. `account:` names the step that account
-  comes from and defaults to `:account`, the name every fragment in Ithibati uses. A transaction
-  with no such step is not checked, because there is nothing to check it against.
+  When the account step exists, acceptance checks that its identifier matches the invitation.
+  A mismatch fails with `:identifier_mismatch`. If no account step exists, that comparison is
+  skipped, allowing acceptance to be composed independently.
+
+  The write rechecks expiry and acceptance state. If the invitation is no longer available,
+  the step fails with `:invalid_invitation`. Concurrent attempts cannot both accept the same row.
+
+  On success, `:invitation` contains the updated invitation. On failure, `Repo.transaction/1`
+  returns `{:error, :invitation, reason, changes_so_far}` and rolls back the transaction. Place
+  this step before `Ithibati.Identity.Grant.with_key_and_codes/3`.
   """
   def accept(multi, invitation, opts \\ []) do
     Multi.run(multi, :invitation, fn repo, changes ->
@@ -81,12 +86,9 @@ defmodule Ithibati.Identity.Invitations do
     end)
   end
 
-  # An acceptance form that lets the invitee correct their address is an ordinary thing to build, and
-  # it is the one that turns an invitation addressed to one person into an account for another,
-  # along with whatever the application's own step reads off the invitation. Whose address the
-  # invitation carries is the whole of what `validate_unclaimed` is about, so the binding is checked
-  # here, and not left as advice. Nothing to check when the transaction creates no account: an
-  # application is allowed to compose this step on its own.
+  # Bind the invitation to the account step when present. Without this comparison, an
+  # acceptance flow could create an account under a different identifier. Standalone acceptance
+  # has no account to compare, but a present step must still contain a valid account.
   defp confirm_addressee(changes, opts, invitation) do
     case Steps.account(changes, opts) do
       :error ->
@@ -102,29 +104,24 @@ defmodule Ithibati.Identity.Invitations do
   defp compare(_account, _invitation), do: {:error, :identifier_mismatch}
 
   @doc """
-  Invitations that ran out without being accepted.
+  Returns expired invitations that have not been accepted.
 
-  Ithibati does not sweep them. Scheduling a job is the application's business, and `fetch/1`
-  refuses an expired invitation anyway, so one left lying is inert. The *query* is Ithibati's,
-  though, which is why both halves are offered. Use this one for a sweeper that wants to say what
-  it is about to remove, and `delete_expired/0` for one that does not.
+  Ithibati schedules no cleanup. Use this list to inspect pending deletions, or call
+  `delete_expired/0` to remove them. Expired invitations are refused by `fetch/1` regardless of
+  whether their rows remain in the database.
   """
   def expired do
     Config.repo().all(expired_query())
   end
 
-  @doc "Removes them, in one statement, and answers how many."
+  @doc "Deletes expired, unaccepted invitations and returns the number of rows removed."
   def delete_expired do
     {count, _} = Config.repo().delete_all(expired_query())
 
     count
   end
 
-  # "Unaccepted" rides the `WHERE` of the update that accepts it, and the row comes back from the
-  # same statement, so two people opening one link cannot both get through. Both aim at the same
-  # row, so the second waits on its lock and re-reads the committed version.
-  # `Ithibati.Identity.Concurrency` covers the case where two writers aim at different rows, where
-  # this is not enough.
+  # Recheck state in the update itself so concurrent acceptances cannot both succeed.
   defp claim(repo, invitation) do
     now = DateTime.utc_now()
 
@@ -134,8 +131,7 @@ defmodule Ithibati.Identity.Invitations do
         where: i.expires_at > ^now,
         select: i
       )
-      # Read off the struct. The table is the application's, so what its
-      # primary key is called is the application's to decide.
+      # The application's invitation schema determines the primary-key fields.
       |> where(^Ecto.primary_key!(invitation))
 
     repo.update_all(query, set: [accepted_at: now])
