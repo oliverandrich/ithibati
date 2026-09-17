@@ -70,6 +70,12 @@ three backends. Do not run two copies of the same adapter probe simultaneously a
 database. The ordinary `mise run check` still runs the existing PostgreSQL suite; adapter
 suites are separate commands.
 
+CI runs the adapter suite for SQLite with text UUIDs, binary UUIDs and integer account keys,
+and for MySQL 8.4 with UUID and integer account keys. Each variant has its own build cache;
+each MySQL job starts a fresh service container on a dynamically assigned host port. SQLite
+uses a local file without a service container. The existing PostgreSQL jobs continue to cover
+UUID and integer account keys, the minimum Elixir version and the core without Phoenix.
+
 ## Architecture
 
 - **`Ithibati.Identity` may not name another context.** It handles accounts, passkeys,

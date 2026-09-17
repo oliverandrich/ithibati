@@ -156,6 +156,88 @@ jobs:
           # derives it from the module, so a rename fails there first and loudly.
           grep -q "Ithibati.Web.Hooks.PasskeyCeremony" "$manifest"
 
+  adapter:
+    name: adapter (${{ matrix.name }})
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: SQLite UUID text
+            adapter: sqlite
+            users_key_type: binary_id
+            uuid_storage: string
+          - name: SQLite UUID binary
+            adapter: sqlite
+            users_key_type: binary_id
+            uuid_storage: binary
+          - name: SQLite integer
+            adapter: sqlite
+            users_key_type: id
+            uuid_storage: string
+          - name: MySQL UUID
+            adapter: mysql
+            users_key_type: binary_id
+            uuid_storage: string
+          - name: MySQL integer
+            adapter: mysql
+            users_key_type: id
+            uuid_storage: string
+
+    env:
+      ITHIBATI_ADAPTER_PROBE: ${{ matrix.adapter }}
+      ITHIBATI_USERS_KEY_TYPE: ${{ matrix.users_key_type }}
+      ITHIBATI_SQLITE_UUID_STORAGE: ${{ matrix.uuid_storage }}
+      MYSQL_HOST: 127.0.0.1
+      MYSQL_USER: root
+      # Disposable service credentials, matching the container below.
+      MYSQL_PASSWORD: mysql
+
+    services:
+      mysql:
+        # An empty image skips the service for SQLite. Each MySQL leg gets its own server.
+        image: ${{ matrix.adapter == 'mysql' && 'mysql:8.4' || '' }}
+        env:
+          MYSQL_ROOT_PASSWORD: mysql
+          MYSQL_ROOT_HOST: "%"
+        ports:
+          - 3306/tcp
+        options: >-
+          --health-cmd "mysql --protocol=TCP -h127.0.0.1 -uroot -pmysql -e 'SELECT 1'"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4.3.0
+        with:
+          version: 2026.9.5
+          cache_key_prefix: mise-pinned-pinned
+
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            deps
+            _build
+          key: ${{ runner.os }}-adapter-${{ matrix.adapter }}-${{ matrix.users_key_type }}-${{ matrix.uuid_storage }}-${{ hashFiles('mise.toml') }}-${{ hashFiles('mix.lock') }}
+          restore-keys: ${{ runner.os }}-adapter-${{ matrix.adapter }}-${{ matrix.users_key_type }}-${{ matrix.uuid_storage }}-${{ hashFiles('mise.toml') }}-
+
+      - name: Fetch dependencies
+        run: |
+          mix local.hex --force
+          mix local.rebar --force
+          mix deps.get
+
+      - name: Run adapter integration tests
+        env:
+          MYSQL_PORT: ${{ job.services.mysql.ports['3306'] || '3306' }}
+        run: mise run build-and-test
+
   # The examples are documentation that either compiles or does not — and their own suites drive
   # them in a real browser, which is the only thing here that executes `priv/static/ithibati.js`.
   # They take the library by path, so this is also the only place that compiles the library the way
@@ -236,7 +318,7 @@ jobs:
           # In the environment the gate runs in, not the default `dev`: `assets.setup` goes through
           # `app.config`, which compiles, so leaving it in `dev` builds the example, the library and
           # every dependency once in each environment. The binaries land in `_build/` either way.
-          MIX_ENV=test mix assets.setup
+          MIX_ENV='test' mix assets.setup
           mix precommit
 
       # A failed feature test names a selector and nothing about the page it failed against.
@@ -273,7 +355,7 @@ jobs:
         run: |
           rm -rf _build/test/lib/ithibati
           set +e
-          out=$(MIX_ENV=test mix deps.compile ithibati --force 2>&1)
+          out=$(MIX_ENV='test' mix deps.compile ithibati --force 2>&1)
           rc=$?
           set -e
           echo "$out"
