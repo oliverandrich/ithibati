@@ -254,6 +254,24 @@ MyApp.Repo.delete_all(Ecto.assoc(account, :sessions))
 This database operation does not broadcast socket disconnections. If your application needs
 immediate disconnection across all sessions, implement that alongside the revocation.
 
+### Challenge storage
+
+The Phoenix endpoints retain each challenge and its approved subject and mount settings in the
+session. They also store its digest and expiry in the database. Before checking any response,
+the endpoint atomically deletes that record, so an old cookie or a parallel request cannot
+reuse the challenge. A failed verification also consumes it. Issuing another challenge in the
+same session slot invalidates the previous one; an in-flight ceremony may need to restart.
+
+Apply [schema version 2](configuration.md#upgrading-the-database-schema) before using these
+endpoints. Consumption raises if the entire endpoint request is wrapped in an application
+transaction, since rollback could restore the record. Transactions inside handler callbacks
+are fine: consumption has already committed before a callback runs.
+
+Schedule `Ithibati.Identity.Challenges.delete_expired/0` in your application's maintenance job
+to remove abandoned challenges. Consumed rows are removed immediately. Expired rows never
+authorize verification, even before cleanup. Direct core integrations still own challenge
+storage and may use `Ithibati.Identity.Challenges` for the same database-backed consumption.
+
 ## Handling failures
 
 Controller failures return a JSON `error` string and a 4xx response. Browser failures use the

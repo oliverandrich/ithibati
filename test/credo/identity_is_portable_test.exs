@@ -72,7 +72,7 @@ defmodule Ithibati.Credo.IdentityIsPortableTest do
     test "what the core may name is left alone" do
       """
       defmodule Ithibati.Identity do
-        alias Ithibati.{RecoveryCode, Session, UserKey}
+        alias Ithibati.{Challenge, RecoveryCode, Session, UserKey}
         alias Ithibati.Bootstrap
         alias Ithibati.Config
 

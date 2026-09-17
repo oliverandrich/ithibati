@@ -22,6 +22,12 @@ defmodule Ithibati.MigrationTest do
   @schema "probe"
   @version 20_990_101_000_000
 
+  defmodule ChallengeUpgrade do
+    use Ecto.Migration
+    def up, do: Ithibati.Migration.up(from: 1, version: 2)
+    def down, do: Ithibati.Migration.down(from: 1, version: 2)
+  end
+
   defmodule Probe do
     use Ecto.Migration
 
@@ -257,6 +263,29 @@ defmodule Ithibati.MigrationTest do
 
     assert :ok = migrate(:up)
 
+    assert missing() == []
+  end
+
+  test "version 2 upgrades and rolls back without removing version 1 tables" do
+    :ok = migrate(:up)
+
+    assert :ok =
+             Ecto.Migrator.up(TestRepo, @version + 1, ChallengeUpgrade,
+               prefix: @schema,
+               log: false
+             )
+
+    table = Ithibati.Catalogue.table(TestRepo, @schema, "ithibati_challenges")
+    assert is_integer(table)
+    assert {"bytea", true} = Ithibati.Catalogue.column(TestRepo, table, :token_hash)
+
+    assert :ok =
+             Ecto.Migrator.down(TestRepo, @version + 1, ChallengeUpgrade,
+               prefix: @schema,
+               log: false
+             )
+
+    assert Ithibati.Catalogue.table(TestRepo, @schema, "ithibati_challenges") == nil
     assert missing() == []
   end
 

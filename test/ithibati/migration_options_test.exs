@@ -15,7 +15,7 @@ defmodule Ithibati.MigrationOptionsTest do
   end
 
   test "a version this release does not know" do
-    assert_raise ArgumentError, ~r/version must be 1\.\.1/, fn ->
+    assert_raise ArgumentError, ~r/version must be 1\.\.2/, fn ->
       Migration.up(version: Migration.current_version() + 1)
     end
   end

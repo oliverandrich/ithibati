@@ -110,7 +110,7 @@ and resolve application-index conflicts before creating owned tables, but an une
 failure can still leave a partial schema. Inspect it before retrying.
 
 For an initial installation with no authentication data to retain, a temporary recovery migration
-may call `Ithibati.Migration.down(version: 1)` in its `up/0`, then retry the original installation.
+may call `Ithibati.Migration.down(version: 2)` in its `up/0`, then retry the original installation.
 This removes any existing Ithibati tables and its managed application indexes. It is destructive
 and must not be used as an automatic repair of a populated installation. Your account and
 invitation tables remain application-owned.
@@ -122,5 +122,5 @@ results such as `:invalid` or `:last_key`. Ithibati never automatically replays 
 callback. If your application retries, restart the entire transaction, bound the attempts and
 ensure that external side effects are safe to repeat.
 
-All three backends use Ithibati schema version 1. Keep applied migrations pinned to their original
+All three backends use Ithibati schema version 2. Keep applied migrations pinned to their original
 version; see [Upgrading the database schema](configuration.md#upgrading-the-database-schema).

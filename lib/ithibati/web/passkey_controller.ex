@@ -7,7 +7,8 @@ if Code.ensure_loaded?(Phoenix.Component) do
     Registration and authentication each use a challenge request followed by verification.
     Challenges occupy separate session entries, and each carries its mount settings. Registration
     also retains the subject approved by `c:Ithibati.Web.Handler.registration_subject/2`.
-    Verification removes the corresponding entry from the connection's session before checking it.
+    Verification removes the session entry and atomically consumes its database record before
+    checking it. Old cookies and concurrent requests cannot reuse that record, even after failure.
 
     Separate entries prevent an authentication challenge from being used to bypass registration
     approval. Matching the mount settings prevents a challenge from being completed through a
@@ -19,6 +20,7 @@ if Code.ensure_loaded?(Phoenix.Component) do
     """
     use Phoenix.Controller, formats: [:json]
 
+    alias Ithibati.Identity.Challenges
     alias Ithibati.Identity.Passkeys
     alias Ithibati.Identity.RecoveryCodes
 
@@ -81,12 +83,31 @@ if Code.ensure_loaded?(Phoenix.Component) do
 
     # Remove the challenge from the connection session before verification so returned failures
     # also carry the session change.
-    defp spend(conn, key), do: {delete_session(conn, key), get_session(conn, key)}
+    defp spend(conn, key) do
+      held = get_session(conn, key)
+      {delete_session(conn, key), consume(held)}
+    end
+
+    defp consume({_settings, held} = entry) do
+      case Challenges.consume(challenge(held)) do
+        :ok -> entry
+        {:error, :no_challenge} -> nil
+      end
+    end
+
+    defp consume(nil), do: nil
 
     # Bind the stored challenge to its mount settings. Otherwise a different handler or policy
     # could complete a challenge approved here. Shared slots keep the session bounded; a new
     # challenge for the same ceremony replaces the previous one.
-    defp keep(conn, key, held), do: put_session(conn, key, {settings(conn), held})
+    defp keep(conn, key, held) do
+      consume(get_session(conn, key))
+      Challenges.store(challenge(held))
+      put_session(conn, key, {settings(conn), held})
+    end
+
+    defp challenge({challenge, _subject}), do: challenge
+    defp challenge(challenge), do: challenge
 
     # Recovery spends a bearer code directly; it does not require a WebAuthn challenge.
     def recovery(conn, %{"code" => code}) when is_binary(code) do

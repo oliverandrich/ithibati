@@ -81,4 +81,39 @@ defmodule Ithibati.RaceCase do
       {:exit, reason} -> flunk("a racer never finished: #{inspect(reason)}")
     end)
   end
+
+  @doc "Runs callers on separately checked-out connections, releasing them together at a barrier."
+  def racing_connections(count, fun) do
+    parent = self()
+
+    tasks =
+      for _ <- 1..count do
+        Task.async(fn -> consume_when_ready(parent, fun) end)
+      end
+
+    try do
+      ready =
+        for _ <- tasks do
+          assert_receive {:ready, pid}, 2_000
+          pid
+        end
+
+      Enum.each(ready, &send(&1, :consume))
+      Enum.map(tasks, &Task.await(&1, 5_000))
+    after
+      Enum.each(tasks, &Task.shutdown(&1, :brutal_kill))
+    end
+  end
+
+  defp consume_when_ready(parent, fun) do
+    TestRepo.checkout(fn ->
+      send(parent, {:ready, self()})
+
+      receive do
+        :consume -> fun.()
+      after
+        2_000 -> raise "challenge race barrier timed out"
+      end
+    end)
+  end
 end

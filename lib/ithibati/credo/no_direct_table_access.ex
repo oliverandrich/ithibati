@@ -31,7 +31,13 @@ if Code.ensure_loaded?(Credo.Check) do
 
     # The schemas, not the table names: the prefix is the application's to choose, so a name
     # written out here would be wrong for anybody who set one.
-    @owned [Ithibati.UserKey, Ithibati.RecoveryCode, Ithibati.Session, Ithibati.Bootstrap]
+    @owned [
+      Ithibati.UserKey,
+      Ithibati.RecoveryCode,
+      Ithibati.Session,
+      Ithibati.Bootstrap,
+      Ithibati.Challenge
+    ]
 
     @impl true
     def run(%SourceFile{} = source_file, params) do

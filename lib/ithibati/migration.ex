@@ -5,8 +5,8 @@ defmodule Ithibati.Migration do
       defmodule MyApp.Repo.Migrations.AddIthibati do
         use Ecto.Migration
 
-        def up, do: Ithibati.Migration.up(version: 1)
-        def down, do: Ithibati.Migration.down(version: 1)
+        def up, do: Ithibati.Migration.up(version: 2)
+        def down, do: Ithibati.Migration.down(version: 2)
       end
 
   Create the account table and identifier column first. If invitations are configured, their
@@ -36,12 +36,13 @@ defmodule Ithibati.Migration do
   alias Ithibati.Catalogue
   alias Ithibati.Catalogue.MySQL
   alias Ithibati.Catalogue.SQLite
+  alias Ithibati.Challenge
   alias Ithibati.Config
   alias Ithibati.RecoveryCode
   alias Ithibati.Session
   alias Ithibati.UserKey
 
-  @current_version 1
+  @current_version 2
 
   # Ordered as they are created; `down` reverses it, so a table added to one clause cannot be
   # forgotten in the other.
@@ -191,6 +192,17 @@ defmodule Ithibati.Migration do
     value in allowed ||
       raise(ArgumentError, "#{name} must be #{described}, got: #{inspect(value)}")
   end
+
+  defp step(2, :up, _opts) do
+    create table(source(Challenge), primary_key: false) do
+      add :token_hash, :binary, Keyword.put(binary_options(32), :primary_key, true)
+      add :expires_at, :utc_datetime_usec, null: false
+    end
+
+    create index(source(Challenge), [:expires_at])
+  end
+
+  defp step(2, :down, _opts), do: drop_if_exists(table(source(Challenge)))
 
   defp step(1, :up, opts) do
     # MySQL commits DDL statements individually. Resolve application index collisions

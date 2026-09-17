@@ -181,8 +181,8 @@ tables and, by default, the identifier's unique index:
 defmodule MyApp.Repo.Migrations.AddIthibati do
   use Ecto.Migration
 
-  def up, do: Ithibati.Migration.up(version: 1)
-  def down, do: Ithibati.Migration.down(version: 1)
+  def up, do: Ithibati.Migration.up(version: 2)
+  def down, do: Ithibati.Migration.down(version: 2)
 end
 ```
 
@@ -219,17 +219,22 @@ changes who creates the index, not the uniqueness Ithibati requires.
 ### Upgrading the database schema
 
 Keep existing migrations pinned to their original version. `Ithibati.Migration.current_version/0`
-returns the version supported by the installed library. This checkout uses version 1.
+returns the version supported by the installed library. This checkout uses version 2.
 
-If a future release introduces version 2, its changelog should name the upgrade. Add a new
-migration at that point; do not edit the migration already applied:
+Existing calls to `Ithibati.Migration.up(version: 1)` and
+`Ithibati.Migration.down(version: 1)` must remain pinned to version 1.
+
+Version 2 adds the challenge-consumption table used by the web endpoints. Upgrade before
+serving requests with this release. Add a new migration; do not edit the migration already applied:
 
 ```elixir
 def up, do: Ithibati.Migration.up(from: 1, version: 2)
 def down, do: Ithibati.Migration.down(from: 1, version: 2)
 ```
 
-This is the upgrade pattern, not a migration to run against the current schema version.
+Fresh installations use `up(version: 2)`. Rolling back only version 2 removes outstanding
+challenges but preserves accounts, passkeys, recovery codes and sessions. Deploy the older
+application code when rolling back; the current endpoints require this table.
 
 ## Invitations
 

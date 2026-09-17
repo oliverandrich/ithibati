@@ -10,13 +10,30 @@ upgrading to one of those releases.
 
 ## Unreleased
 
+### Breaking changes
+
+- Database schema version is now 2. Existing installations must add a migration calling
+  `Ithibati.Migration.up(from: 1, version: 2)` before serving requests with this release.
+  The new challenge table preserves existing accounts and credentials. Keep older migrations
+  pinned; rollback uses `Ithibati.Migration.down(from: 1, version: 2)` with the older application.
+  See [Upgrading the database schema](docs/configuration.md#upgrading-the-database-schema).
+- Challenge consumption now rejects outer application transactions, which could restore a
+  consumed challenge on rollback. Transactions inside handler callbacks remain supported.
+  See [Challenge storage](docs/ceremonies.md#challenge-storage).
+- Require Elixir 1.18 or newer.
+- Removed `table_oid/3` from `Ithibati.Catalogue`; use `Ithibati.Catalogue.table/3` instead.
+
 ### Changed
 
-- Require Elixir 1.18 or newer.
 - Database catalogue queries and storage types live in separate PostgreSQL, SQLite and MySQL
-  modules. Removed `table_oid/3` from `Ithibati.Catalogue`; use `Ithibati.Catalogue.table/3` instead.
-- Database schema version remains 1. Existing PostgreSQL installations need no new migration
-  for the SQLite/MySQL support; this does not migrate application data between database engines.
+  modules.
+
+### Fixed
+
+- WebAuthn challenges are consumed atomically in the database before verification, including
+  failed attempts. Replaying the original session cookie no longer allows a signed assertion
+  or registration response to be accepted again. Outstanding pre-upgrade challenges are refused;
+  clients must start a new ceremony.
 
 ### Added
 

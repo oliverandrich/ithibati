@@ -57,7 +57,7 @@ if Code.ensure_loaded?(Phoenix.Component) do
     describe "authentication" do
       setup :a_key_on_file
 
-      test "an assertion signs in once and is refused the second time", ctx do
+      test "an assertion cannot be replayed with the original session cookie", ctx do
         started = request("/auth/authentication/challenge", %{})
         assert started.status == 200
 
@@ -70,9 +70,48 @@ if Code.ensure_loaded?(Phoenix.Component) do
         assert signed_in.status == 200
         assert signed_in.assigns.account.id == ctx.user.id
 
-        replayed = request("/auth/authentication", %{"credential" => assertion}, signed_in)
+        replayed = request("/auth/authentication", %{"credential" => assertion}, started)
         assert replayed.status == 422
         assert Jason.decode!(replayed.resp_body) == %{"error" => "no_challenge"}
+      end
+
+      test "issuing a replacement invalidates the challenge in an older cookie", ctx do
+        old = request("/auth/authentication/challenge", %{})
+        current = request("/auth/authentication/challenge", %{}, old)
+
+        assertion =
+          TestCredentials.assertion(
+            ctx.credential,
+            challenge(old, :ithibati_authentication_challenge)
+          )
+
+        replay = request("/auth/authentication", %{"credential" => assertion}, old)
+        assert Jason.decode!(replay.resp_body) == %{"error" => "no_challenge"}
+
+        assertion =
+          TestCredentials.assertion(
+            ctx.credential,
+            challenge(current, :ithibati_authentication_challenge)
+          )
+
+        assert request("/auth/authentication", %{"credential" => assertion}, current).status ==
+                 200
+      end
+
+      test "a failed mount check also consumes the original challenge", ctx do
+        started = request("/auth/authentication/challenge", %{})
+
+        assertion =
+          TestCredentials.assertion(
+            ctx.credential,
+            challenge(started, :ithibati_authentication_challenge)
+          )
+
+        assert request("/strict/authentication", %{"credential" => assertion}, started).status ==
+                 422
+
+        replay = request("/auth/authentication", %{"credential" => assertion}, started)
+        assert Jason.decode!(replay.resp_body) == %{"error" => "no_challenge"}
       end
 
       # The path nobody writes a test for, because the successful one is the one on the mind. A
@@ -88,7 +127,7 @@ if Code.ensure_loaded?(Phoenix.Component) do
 
         assert Plug.Conn.get_session(failed, :ithibati_authentication_challenge) == nil
 
-        retried = request("/auth/authentication", %{"credential" => stranger}, failed)
+        retried = request("/auth/authentication", %{"credential" => stranger}, started)
         assert Jason.decode!(retried.resp_body) == %{"error" => "no_challenge"}
       end
 
@@ -333,9 +372,20 @@ if Code.ensure_loaded?(Phoenix.Component) do
         first = request("/auth/registration", %{"credential" => attestation}, started)
         assert first.status == 200
 
-        replayed = request("/auth/registration", %{"credential" => attestation}, first)
+        replayed = request("/auth/registration", %{"credential" => attestation}, started)
         assert replayed.status == 422
         assert Jason.decode!(replayed.resp_body) == %{"error" => "no_challenge"}
+      end
+
+      test "a failed registration consumes the challenge even with the original cookie" do
+        started =
+          request("/auth/registration/challenge", %{"identifier" => "someone@example.com"})
+
+        {challenge, _subject} = challenge(started, :ithibati_registration_challenge)
+        attestation = TestCredentials.attestation(TestCredentials.credential(), challenge)
+        assert request("/auth/registration", %{"credential" => %{}}, started).status == 422
+        replay = request("/auth/registration", %{"credential" => attestation}, started)
+        assert Jason.decode!(replay.resp_body) == %{"error" => "no_challenge"}
       end
     end
   end

@@ -22,7 +22,13 @@ defmodule Ithibati.Doctor do
 
   # Read table names from their schemas. Migration keeps a separate, version-pinned list
   # that must not grow when a later release adds a table.
-  @owned [Ithibati.Bootstrap, Ithibati.RecoveryCode, Ithibati.Session, Ithibati.UserKey]
+  @owned [
+    Ithibati.Bootstrap,
+    Ithibati.Challenge,
+    Ithibati.RecoveryCode,
+    Ithibati.Session,
+    Ithibati.UserKey
+  ]
 
   @doc """
   Returns an ordered list of `{subject, {status, detail}}` findings for the application.
