@@ -79,14 +79,16 @@ defmodule Ithibati.Migration do
 
   The helper adds exactly four columns:
 
-    * the identifier, `:string`, `null: false`
+    * the identifier, `:string` by default, `null: false`
     * `:token_hash`, `:binary`, `null: false`
     * `:expires_at`, `:utc_datetime_usec`, `null: false`
     * `:accepted_at`, `:utc_datetime_usec`, nullable for pending invitations
 
   The schema's virtual `:token` is not stored. Add application-specific fields and timestamps
-  separately. For an identifier with another database type, write the columns explicitly.
-  `up/1` validates an existing invitation table as well.
+  separately. `:type` overrides only the identifier's database type and is passed to
+  `Ecto.Migration.add/3`. For `type: :citext`, install the PostgreSQL extension first.
+  See the [invitation guide](invitations.md#2-configure-and-migrate) for setup and type choices.
+  `up/1` also validates existing invitation tables.
 
   This function does not create the token index; use `invitation_index/1` when adding invitations
   after Ithibati's initial migration.
@@ -99,7 +101,7 @@ defmodule Ithibati.Migration do
     # Include the columns because Ecto logs only the enclosing table operation.
     Logger.info("ithibati: adding #{identifier}, token_hash, expires_at, accepted_at")
 
-    add(identifier, :string, null: false)
+    add(identifier, Keyword.get(opts, :type, :string), null: false)
     add(:token_hash, :binary, null: false)
     add(:expires_at, :utc_datetime_usec, null: false)
     add(:accepted_at, :utc_datetime_usec)

@@ -84,6 +84,13 @@ defmodule Ithibati.MigrationTest do
       end
     end
 
+    defp create_invitations(:with_citext) do
+      create table(:invitations, primary_key: false) do
+        add :id, :binary_id, primary_key: true
+        Ithibati.Migration.invitation_columns(version: 1, type: :citext)
+      end
+    end
+
     # The consumer who turned invitations on later has both the table and the index in a
     # migration of their own, and a rebuilt database replays that before `up/1`.
     defp create_invitations(:from_the_library_with_index) do
@@ -483,18 +490,61 @@ defmodule Ithibati.MigrationTest do
       assert missing() == []
     end
 
-    test "names the identifier the schema declares" do
+    test "names the identifier the schema declares and defaults to string" do
       as_invitation_table(:from_the_library)
       migrate(:up)
 
-      assert %{rows: [[_type, _unique]]} =
+      assert %{rows: [["character varying(255)"]]} =
                query(
                  """
-                 SELECT format_type(a.atttypid, a.atttypmod), true
+                 SELECT format_type(a.atttypid, a.atttypmod)
                  FROM pg_attribute a
                  WHERE a.attrelid = to_regclass($1)::oid AND a.attname = $2 AND a.attnum > 0
                  """,
                  ["#{@schema}.invitations", "email"]
+               )
+    end
+
+    test "uses citext for the identifier and passes the migration checks" do
+      %{rows: [[installed?]]} =
+        query("SELECT EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'citext')", [])
+
+      unless installed? do
+        query("CREATE EXTENSION citext WITH SCHEMA public", [])
+
+        on_exit(fn ->
+          # Remove our dependent columns first; avoid CASCADE deleting unrelated objects.
+          reset_schema()
+          query("DROP EXTENSION citext", [])
+        end)
+      end
+
+      as_invitation_table(:with_citext)
+      assert :ok = migrate(:up)
+      assert missing() == []
+
+      assert %{rows: [["citext", "NO"]]} =
+               query(
+                 """
+                 SELECT udt_name, is_nullable FROM information_schema.columns
+                 WHERE table_schema = $1 AND table_name = 'invitations' AND column_name = 'email'
+                 """,
+                 [@schema]
+               )
+
+      # Check the generated column's comparison behavior, not only its catalogue type name.
+      assert %{rows: [[true]]} =
+               query(
+                 """
+                 WITH inserted AS (
+                   INSERT INTO #{@schema}.invitations (id, email, token_hash, expires_at)
+                   VALUES ('00000000-0000-0000-0000-000000000001', 'Mixed@Example.com',
+                           decode('01', 'hex'), now())
+                   RETURNING email
+                 )
+                 SELECT email = 'mixed@example.com' FROM inserted
+                 """,
+                 []
                )
     end
 

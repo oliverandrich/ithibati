@@ -12,6 +12,8 @@ upgrading to one of those releases.
 
 ### Added
 
+- `Ithibati.Migration.invitation_columns/1` accepts `type:` for the identifier column, such as
+  `:citext`. The default remains `:string`; applications provide any required database extension.
 - `mix ithibati.doctor` checks that each route mount names an available handler with all required
   callbacks. This catches missing handlers before the first sign-in request.
 - `Ithibati.Ceremony.codes/0` lists the library's ceremony failure codes, so applications can test

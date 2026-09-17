@@ -84,14 +84,31 @@ $ mix ecto.migrate
 
 | Column | Type | Nullable |
 | --- | --- | --- |
-| Your configured identifier | `:string` | No |
+| Your configured identifier | `:string` by default; override with `type:` | No |
 | `token_hash` | `:binary` | No |
 | `expires_at` | `:utc_datetime_usec` | No |
 | `accepted_at` | `:utc_datetime_usec` | Yes |
 
 The plaintext token is virtual and is not stored. For an existing table, supply the same
-columns and required index. If your account identifier uses `citext`, write the column
-definitions explicitly with the corresponding identifier type; the helper emits `:string`.
+columns and required index. Most applications can keep `:string`: both changesets trim and
+lowercase identifiers. If you deliberately use PostgreSQL `citext`, for example to handle
+writes outside the changesets, select it explicitly:
+
+```elixir
+Ithibati.Migration.invitation_columns(version: 1, type: :citext)
+```
+
+Install the `citext` extension before this migration; the helper does not create it. The
+identifier remains a `:string` field in the Ecto schema. `type:` changes only the identifier
+column, not the token or timestamps.
+
+The type must be resolvable by the migration's database connection. If the extension lives
+outside its `search_path`, qualify the type, for example `type: :"extensions.citext"`, or
+configure the connection's `search_path` to include that schema.
+
+Migration and doctor checks do not require identical account and invitation identifier types.
+Choose their comparison semantics deliberately. For an existing table, use a new application
+migration to alter its column; do not edit a migration that has already run.
 
 ## 3. Replace the registration handler
 

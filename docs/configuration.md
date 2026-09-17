@@ -100,8 +100,11 @@ For writes through the changeset, lowercasing plus a normal unique index prevent
 need their own normalization.
 
 An existing application may use PostgreSQL `citext` to compare values without regard to case.
-That is a database choice; Ithibati's changeset still lowercases what it writes. Keep schema and
-migration types consistent, and maintain the unique index described below.
+That is a database choice; Ithibati's changeset still lowercases what it writes. Keep the Ecto
+field type as `:string` and maintain the unique index described below. To create an invitation
+identifier with the same database type, pass `type: :citext` to
+`Ithibati.Migration.invitation_columns/1` after installing the extension. See the
+[invitation migration](invitations.md#2-configure-and-migrate).
 
 ## Primary keys and table names
 
