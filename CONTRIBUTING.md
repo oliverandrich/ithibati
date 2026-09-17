@@ -19,6 +19,9 @@ $ mise run check-without-optional
 `check` runs the formatter, Credo (including ExSlop), tests, `zizmor` over the workflows, and
 `mix docs --warnings-as-errors`. `mix precommit` runs its Elixir checks without mise.
 
+The project's `mix credo` alias compiles first, including when called through `mix precommit`,
+so restored build caches cannot run outdated project checks against current source.
+
 `check-without-optional` tests the core without Phoenix in a clean copy. Removing dependencies
 from an existing build is insufficient: leftover Phoenix beams can make `Code.ensure_loaded?`
 succeed and hide problems in the optional-dependency guards.

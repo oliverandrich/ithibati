@@ -308,6 +308,9 @@ defmodule Ithibati.MixProject do
       # the build rather than left alone. `mix hex.publish` reaches `docs` through
       # `Mix.Task.run/2`, which resolves aliases, so the published copy is patched too.
       docs: ["docs", &card_on_the_redirect/1],
+      # Credo only loads code paths. Compile project checks before linting so restored build
+      # artifacts cannot apply an older rule to the current source, including direct invocations.
+      credo: ["compile --warnings-as-errors", "credo"],
       # Split where CI needs to cut it: a leg that asks whether this builds and behaves on another
       # Elixir runs `build_and_test` and nothing about style, because a formatter or Credo release
       # judges the tree against the toolchain it was written with. Composed rather than listed

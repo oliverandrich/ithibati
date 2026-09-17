@@ -4,9 +4,9 @@ defmodule Ithibati.Credo.ConfigTest do
   check renamed, moved off `elixirc_paths` or misspelled in `.credo.exs` stops running without
   turning anything red — the gate keeps saying "no issues" about a file nobody looks at.
 
-  Note what this cannot cover: `mix credo` requires only `loadpaths`, not `compile`, so a bare
-  `mix credo` against stale build artifacts silently runs without these checks. `mix precommit`
-  compiles first, which is why the gate is sound and a hand-run `mix credo` is not.
+  The project's `credo` alias compiles before invoking Credo's loadpaths-only task, for both
+  direct calls and `mix precommit`. `Ithibati.Credo.BuildTest` checks that changed rule sources
+  replace stale compiled checks before the lint task executes.
   """
   use ExUnit.Case, async: true
 

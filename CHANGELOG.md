@@ -34,6 +34,8 @@ upgrading to one of those releases.
 
 ### Fixed
 
+- Compile project checks before every `mix credo` invocation, including the precommit gate,
+  so restored CI build caches cannot run outdated architecture rules against current source.
 - WebAuthn challenges are consumed atomically in the database before verification, including
   failed attempts. Replaying the original session cookie no longer allows a signed assertion
   or registration response to be accepted again. Outstanding pre-upgrade challenges are refused;
