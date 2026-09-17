@@ -8,5 +8,5 @@
   export: [locals_without_parens: [ithibati_routes: 1]],
   import_deps: [:ecto, :ecto_sql],
   locals_without_parens: [ithibati_routes: 1],
-  inputs: ["{mix,.formatter}.exs", "{config,lib,test}/**/*.{ex,exs}"]
+  inputs: ["{mix,.formatter}.exs", "{config,lib,test,adapter_test}/**/*.{ex,exs}"]
 ]

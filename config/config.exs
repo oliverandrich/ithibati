@@ -3,7 +3,7 @@ import Config
 # A library has no configuration of its own — a consumer configures the repo it wants used. What is
 # here exists only so this project can run its own tests, and a consumer never reads it: Mix loads
 # the top-level application's `config/`, never a dependency's.
-if config_env() == :test do
+if config_env() == :test and is_nil(System.get_env("ITHIBATI_ADAPTER_PROBE")) do
   # `export PGHOST=` is how a shell unsets a variable in practice, and `System.get_env/2` returns its
   # default only for a name that is *absent* — an empty value would otherwise mean an empty hostname.
   env = fn name, default ->
@@ -80,4 +80,8 @@ if config_env() == :test do
   config :ithibati, Ithibati.TestEndpointWithoutPubSub, server: false
 
   config :logger, level: :warning
+end
+
+if config_env() == :test and System.get_env("ITHIBATI_ADAPTER_PROBE") do
+  import_config "adapter_probe.exs"
 end

@@ -12,10 +12,17 @@ defmodule Ithibati.MixProject do
                  "may do. The web half is optional and built for Phoenix."
 
   def project do
+    probe = System.get_env("ITHIBATI_ADAPTER_PROBE")
+
+    probe in [nil, "postgres", "sqlite", "mysql"] ||
+      raise "ITHIBATI_ADAPTER_PROBE must be postgres, sqlite or mysql, got: #{inspect(probe)}"
+
     [
       app: :ithibati,
       version: @version,
       elixir: "~> 1.18",
+      build_path: if(probe, do: "_build/adapter_#{probe}", else: "_build"),
+      test_paths: if(probe, do: ["adapter_test"], else: ["test"]),
       elixirc_paths: elixirc_paths(Mix.env()),
       compilers: compilers(),
       start_permanent: Mix.env() == :prod,
@@ -41,7 +48,15 @@ defmodule Ithibati.MixProject do
 
   # `credo` holds this project's own checks: dev and test only, because they guard this repository
   # rather than shipping to anyone.
-  defp elixirc_paths(:test), do: ["lib", "test/support", "credo"]
+  defp elixirc_paths(:test) do
+    support =
+      if System.get_env("ITHIBATI_ADAPTER_PROBE"),
+        do: "adapter_test/support",
+        else: "test/support"
+
+    ["lib", support, "credo"]
+  end
+
   defp elixirc_paths(:dev), do: ["lib", "credo"]
   defp elixirc_paths(_), do: ["lib"]
 
@@ -113,6 +128,8 @@ defmodule Ithibati.MixProject do
       {:ecto_sql, "~> 3.12"},
       {:wax_, "~> 0.7"},
       {:postgrex, "~> 0.19", only: [:dev, :test]},
+      {:myxql, "~> 0.9.0", only: [:dev, :test]},
+      {:ecto_sqlite3, "~> 0.24.1", only: [:dev, :test]},
       # `optional:` rather than `only: [:dev, :test]`, because the checks under
       # `lib/ithibati/credo/` are for consumers and an `only:` dependency never reaches one:
       # measured in a throwaway consumer, the guard is then false when this library compiles in

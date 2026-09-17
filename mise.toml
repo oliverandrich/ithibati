@@ -38,6 +38,21 @@ run = [
 description = "Compile without warnings and run the tests"
 run = "mix build_and_test"
 
+[tasks.probe-postgres]
+description = "Run isolated PostgreSQL adapter capability probes"
+env = { ITHIBATI_ADAPTER_PROBE = "postgres" }
+run = "mix build_and_test"
+
+[tasks.probe-sqlite]
+description = "Run isolated SQLite adapter capability probes"
+env = { ITHIBATI_ADAPTER_PROBE = "sqlite" }
+run = "mix build_and_test"
+
+[tasks.probe-mysql]
+description = "Run isolated MySQL adapter capability probes"
+env = { ITHIBATI_ADAPTER_PROBE = "mysql" }
+run = "mix build_and_test"
+
 # The one CI leg a normal checkout cannot reproduce: `lib/ithibati/web/` is guarded by
 # `Code.ensure_loaded?`, which answers from the code path, and `_build` still holds the compiled
 # Phoenix beams after any ordinary run. Named here so that CI and a laptop run the same thing rather

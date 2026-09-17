@@ -6,7 +6,7 @@
     %{
       name: "default",
       plugins: [{ExSlop, []}],
-      files: %{included: ["lib/", "test/", "credo/", "mix.exs"]},
+      files: %{included: ["lib/", "test/", "adapter_test/", "credo/", "mix.exs"]},
       checks: %{
         extra: [
           {Ithibati.Credo.IdentityIsPortable, []},
