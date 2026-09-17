@@ -13,6 +13,10 @@ upgrading to one of those releases.
 ### Changed
 
 - Require Elixir 1.18 or newer.
+- Database catalogue queries and storage types live in separate PostgreSQL, SQLite and MySQL
+  modules. Removed `table_oid/3` from `Ithibati.Catalogue`; use `Ithibati.Catalogue.table/3` instead.
+- Database schema version remains 1. Existing PostgreSQL installations need no new migration
+  for the SQLite/MySQL support; this does not migrate application data between database engines.
 
 ### Added
 
@@ -22,10 +26,12 @@ upgrading to one of those releases.
 - SQLite migrations, setup diagnosis and identity operations, including safe credential
   transactions and authentication without joined `RETURNING`. Supports integer account keys
   and UUIDs stored as text or binary; requires enabled foreign keys and the main database.
-
 - MySQL 8.4/InnoDB support with exact UUID/BIGINT foreign-key types, bounded binary indexes,
   migration preflight and partial-installation cleanup, and transactional mutation results.
   Requires READ COMMITTED on every connection; deadlocks and timeouts are not retried.
+- CI coverage for SQLite text/binary UUIDs and integer keys, and MySQL 8.4 UUID/integer keys.
+- Concise setup for all three databases in [Configuration](docs/configuration.md#databases),
+  with storage, transaction and migration recovery details in [Database behavior](docs/databases.md).
 
 ## [0.2.0] - 2026-09-17
 

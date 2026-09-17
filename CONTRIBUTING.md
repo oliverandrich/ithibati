@@ -76,6 +76,34 @@ each MySQL job starts a fresh service container on a dynamically assigned host p
 uses a local file without a service container. The existing PostgreSQL jobs continue to cover
 UUID and integer account keys, the minimum Elixir version and the core without Phoenix.
 
+For a disposable MySQL test server, these commands match the local probe defaults. Keep the
+container dedicated to tests; the probes create databases and clear their own tables:
+
+```console
+$ docker run --detach --rm --name ithibati-mysql-test --publish 127.0.0.1:3306:3306 --env MYSQL_ALLOW_EMPTY_PASSWORD=yes mysql:8.4
+$ docker exec ithibati-mysql-test mysql --protocol=TCP -h127.0.0.1 -uroot -e 'SELECT 1'
+$ mise run probe-mysql
+$ docker stop ithibati-mysql-test
+```
+
+Wait for the SQL readiness command to succeed before running the probe. If port 3306 is already
+in use, publish another host port and pass it through `MYSQL_PORT`. SQLite only needs
+`mise run probe-sqlite`; the suite creates its file database itself.
+
+### Consumer browser smoke tests
+
+Use a disposable copy of `examples/invitation_only` to qualify another database as a Phoenix
+consumer. Keep its Ithibati path dependency and browser asset import pointing at this checkout.
+Replace the Postgrex dependency and repo adapter with the selected driver/adapter from
+[Configuration](docs/configuration.md#databases), and apply that guide's connection settings in
+the copy's `config/test.exs`. Use a dedicated database and retain `Ecto.Adapters.SQL.Sandbox`.
+
+Run `mix deps.get`, `MIX_ENV=test mix assets.setup`, `MIX_ENV=test mix assets.build`, then
+`mix test --max-cases 1`. Serial execution also works with SQLite's single writer. These tests
+exercise first-account setup, invitation acceptance and refusal of reused links through real
+Chrome and the shipped JavaScript. The migrations must run unchanged. A passing adapter suite
+alone does not replace this consumer check.
+
 ## Architecture
 
 - **`Ithibati.Identity` may not name another context.** It handles accounts, passkeys,
