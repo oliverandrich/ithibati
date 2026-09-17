@@ -1,6 +1,11 @@
 defmodule Ithibati.Catalogue.MySQL do
   @moduledoc false
 
+  def types(:binary_id), do: ["binary(16)"]
+  def types(:id), do: ["bigint", "bigint unsigned"]
+  def types(:binary), do: ["varbinary(32)"]
+  def types(:utc_datetime_usec), do: ["datetime(6)"]
+
   def validate!(repo) do
     repo.config()[:migration_default_prefix] &&
       raise ArgumentError, "MySQL supports only the selected database without schema prefixes"

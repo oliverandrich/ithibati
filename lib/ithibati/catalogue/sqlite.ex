@@ -1,6 +1,17 @@
 defmodule Ithibati.Catalogue.SQLite do
   @moduledoc false
 
+  def types(:binary_id),
+    do:
+      if(Application.get_env(:ecto_sqlite3, :binary_id_type, :string) == :binary,
+        do: ["blob"],
+        else: ["text"]
+      )
+
+  def types(:id), do: ["integer", "bigint", "smallint", "int"]
+  def types(:binary), do: ["blob"]
+  def types(:utc_datetime_usec), do: ["text"]
+
   def validate!(repo) do
     repo.config()[:migration_default_prefix] &&
       raise ArgumentError, "SQLite supports only the unprefixed main database"

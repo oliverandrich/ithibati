@@ -44,6 +44,7 @@ Ithibati supplies the token and acceptance step.
 | --- | --- |
 | Build a working Phoenix sign-in | [Getting started](getting_started.md) |
 | Change identifiers, indexes or configuration | [Configuration and schemas](configuration.md) |
+| Understand database transactions, storage and migration failures | [Database behavior](databases.md) |
 | Wire callbacks, routes, sessions and browser events | [Registering and signing in](ceremonies.md) |
 | Add, rename or revoke a passkey | [Passkeys](passkeys.md) |
 | Issue, redeem and display recovery codes | [Recovery codes](recovery.md) |
