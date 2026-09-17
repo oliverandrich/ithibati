@@ -15,6 +15,16 @@ that is the one thing you have to act on: it means writing a migration of your o
 - `mix ithibati.doctor` asks a thirteenth question: whether the handler each mount names is there
   and complete. Naming a module that does not exist compiles clean and was silent until somebody
   signed in.
+- `Ithibati.Ceremony.codes/0` names every code a ceremony can fail with. A test over it tells an
+  application about a new word on the day of the release, instead of leaving a raw atom on
+  somebody's screen.
+- `ithibati:failed` carries `exception`, the `DOMException` name when a browser refused. The
+  library ships no translation for it: `SecurityError`, the commonest thing to get wrong while
+  setting up, used to arrive as `ceremony_failed` and nothing else.
+
+### Fixed
+
+- `recovery_failed` has been sendable since the first release and was documented nowhere.
 
 ## [0.1.3] - 2026-09-16
 

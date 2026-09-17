@@ -15,28 +15,20 @@ defmodule Ithibati.WalkthroughTest do
   """
   use ExUnit.Case, async: true
 
+  import Ithibati.Vocabulary
+
+  alias Ithibati.Vocabulary
+
   @guide File.read!("docs/getting_started.md")
   @example File.read!("examples/open_registration/lib/ithibati_open_web/live/sign_in_live.ex")
-
-  defp reasons(source) do
-    ~r/message\("([a-z_]+)"\)/
-    |> Regex.scan(source)
-    |> Enum.map(fn [_, reason] -> reason end)
-    |> MapSet.new()
-  end
+  @reason ~r/message\("([a-z_]+)"\)/
 
   test "the guide and the example answer for the same reasons" do
-    guide = reasons(@guide)
-    example = reasons(@example)
-
-    refute MapSet.size(guide) == 0, "no reasons found at all — this test would pass vacuously"
-
-    assert MapSet.equal?(guide, example), """
-    docs/getting_started.md and the open_registration example disagree about which reasons a page
-    answers for.
-
-    Only in the guide:   #{inspect(Enum.sort(MapSet.difference(guide, example)))}
-    Only in the example: #{inspect(Enum.sort(MapSet.difference(example, guide)))}
-    """
+    assert_same(
+      Vocabulary.codes_in(@guide, @reason),
+      Vocabulary.codes_in(@example, @reason),
+      "the guide",
+      "the example"
+    )
   end
 end

@@ -95,20 +95,28 @@ async function post(url, body) {
   return {ok: response.ok, status: response.status, body: parsed}
 }
 
+// Every word this half can send. `Ithibati.Ceremony.browser_codes/0` is the same list, and a test
+// reads this object. A literal written anywhere else in this file is invisible to it.
+const CODES = {
+  already_enrolled: "already_enrolled",
+  ceremony_cancelled: "ceremony_cancelled",
+  ceremony_failed: "ceremony_failed",
+  recovery_failed: "recovery_failed",
+  unknown: "unknown"
+}
+
 // Every `DOMException` this library has a word for, per ceremony, because the same name does not
 // mean the same thing in both. `InvalidStateError` from `create` is the authenticator saying it
 // already holds a credential this registration excluded, which is what the server answers
 // `already_enrolled` to when a browser ignores the exclude list. From `get` it is a document that
-// is no longer fully active, which a restore from the back-forward cache produces. Anything else
-// is `ceremony_failed`, which is honest: the hook cannot tell a broken authenticator from a
-// browser that refused for a reason it does not publish.
-const SHARED = {NotAllowedError: "ceremony_cancelled"}
+// is no longer fully active, which a restore from the back-forward cache produces.
+const SHARED = {NotAllowedError: CODES.ceremony_cancelled}
 
 // One place that says which ceremony is which. The alternative is a two-valued discriminator
 // spelled out at each of three sites, two of them ternaries, which fail by quietly taking the
 // other branch.
 const CEREMONIES = {
-  registration: {start: register, failures: {...SHARED, InvalidStateError: "already_enrolled"}},
+  registration: {start: register, failures: {...SHARED, InvalidStateError: CODES.already_enrolled}},
   authentication: {start: authenticate, failures: SHARED}
 }
 
@@ -131,7 +139,7 @@ export const PasskeyCeremony = {
     } catch (error) {
       if (error.name === "IthibatiMissingUrl") return this.failed(error.message)
 
-      this.failed("recovery_failed")
+      this.failed(CODES.recovery_failed)
     }
   },
 
@@ -158,8 +166,13 @@ export const PasskeyCeremony = {
       // `Object.hasOwn`, because a plain lookup reads through `Object.prototype`: a name like
       // `constructor` would answer with a function, which is truthy and is not a word.
       const failures = CEREMONIES[ceremony].failures
+      const known = Object.hasOwn(failures, error.name)
 
-      this.failed(Object.hasOwn(failures, error.name) ? failures[error.name] : "ceremony_failed")
+      // The name travels even when there is no word for it, but only from a `DOMException`: a
+      // `fetch` that fails offline throws `TypeError`, whose name says nothing useful.
+      const code = known ? failures[error.name] : CODES.ceremony_failed
+
+      this.failed(code, null, error instanceof DOMException ? error.name : null)
     }
   },
 
@@ -184,13 +197,17 @@ export const PasskeyCeremony = {
     throw error
   },
 
-  // A refusal this library produced names itself in the body. Anything else — a pipeline that
-  // rejected the request before the controller, a proxy, a crash — has no body to name, and
+  // A refusal this library produced names itself in the body. Anything else, a pipeline that
+  // rejected the request before the controller, a proxy, a crash, has no body to name, and
   // reporting "unknown" there tells nobody anything: the status is the only thing that does.
-  failed(error, status) {
-    const reason = error || (status ? `http_${status}` : "unknown")
+  failed(error, status, exception) {
+    const reason = error || (status ? `http_${status}` : CODES.unknown)
 
-    this.pushEvent("ithibati:failed", {error: reason, status: status || null})
+    this.pushEvent("ithibati:failed", {
+      error: reason,
+      status: status || null,
+      exception: exception || null
+    })
   }
 }
 

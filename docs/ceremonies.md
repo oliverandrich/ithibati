@@ -143,18 +143,36 @@ What Ithibati itself can send:
 | `already_enrolled` | that authenticator is already on an account |
 | `invalid_code` | a recovery code nobody holds, or one already spent. The same answer on purpose |
 | `verification_failed` | the catch-all, when a step answered something that is not an atom |
+| `ceremony_cancelled` | somebody dismissed the passkey prompt |
+| `ceremony_failed` | the browser refused and this library has no word for it. `exception` names it |
+| `recovery_failed` | the recovery request never finished, so no code was spent |
+| `unknown` | an endpoint answered with no body to name a reason and no status to report |
 
-The browser half adds `ceremony_cancelled` when somebody dismisses the passkey prompt,
-`http_<status>` when an endpoint answers something unexpected, and `missing_data_<attribute>` when
-the hook element is missing one of the five URLs it reads. It answers `already_enrolled` too, for
-the `InvalidStateError` a browser raises when the authenticator already holds a credential this
-registration excluded. That is the same word the table above gives, because it is the same
-situation: a browser that honours `excludeCredentials` refuses before the server hears anything,
-and one that ignores it is refused by the insert. Signing in is not that situation, so the same
-`InvalidStateError` from an assertion is `ceremony_failed`, along with every other `DOMException`
-this library has no word for.
+The last four come from the browser and never reach the server. `already_enrolled` is the one word
+both halves send: a browser that honours `excludeCredentials` refuses before the server hears
+anything, and one that ignores it is refused by the insert. Signing in is not that situation, so
+the same `InvalidStateError` from an assertion is `ceremony_failed`.
+
+Two more are families rather than codes, because a suffix is built into them as they are sent.
+`http_<status>` says an endpoint answered something unexpected, and `missing_data_<attribute>` says
+the hook element is missing one of the five URLs it reads. Match on the prefix, or leave them to
+your catch-all. [`Ithibati.Ceremony.families/0`](`Ithibati.Ceremony.families/0`) names both.
 
 Anything else is a code **your** handler returned. Those are yours to name and yours to phrase.
+
+[`Ithibati.Ceremony.codes/0`](`Ithibati.Ceremony.codes/0`) is this table as a list. A test over it
+goes red the day a release adds a word, which is when to decide what your page says about it.
+
+### The name the browser gave
+
+`ithibati:failed` carries `exception` alongside the code: the `DOMException` name when a browser
+refused, and `nil` otherwise. This library does not translate it, because one name does not mean
+one thing. `InvalidStateError` already means two, which is why the table above has it under two
+codes.
+
+It is worth showing somewhere a developer will see it. `SecurityError` is the one to know: it is
+what a relying-party id disagreeing with the origin produces, and the commonest thing to get wrong
+while setting up. Without the name it is `ceremony_failed`, the same as a broken authenticator.
 
 ## Who is signed in
 

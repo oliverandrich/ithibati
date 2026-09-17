@@ -355,11 +355,13 @@ defmodule MyAppWeb.InviteLive do
   def handle_event("accept", _params, socket),
     do: {:noreply, push_event(socket, "ithibati:register", %{token: socket.assigns.token})}
 
-  def handle_event("ithibati:failed", %{"error" => error}, socket),
-    do: {:noreply, assign(socket, error: message(error))}
+  def handle_event("ithibati:failed", %{"error" => error} = payload, socket),
+    do: {:noreply, assign(socket, error: message(error, payload["exception"]))}
 
   def handle_event("ithibati:done", _payload, socket), do: {:noreply, socket}
 
+  # Only the four this page can reach that the others cannot. Everything the library itself
+  # sends needs a clause too, and the shape of that is in Getting started.
   defp message("invitation_unknown"), do: "This invitation has been used, or it has expired."
   defp message("invitation_required"), do: "This page needs an invitation link."
   defp message("identifier_mismatch"), do: "That invitation was written to somebody else."
@@ -404,6 +406,11 @@ Four failure codes are new on this page: `invitation_unknown`, `invitation_requi
 `identifier_mismatch` and `already_claimed`. The `message/1` in your `SignInLive` from
 [Getting started](getting_started.md) does not know them yet. Without them a second person
 racing the setup page reads "Something went wrong: already_claimed".
+
+Two pages needing the same sentences is the moment to move them out of both. The invitation-only
+example does that, in `IthibatiInvitesWeb.CeremonyMessages`, with a test holding it to
+[`Ithibati.Ceremony.codes/0`](`Ithibati.Ceremony.codes/0`) so that a word a release adds arrives
+as a failing suite.
 
 ### And the page that is now wrong
 

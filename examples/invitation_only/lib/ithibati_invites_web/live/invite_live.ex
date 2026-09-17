@@ -23,8 +23,8 @@ defmodule IthibatiInvitesWeb.InviteLive do
     {:noreply, push_event(socket, "ithibati:register", %{token: socket.assigns.token})}
   end
 
-  def handle_event("ithibati:failed", %{"error" => error}, socket) do
-    {:noreply, assign(socket, error: CeremonyMessages.message(error))}
+  def handle_event("ithibati:failed", %{"error" => error} = payload, socket) do
+    {:noreply, assign(socket, error: CeremonyMessages.message(error, payload["exception"]))}
   end
 
   def handle_event("ithibati:done", _payload, socket), do: {:noreply, socket}

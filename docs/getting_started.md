@@ -657,10 +657,13 @@ defmodule MyAppWeb.SignInLive do
 
   # A successful ceremony ends in the redirect the handler answered with, so only failures arrive
   # back here.
-  def handle_event("ithibati:failed", %{"error" => error}, socket),
-    do: {:noreply, assign(socket, error: message(error))}
+  def handle_event("ithibati:failed", %{"error" => error} = payload, socket),
+    do: {:noreply, assign(socket, error: message(error, payload["exception"]))}
 
   def handle_event("ithibati:done", _payload, socket), do: {:noreply, socket}
+
+  defp message("ceremony_failed", name) when is_binary(name), do: "Your browser refused: #{name}."
+  defp message(error, _name), do: message(error)
 
   defp message("username_taken"), do: "That username is taken."
   defp message("invalid_username"),
@@ -670,6 +673,16 @@ defmodule MyAppWeb.SignInLive do
   defp message("invalid_code"), do: "That recovery code is not one we can use."
   defp message("ceremony_cancelled"), do: "The passkey prompt was dismissed."
   defp message("already_enrolled"), do: "That device already holds a passkey for this site."
+  defp message("no_challenge"), do: "That took too long. Start again."
+  defp message("malformed_credential"), do: "Your browser sent something this site cannot read."
+  defp message("not_discoverable"), do: "That device will not store a passkey this site can find."
+  defp message("unknown_credential"), do: "That passkey is not one this site knows."
+  defp message("no_attested_credential"), do: "Your browser sent no passkey to store."
+  defp message("credential_id_too_long"), do: "That passkey is bigger than this site can store."
+  defp message("verification_failed"), do: "That did not check out. Start again."
+  defp message("ceremony_failed"), do: "Your browser stopped partway through."
+  defp message("recovery_failed"), do: "That code never reached us. Try again."
+  defp message("unknown"), do: "That request failed without saying why."
   defp message(other), do: "Something went wrong: #{other}"
 
   @impl true

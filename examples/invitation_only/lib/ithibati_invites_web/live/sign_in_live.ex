@@ -37,8 +37,8 @@ defmodule IthibatiInvitesWeb.SignInLive do
 
   # What the hook pushes back. A successful ceremony ends in the redirect the handler answered with,
   # so the only thing that reaches the LiveView is a failure.
-  def handle_event("ithibati:failed", %{"error" => error}, socket) do
-    {:noreply, assign(socket, error: CeremonyMessages.message(error))}
+  def handle_event("ithibati:failed", %{"error" => error} = payload, socket) do
+    {:noreply, assign(socket, error: CeremonyMessages.message(error, payload["exception"]))}
   end
 
   def handle_event("ithibati:done", _payload, socket), do: {:noreply, socket}

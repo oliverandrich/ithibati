@@ -253,7 +253,10 @@ defmodule Ithibati.MixProject do
       groups_for_modules: [
         Identity: [~r/^Ithibati\.Identity\./],
         Schemas: [~r/^Ithibati\.Schema\./],
-        Phoenix: [~r/^Ithibati\.Web\./],
+        # `Ithibati.Ceremony` is not under `Web`, because the identity half produces most of the
+        # vocabulary and answers without Phoenix. It is read here, where a page turns a code into
+        # a sentence.
+        Phoenix: [~r/^Ithibati\.Web\./, Ithibati.Ceremony],
         "Rows this library owns": [
           Ithibati.Bootstrap,
           Ithibati.RecoveryCode,

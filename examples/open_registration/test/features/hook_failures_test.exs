@@ -78,11 +78,9 @@ defmodule IthibatiOpenWeb.HookFailuresTest do
       """
       const [method, name] = [arguments[0], arguments[1]]
 
-      navigator.credentials[method] = () => {
-        const error = new Error(name)
-        error.name = name
-        return Promise.reject(error)
-      }
+      // A real `DOMException`, not an `Error` wearing its name: the hook only passes the name on
+      // for the former, because only the browser's own refusals are named usefully.
+      navigator.credentials[method] = () => Promise.reject(new DOMException(name, name))
       """,
       [method, name]
     )
@@ -182,7 +180,11 @@ defmodule IthibatiOpenWeb.HookFailuresTest do
     # and a word scoped to registration must not be reachable from here.
     |> refuses("get", "InvalidStateError")
     |> click(button("Sign in with a passkey"))
-    |> assert_has(css(".alert-error", text: "Something went wrong: ceremony_failed"))
+    # Not the enrolment sentence, and the name the browser gave rather than a shrug. Nothing here
+    # translates `InvalidStateError`, because on this ceremony it does not mean what it means on
+    # the other one.
+    |> assert_has(css(".alert-error", text: "Your browser refused: InvalidStateError."))
+    |> refute_has(css(".alert-error", text: "already holds a passkey"))
   end
 
   feature "a refusal the server named is shown as the server's own reason", %{session: session} do
