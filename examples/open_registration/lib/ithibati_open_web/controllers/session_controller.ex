@@ -4,6 +4,8 @@ defmodule IthibatiOpenWeb.SessionController do
 
   alias Ithibati.Web.Gate
 
+  def sign_out_all(conn, _params), do: conn |> Gate.log_out_all() |> redirect(to: "/")
+
   def sign_out(conn, _params), do: conn |> Gate.log_out() |> redirect(to: "/")
 
   @doc """

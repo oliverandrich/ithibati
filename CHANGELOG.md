@@ -37,6 +37,11 @@ upgrading to one of those releases.
 
 ### Added
 
+- Account-wide session revocation with `Sessions.revoke_all/1` and browser logout with
+  `Gate.log_out_all/1`, including disconnect broadcasts for revoked sessions. See
+  [Sign out everywhere](docs/ceremonies.md#sign-out-everywhere).
+- `Sessions.delete_expired/0` for application-scheduled session maintenance. See
+  [Session cleanup](docs/ceremonies.md#session-cleanup).
 - ExSlop checks run through the existing Credo development and CI gate.
 - Separate PostgreSQL, SQLite and MySQL adapter probes characterize storage and transaction
   behavior independently of the PostgreSQL suite.

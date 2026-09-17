@@ -247,6 +247,76 @@ if Code.ensure_loaded?(Phoenix.Component) do
       end
     end
 
+    describe "log_out_all/1" do
+      test "revokes the authenticated account and disconnects every one of its sessions", ctx do
+        conn = Gate.log_in(build_conn_with_endpoint(@endpoint), ctx.account)
+        current = Plug.Conn.get_session(conn, Gate.session_key())
+        second = Sessions.generate_session_token(ctx.account)
+        expired = ctx.account |> Sessions.generate_session_token() |> backdated(days(61))
+        other_account = user_fixture()
+        other = Sessions.generate_session_token(other_account)
+        topics = Enum.map([current, second, expired], &Gate.live_socket_id/1)
+        other_topic = Gate.live_socket_id(other)
+        Enum.each([other_topic | topics], &@endpoint.subscribe/1)
+
+        result =
+          conn
+          |> Plug.Conn.assign(:current_account, other_account)
+          |> Plug.Conn.put_session(:decoy, "discard")
+          |> Gate.log_out_all()
+
+        Enum.each(topics, fn topic ->
+          assert_receive %Phoenix.Socket.Broadcast{event: "disconnect", topic: ^topic}
+        end)
+
+        refute_receive %Phoenix.Socket.Broadcast{event: "disconnect"}
+        refute Sessions.get_user_by_session_token(current)
+        refute Sessions.get_user_by_session_token(second)
+        assert Sessions.get_user_by_session_token(other)
+        assert Plug.Conn.get_session(result) == %{}
+        assert result.private[:plug_session_info] == :renew
+      end
+
+      test "a missing, unknown or expired token cannot revoke another session", ctx do
+        valid = Sessions.generate_session_token(ctx.account)
+        expired = ctx.account |> Sessions.generate_session_token() |> backdated(days(61))
+
+        for token <- [nil, "unknown", expired] do
+          result =
+            build_conn_with_endpoint(@endpoint)
+            |> Plug.Conn.put_session(Gate.session_key(), token)
+            |> Plug.Conn.assign(:current_account, ctx.account)
+            |> Gate.log_out_all()
+
+          assert Plug.Conn.get_session(result) == %{}
+          assert Sessions.get_user_by_session_token(valid)
+        end
+      end
+
+      test "revokes all sessions without an endpoint or PubSub", ctx do
+        for endpoint <- [nil, Ithibati.TestEndpointWithoutPubSub] do
+          conn = Gate.log_in(build_conn_with_endpoint(endpoint), ctx.account)
+          second = Sessions.generate_session_token(ctx.account)
+
+          assert Plug.Conn.get_session(Gate.log_out_all(conn)) == %{}
+          refute Sessions.get_user_by_session_token(second)
+        end
+      end
+
+      test "refuses an outer transaction before revocation or broadcasting", ctx do
+        conn = Gate.log_in(build_conn_with_endpoint(@endpoint), ctx.account)
+        token = Plug.Conn.get_session(conn, Gate.session_key())
+        @endpoint.subscribe(Gate.live_socket_id(token))
+
+        TestRepo.transaction(fn ->
+          assert_raise ArgumentError, ~r/outside.*transaction/, fn -> Gate.log_out_all(conn) end
+          assert Sessions.get_user_by_session_token(token)
+        end)
+
+        refute_receive %Phoenix.Socket.Broadcast{event: "disconnect"}
+      end
+    end
+
     # The *response*, not a request built from it: recycling it gives a fresh connection carrying the
     # session cookie, and it can be recycled more than once — which is what a stolen cookie is.
     defp signed_in(account), do: build_conn() |> get("/session/#{account.id}")

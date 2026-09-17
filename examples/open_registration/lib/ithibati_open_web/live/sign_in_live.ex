@@ -87,7 +87,8 @@ defmodule IthibatiOpenWeb.SignInLive do
         <span>
           Signed in as <strong>{@current_account.username}</strong>
           — <.link navigate={~p"/inside"} class="link">go inside</.link>
-          or <.link href={~p"/session"} method="delete" class="link">sign out</.link>.
+          or <.link href={~p"/session"} method="delete" class="link">sign out</.link>
+          or <.link href={~p"/sessions"} method="delete" class="link">sign out everywhere</.link>.
         </span>
       </div>
 

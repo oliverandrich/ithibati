@@ -244,15 +244,43 @@ account or `nil` for a missing, unknown, revoked or expired token. Revocation re
 Sessions last sixty days by default; [Configuration](configuration.md#configuration) describes
 `session_validity`.
 
-There is no combined “sign out everywhere” function. Deleting the account's session rows
-revokes them for future lookups:
+### Sign out everywhere
+
+`Gate.log_out_all(conn)` revokes all stored sessions of the account authenticated by the current
+session token, clears this browser's cookie session and broadcasts a LiveView disconnect for each
+revoked session. Use it in a CSRF-protected controller action, followed by a redirect:
 
 ```elixir
-MyApp.Repo.delete_all(Ecto.assoc(account, :sessions))
+def sign_out_all(conn, _params) do
+  conn |> Ithibati.Web.Gate.log_out_all() |> redirect(to: "/")
+end
 ```
 
-This database operation does not broadcast socket disconnections. If your application needs
-immediate disconnection across all sessions, implement that alongside the revocation.
+The endpoint and socket need the same PubSub and `connect_info` configuration as single-session
+logout. A missing, unknown or expired token only clears the current browser session. Connection
+assigns cannot select a different account. Call this helper outside a database transaction, so
+broadcasts follow commit; an outer transaction raises before revocation.
+
+For application-owned revocation, `Sessions.revoke_all(account)` returns the stored token digests
+of the deleted sessions, including expired ones, or `[]` when there are none. It joins a caller's
+transaction and does not broadcast. Defer external notifications until that transaction commits.
+Do not pass these digests to `Gate.live_socket_id/1`, which expects a plaintext token.
+
+Revocation does not disable an account: it can sign in again, and concurrently created sessions
+may survive. Database errors propagate without retries. PubSub delivery and database commit are
+separate; a delivery failure does not restore revoked sessions. Only sockets belonging to sessions
+still stored in the database can be reached through this operation.
+
+### Session cleanup
+
+`Sessions.delete_expired()` deletes expired session rows across all accounts and returns the
+number deleted. It uses the configured `session_validity`; invalid settings raise before deletion.
+Run it from an application-owned scheduled job or maintenance task. Ithibati starts no scheduler.
+
+Expiry is already enforced during lookup, so cleanup is storage maintenance. It does not disconnect
+LiveViews that are already connected. After cleanup those sessions no longer have stored digests
+for a later logout broadcast; applications requiring a hard time limit on connected LiveViews must
+also enforce expiry while connected.
 
 ### Challenge storage
 

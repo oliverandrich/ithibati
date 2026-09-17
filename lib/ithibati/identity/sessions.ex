@@ -4,7 +4,8 @@ defmodule Ithibati.Identity.Sessions do
 
   `generate_session_token/1` returns a plaintext token while storage keeps its SHA-256 digest.
   `get_user_by_session_token/1` returns the account only while that session remains valid.
-  `delete_session_token/1` revokes one token.
+  `delete_session_token/1` revokes one token; `revoke_all/1` revokes an account's sessions.
+  `delete_expired/0` removes expired rows.
 
   `Ithibati.Web.Gate` connects these calls to a browser session and LiveView sockets. Direct calls
   here do not update cookies or broadcast socket disconnections. API tokens with scopes or
@@ -14,6 +15,7 @@ defmodule Ithibati.Identity.Sessions do
   import Ecto.Query
 
   alias Ithibati.Config
+  alias Ithibati.Identity.Concurrency
   alias Ithibati.Identity.Secrets
   alias Ithibati.Session
 
@@ -88,6 +90,50 @@ defmodule Ithibati.Identity.Sessions do
     |> Config.repo().delete_all()
 
     :ok
+  end
+
+  @doc """
+  Revokes an account's sessions and returns their stored token digests, in no particular order.
+
+  Includes expired sessions. The account must belong to the configured schema. An account with
+  no sessions returns `[]`. This does not disable the account: concurrently created sessions may
+  survive, and the account can sign in again.
+
+  Selection and deletion share a transaction with row locks or SQLite's writer reservation.
+  Only digests of sessions deleted by this call are returned. Inside a caller's transaction,
+  revocation commits or rolls back with that transaction; defer external notifications until
+  it commits. Database errors propagate without retries. MySQL requires READ COMMITTED,
+  as for other identity transactions.
+
+  This call does not broadcast disconnections. For browser logout, use
+  `Ithibati.Web.Gate.log_out_all/1`.
+  """
+  def revoke_all(account) do
+    %{id: user_id} = Config.account!(account)
+    repo = Config.repo()
+    sessions = from(s in Session, where: s.user_id == ^user_id)
+
+    {:ok, digests} =
+      Concurrency.transaction(repo, fn ->
+        digests = sessions |> select([s], s.token_hash) |> Concurrency.lock_rows() |> repo.all()
+        repo.delete_all(from(s in sessions, where: s.token_hash in ^digests))
+        digests
+      end)
+
+    digests
+  end
+
+  @doc """
+  Deletes expired sessions across all accounts and returns the number of deleted rows.
+
+  Uses the same `session_validity` setting as lookup, measured from creation. Invalid validity
+  raises `ArgumentError` before deletion. Applications choose when to run this maintenance;
+  Ithibati starts no scheduler. Cleanup does not broadcast LiveView disconnections.
+  """
+  def delete_expired do
+    cutoff = cutoff()
+    {count, _} = Config.repo().delete_all(from(s in Session, where: s.inserted_at <= ^cutoff))
+    count
   end
 
   defp cutoff do

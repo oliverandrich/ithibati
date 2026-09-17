@@ -37,11 +37,8 @@ defmodule IthibatiOpenWeb.RegistrationTest do
     |> open("/inside")
     |> assert_has(css("p", text: "Only ada sees this."))
     |> open("/")
-    |> click(link("sign out"))
-    |> refute_has(css(".alert-success", text: "Signed in as"))
-    # Signing out is a full page load, and the button below is a `phx-click`: without this the
-    # click lands on a document whose socket has not joined and does nothing at all.
-    |> connected()
+    |> sign_out("/session")
+    |> through_navigation(css(".alert-success", count: 0))
 
     # Usernameless: the sign-in names no credential at all, so this only works because the
     # credential is discoverable — the property `registration_options/3` refuses to leave to the
@@ -68,8 +65,7 @@ defmodule IthibatiOpenWeb.RegistrationTest do
 
     session
     |> open("/")
-    |> click(link("sign out"))
-    |> connected()
+    |> sign_out("/session")
     |> fill_in(css("input[name=code]"), with: code)
     |> click(button("Sign in with a code"))
     |> through_navigation(css(".alert-success", text: "Signed in as grace"))
@@ -80,8 +76,7 @@ defmodule IthibatiOpenWeb.RegistrationTest do
 
     session
     |> open("/")
-    |> click(link("sign out"))
-    |> connected()
+    |> sign_out("/session")
     |> fill_in(css("input[name=code]"), with: code)
     |> click(button("Sign in with a code"))
     |> assert_has(css(".alert-error", text: "recovery code"))
@@ -116,8 +111,8 @@ defmodule IthibatiOpenWeb.RegistrationTest do
     session
     |> focus_window(first)
     |> open("/")
-    |> click(link("sign out"))
-    |> refute_has(css(".alert-success", text: "Signed in as"))
+    |> sign_out("/session")
+    |> through_navigation(css(".alert-success", count: 0))
 
     # Not a page the second tab asked for: its socket was closed under it, the client reconnected,
     # and the gate turned it away. Without the disconnect it would sit there indefinitely, still
@@ -125,6 +120,35 @@ defmodule IthibatiOpenWeb.RegistrationTest do
     session
     |> focus_window(other)
     |> refute_has(css("p", text: "Only ada sees this."))
+  end
+
+  @sessions 2
+  feature "sign out everywhere disconnects another browser with its own session", %{
+    sessions: [first, second]
+  } do
+    virtual_authenticator(first)
+
+    [code | _] =
+      first |> register("ada") |> all(css("main li")) |> Enum.map(&Wallaby.Element.text/1)
+
+    second
+    |> open("/")
+    |> fill_in(css("input[name=code]"), with: code)
+    |> click(button("Sign in with a code"))
+    |> through_navigation(css(".alert-success", text: "Signed in as ada"))
+    |> open("/inside")
+    |> assert_has(css("p", text: "Only ada sees this."))
+
+    account = Repo.get_by!(User, username: "ada")
+    assert Repo.aggregate(Ecto.assoc(account, :sessions), :count) == 2
+
+    first
+    |> open("/")
+    |> sign_out("/sessions")
+    |> through_navigation(css(".alert-success", count: 0))
+
+    second |> landed_on("/") |> refute_has(css("p", text: "Only ada sees this."))
+    assert Repo.aggregate(Ecto.assoc(account, :sessions), :count) == 0
   end
 
   # The server-side refusal is pinned in `test/ithibati_open/auth_test.exs`, and it cannot also be
@@ -150,6 +174,22 @@ defmodule IthibatiOpenWeb.RegistrationTest do
     # page that has not navigated yet looks the same either way.
     assert credentials(session, authenticator) == []
     assert Repo.aggregate(User, :count) == 0
+  end
+
+  # Disconnecting the current socket may remount the public page before the HTTP redirect
+  # replaces its document. Wait for that replacement before interacting with the next form.
+  defp sign_out(session, path) do
+    execute_script(session, "window.ithibatiLogoutPending = true")
+    click(session, css("a[href='#{path}']"))
+
+    assert {:ok, :navigated} =
+             retry(fn ->
+               if execute_script_value(session, "return window.ithibatiLogoutPending !== true"),
+                 do: {:ok, :navigated},
+                 else: {:error, :waiting}
+             end)
+
+    connected(session)
   end
 
   # `execute_script/4` runs the callback in this process before it returns, so the answer is already

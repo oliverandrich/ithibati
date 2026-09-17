@@ -97,6 +97,57 @@ defmodule Ithibati.Identity.SessionsTest do
     end
   end
 
+  describe "revoke_all/1" do
+    test "removes every session of one account and returns their digests", %{user: user} do
+      tokens = [Sessions.generate_session_token(user), Sessions.generate_session_token(user)]
+      expired = user |> Sessions.generate_session_token() |> backdated(days(61))
+      other = Sessions.generate_session_token(user_fixture())
+
+      revoked = Sessions.revoke_all(user)
+
+      assert Enum.sort(revoked) == Enum.sort(Enum.map([expired | tokens], &Secrets.digest/1))
+      assert TestRepo.aggregate(from(s in Session, where: s.user_id == ^user.id), :count) == 0
+      Enum.each(tokens, &refute(Sessions.get_user_by_session_token(&1)))
+      assert Sessions.get_user_by_session_token(other)
+      assert Sessions.revoke_all(user) == []
+      assert user |> Sessions.generate_session_token() |> Sessions.get_user_by_session_token()
+    end
+
+    test "refuses a different account schema", %{user: user} do
+      assert_raise ArgumentError, ~r/expected a Ithibati.TestUser/, fn ->
+        Sessions.revoke_all(%Session{id: user.id})
+      end
+    end
+
+    test "participates in a caller transaction", %{user: user} do
+      token = Sessions.generate_session_token(user)
+      digest = Secrets.digest(token)
+
+      assert {:error, :cancelled} =
+               TestRepo.transaction(fn ->
+                 assert Sessions.revoke_all(user) == [digest]
+                 refute Sessions.get_user_by_session_token(token)
+                 TestRepo.rollback(:cancelled)
+               end)
+
+      assert Sessions.get_user_by_session_token(token)
+    end
+  end
+
+  test "delete_expired removes expired rows across accounts and keeps valid sessions", %{
+    user: user
+  } do
+    user |> Sessions.generate_session_token() |> backdated(days(61))
+    user_fixture() |> Sessions.generate_session_token() |> backdated(days(90))
+    valid = Sessions.generate_session_token(user)
+
+    assert Sessions.delete_expired() == 2
+    assert [row] = TestRepo.all(Session)
+    assert row.token_hash == Secrets.digest(valid)
+    assert Sessions.get_user_by_session_token(valid)
+    assert Sessions.delete_expired() == 0
+  end
+
   # Shaped like a token this library would mint, belonging to nothing. `Secrets.token/0` is what
   # mints the real ones, so a change to their shape reaches this too.
   defp stranger, do: Secrets.token()

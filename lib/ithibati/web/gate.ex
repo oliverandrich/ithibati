@@ -28,6 +28,7 @@ if Code.ensure_loaded?(Phoenix.Component) do
     import Plug.Conn
     import Phoenix.Controller, only: [redirect: 2]
 
+    alias Ithibati.Config
     alias Ithibati.Identity.Secrets
     alias Ithibati.Identity.Sessions
 
@@ -77,7 +78,7 @@ if Code.ensure_loaded?(Phoenix.Component) do
     be hashed again and produce a different topic.
     """
     def live_socket_id(token) when is_binary(token) do
-      "ithibati_sessions:" <> Secrets.url64(Secrets.digest(token))
+      socket_topic(Secrets.digest(token))
     end
 
     # Only name a socket when the endpoint has PubSub. Otherwise socket subscription would
@@ -104,6 +105,38 @@ if Code.ensure_loaded?(Phoenix.Component) do
 
       renew_session(conn)
     end
+
+    @doc """
+    Revokes all sessions of the currently authenticated account and clears the browser session.
+
+    Resolves the account from the current token, not from connection assigns. Missing, unknown
+    or expired tokens only clear this browser's session. With endpoint PubSub configured,
+    broadcasts `"disconnect"` to every revoked session's LiveView topic after the database commits.
+    Sockets must receive the session through `connect_info`, as for `log_out/1`.
+
+    Call outside a database transaction; an outer transaction raises `ArgumentError` before any
+    revocation so notifications cannot precede commit. Database errors propagate without retries.
+    PubSub delivery is not atomic with the database commit: a delivery failure does not restore
+    revoked sessions. Accounts may sign in again, and concurrent new sessions may survive.
+    """
+    def log_out_all(conn) do
+      if Config.repo().in_transaction?() do
+        raise ArgumentError, "call log_out_all outside a database transaction"
+      end
+
+      with account when not is_nil(account) <-
+             Sessions.get_user_by_session_token(get_session(conn, @session)) do
+        digests = Sessions.revoke_all(account)
+
+        if endpoint = pubsub_endpoint(conn) do
+          Enum.each(digests, &endpoint.broadcast(socket_topic(&1), "disconnect", %{}))
+        end
+      end
+
+      renew_session(conn)
+    end
+
+    defp socket_topic(digest), do: "ithibati_sessions:" <> Secrets.url64(digest)
 
     # Read the topic before clearing the session. Recheck PubSub because cookies can survive
     # a deployment that removes the endpoint's PubSub configuration.

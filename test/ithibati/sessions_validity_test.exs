@@ -45,6 +45,23 @@ defmodule Ithibati.Identity.SessionsValidityTest do
            |> Sessions.get_user_by_session_token()
   end
 
+  test "cleanup uses the configured validity", %{user: user} do
+    put_env(:ithibati, session_validity: {1, :hour})
+    user |> Sessions.generate_session_token() |> backdated(7200)
+    valid = user |> Sessions.generate_session_token() |> backdated(1800)
+
+    assert Sessions.delete_expired() == 1
+    assert Sessions.get_user_by_session_token(valid)
+  end
+
+  test "cleanup refuses invalid validity before deleting anything", %{user: user} do
+    user |> Sessions.generate_session_token() |> backdated(days(90))
+    put_env(:ithibati, session_validity: {0, :day})
+
+    assert_raise ArgumentError, ~r/expected \{count, unit\}/, fn -> Sessions.delete_expired() end
+    assert TestRepo.aggregate(Ithibati.Session, :count) == 1
+  end
+
   describe "a setting this library will not run on" do
     # One refusal covers all of them, so the rows are the values alone. The one row that makes a
     # claim of its own — that the refusal echoes what was written — is the test below.

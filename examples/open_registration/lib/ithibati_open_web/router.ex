@@ -42,6 +42,7 @@ defmodule IthibatiOpenWeb.Router do
     end
 
     get "/recovery-codes", SessionController, :recovery_codes
+    delete "/sessions", SessionController, :sign_out_all
     delete "/session", SessionController, :sign_out
   end
 end
