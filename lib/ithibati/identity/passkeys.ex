@@ -274,7 +274,7 @@ defmodule Ithibati.Identity.Passkeys do
 
       # Return a refusal as the transaction value: no write occurred, and rolling back would also
       # abort a caller's enclosing transaction.
-      {:ok, outcome} = repo.transaction(fn -> revoke(repo, account, id, last) end)
+      {:ok, outcome} = Concurrency.transaction(repo, fn -> revoke(repo, account, id, last) end)
 
       outcome
     end
@@ -462,12 +462,37 @@ defmodule Ithibati.Identity.Passkeys do
   # Reject oversized IDs before querying to avoid unnecessary large bytea index lookups.
   defp fetch_key(_credential_id), do: {:error, :unknown_credential}
 
-  # Update and return the account in one statement. A credential deleted before the update
-  # then produces `:unknown_credential`, rather than authenticating from the earlier lookup.
+  # Authenticate only after updating a still-present credential. Deletion before the update
+  # produces `:unknown_credential`, rather than authenticating from the earlier lookup.
   # Only `last_used_at` changes; `updated_at` continues to describe credential edits.
-  # The suite does not currently exercise a concurrent deletion between fetch_key/1 and this
-  # update. That window relies on the affected-row check, not a demonstrated race test.
   defp touch(key) do
+    repo = Config.repo()
+
+    case repo.__adapter__() do
+      Ecto.Adapters.SQLite3 -> touch_sqlite(repo, key)
+      _adapter -> touch_joined(key)
+    end
+  end
+
+  # SQLite RETURNING can name only the updated table. Keep the write and account read in
+  # one transaction, so credential/account deletion cannot pass between them.
+  defp touch_sqlite(repo, key) do
+    {:ok, outcome} =
+      Concurrency.transaction(repo, fn ->
+        query = from k in UserKey, where: k.id == ^key.id, select: k.user_id
+
+        with {1, [user_id]} <- repo.update_all(query, set: [last_used_at: DateTime.utc_now()]),
+             account when not is_nil(account) <- repo.get(Config.user_schema(), user_id) do
+          {:ok, account}
+        else
+          _absent -> {:error, :unknown_credential}
+        end
+      end)
+
+    outcome
+  end
+
+  defp touch_joined(key) do
     query =
       from(k in UserKey,
         where: k.id == ^key.id,

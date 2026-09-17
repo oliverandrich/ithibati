@@ -20,3 +20,7 @@ version_query =
 
 [[version]] = repo.query!(version_query).rows
 IO.puts("Adapter probe engine: #{version}")
+
+if repo.__adapter__() == Ecto.Adapters.SQLite3 do
+  Code.require_file("../test/support/test_credentials.ex", __DIR__)
+end

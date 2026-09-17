@@ -21,7 +21,12 @@ defmodule Ithibati.MixProject do
       app: :ithibati,
       version: @version,
       elixir: "~> 1.18",
-      build_path: if(probe, do: "_build/adapter_#{probe}", else: "_build"),
+      build_path:
+        if(probe,
+          do:
+            "_build/adapter_#{probe}_#{System.get_env("ITHIBATI_USERS_KEY_TYPE", "binary_id")}_#{System.get_env("ITHIBATI_SQLITE_UUID_STORAGE", "string")}",
+          else: "_build"
+        ),
       test_paths: if(probe, do: ["adapter_test"], else: ["test"]),
       elixirc_paths: elixirc_paths(Mix.env()),
       compilers: compilers(),

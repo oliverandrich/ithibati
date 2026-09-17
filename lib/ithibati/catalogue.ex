@@ -1,16 +1,53 @@
 defmodule Ithibati.Catalogue do
   @moduledoc """
-  Reads PostgreSQL table, column and uniqueness metadata.
+  Reads PostgreSQL and SQLite table, column and uniqueness metadata.
 
   `Ithibati.Migration` and `Ithibati.Doctor` use these queries to apply the same checks during
   migration and setup diagnosis. Functions receive the repo explicitly; table lookup also takes
-  a PostgreSQL schema prefix.
+  a PostgreSQL schema prefix. SQLite uses the unprefixed main database.
   """
 
+  alias Ithibati.Catalogue.SQLite
   alias Ithibati.Config
 
   # What a `users_key_type` may be, in the words Postgres uses for the column.
   @key_columns %{binary_id: ["uuid"], id: ["smallint", "integer", "bigint"]}
+
+  @doc "Returns an opaque table reference, or nil when the table is absent."
+  def table(repo, prefix, name) do
+    case repo.__adapter__() do
+      Ecto.Adapters.SQLite3 -> SQLite.table(repo, prefix, name)
+      Ecto.Adapters.Postgres -> table_oid(repo, prefix, name)
+    end
+  end
+
+  @doc "Database column types compatible with a supported Ecto storage type."
+  def types(repo, type) do
+    case repo.__adapter__() do
+      Ecto.Adapters.SQLite3 ->
+        sqlite_types(type)
+
+      Ecto.Adapters.Postgres ->
+        postgres_types(type)
+    end
+  end
+
+  defp sqlite_types(:binary_id),
+    do:
+      if(Application.get_env(:ecto_sqlite3, :binary_id_type, :string) == :binary,
+        do: ["blob"],
+        else: ["text"]
+      )
+
+  defp sqlite_types(:id), do: ["integer", "bigint", "smallint", "int"]
+  defp sqlite_types(:binary), do: ["blob"]
+  defp sqlite_types(:utc_datetime_usec), do: ["text"]
+  defp postgres_types(:binary), do: ["bytea"]
+
+  defp postgres_types(:utc_datetime_usec),
+    do: ["timestamp without time zone", "timestamp(6) without time zone"]
+
+  defp postgres_types(type), do: Map.fetch!(@key_columns, type)
 
   @doc """
   Returns the relation OID for `table`, or `nil` if the name does not resolve.
@@ -36,6 +73,9 @@ defmodule Ithibati.Catalogue do
   only key column is this column. Additional included columns are allowed; for example,
   `PRIMARY KEY (id) INCLUDE (email)` qualifies.
   """
+  def column(repo, {:sqlite, table}, column),
+    do: SQLite.column(repo, table, column)
+
   def column(repo, oid, column) do
     %{rows: rows} =
       repo.query!(
@@ -83,13 +123,13 @@ defmodule Ithibati.Catalogue do
            "it to `id`."}
 
       {type, unique?} ->
-        judge(type, unique?, table, column)
+        judge(repo, type, unique?, table, column)
     end
   end
 
-  defp judge(type, unique?, table, column) do
+  defp judge(repo, type, unique?, table, column) do
     cond do
-      type not in Map.fetch!(@key_columns, Config.users_key_type()) ->
+      type not in types(repo, Config.users_key_type()) ->
         {:error,
          "config :ithibati, users_key_type: #{inspect(Config.users_key_type())} — but " <>
            "#{table}.#{column} is #{type}. Configure the type that column has, or give it the " <>
@@ -97,7 +137,7 @@ defmodule Ithibati.Catalogue do
 
       not unique? ->
         {:error,
-         "#{table}.#{column} carries no unique index, and Postgres will not let a foreign key " <>
+         "#{table}.#{column} carries no unique index, and the database cannot safely let a foreign key " <>
            "point at a column that does not. A primary key, a unique constraint or a unique " <>
            "index on that column will do — beside a composite primary key if you have one."}
 

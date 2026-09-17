@@ -8,13 +8,34 @@ adapter =
     other -> raise "unknown adapter probe: #{inspect(other)}"
   end
 
+key_type =
+  case System.get_env("ITHIBATI_USERS_KEY_TYPE", "binary_id") do
+    "binary_id" -> :binary_id
+    "id" -> :id
+    other -> raise "invalid account key type: #{inspect(other)}"
+  end
+
+uuid_storage =
+  case System.get_env("ITHIBATI_SQLITE_UUID_STORAGE", "string") do
+    "string" -> :string
+    "binary" -> :binary
+    other -> raise "invalid SQLite UUID storage: #{inspect(other)}"
+  end
+
+config :ecto_sqlite3, :binary_id_type, uuid_storage
+config :ithibati, :users_key_type, key_type
+
 config :ithibati, :probe_adapter, adapter
 config :logger, level: :warning
 
 connection =
   case adapter do
     Ecto.Adapters.SQLite3 ->
-      [database: Path.expand("../tmp/adapter_probe.sqlite3", __DIR__), busy_timeout: 100]
+      [
+        database:
+          Path.expand("../tmp/adapter_probe_#{key_type}_#{uuid_storage}.sqlite3", __DIR__),
+        busy_timeout: 1_000
+      ]
 
     Ecto.Adapters.Postgres ->
       [

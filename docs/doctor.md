@@ -17,8 +17,8 @@ The doctor combines configuration validation with checks that require a running 
 | Area | What to check when it fails |
 | --- | --- |
 | Account configuration | `user_schema` names the expected schema and `repo` names the Ecto repo |
-| Database adapter | The repo uses `Ecto.Adapters.Postgres`; other adapters are unsupported |
-| Database connection | The repo is started and its database is reachable |
+| Database adapter | The repo uses `Ecto.Adapters.Postgres` or `Ecto.Adapters.SQLite3` |
+| Database connection | The repo is started and reachable; SQLite foreign keys are enabled and no schema prefix is set |
 | Ithibati tables | Migrations ran with the same table-name prefix used by the compiled schemas |
 | Account primary key | The database column matches `users_key_type` and has the required uniqueness |
 | Account identifier | The column exists and has the required unique index |
@@ -35,12 +35,12 @@ you can take. [Configuration and schemas](configuration.md) explains the setting
 
 ### Unsupported database adapter
 
-Ithibati requires PostgreSQL for its catalogue checks and credential locking. The doctor
+Ithibati supports PostgreSQL and SQLite for catalogue checks and credential locking. The doctor
 checks the repo's adapter before issuing SQL. With another adapter, it reports the repo and
 adapter names and skips connection, table and index checks. Independent configuration and
 web-integration checks still run.
 
-Configure Ithibati with a repo using `Ecto.Adapters.Postgres`. This check does not require a
+Configure Ithibati with a repo using `Ecto.Adapters.Postgres` or `Ecto.Adapters.SQLite3`. This check does not require a
 connection, but the Mix task still starts your application before running the doctor.
 
 ### Missing tables or an unexpected prefix
@@ -48,7 +48,8 @@ connection, but the Mix task still starts your application before running the do
 Run your migrations against the same database the application uses. `table_prefix: "auth"`
 means names such as `auth_sessions`; it does not select a PostgreSQL schema.
 
-The doctor uses the repo's default migration schema prefix. If you migrated with an explicit
+SQLite supports only the unprefixed main database. On PostgreSQL, the doctor uses the repo's
+default migration schema prefix. If you migrated with an explicit
 `mix ecto.migrate --prefix tenant1`, compare that with the schema named in the report.
 
 ### Missing identifier index

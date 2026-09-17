@@ -34,6 +34,7 @@ defmodule Ithibati.Migration do
 
   alias Ithibati.Bootstrap
   alias Ithibati.Catalogue
+  alias Ithibati.Catalogue.SQLite
   alias Ithibati.Config
   alias Ithibati.RecoveryCode
   alias Ithibati.Session
@@ -51,6 +52,10 @@ defmodule Ithibati.Migration do
   @doc "Builds Ithibati's tables. See the module documentation for options."
   def up(opts) do
     opts = settings(opts)
+
+    if repo().__adapter__() == Ecto.Adapters.SQLite3,
+      do: SQLite.validate!(repo())
+
     confirm_tables!(opts)
     Enum.each((opts.from + 1)..opts.version//1, &step(&1, :up, opts))
   end
@@ -305,7 +310,7 @@ defmodule Ithibati.Migration do
 
     match?(
       {_type, true},
-      Catalogue.column(repo(), table_oid!(index.table), index.column)
+      Catalogue.column(repo(), table_ref!(index.table), index.column)
     ) ||
       raise(ArgumentError, unindexed(index))
   end
@@ -346,7 +351,7 @@ defmodule Ithibati.Migration do
 
   # Check application-owned columns before creating indexes so failures name the missing column.
   defp confirm_indexed_column!(index) do
-    oid = table_oid!(index.table)
+    oid = table_ref!(index.table)
 
     Catalogue.column(repo(), oid, index.column) ||
       raise(
@@ -360,18 +365,20 @@ defmodule Ithibati.Migration do
   # Validate invitation storage types before the first runtime query. Leave the identifier
   # type open so applications can use `citext` for both accounts and invitations.
   @invitation_columns [
-    {:token_hash, ["bytea"]},
-    {:expires_at, ["timestamp without time zone", "timestamp(6) without time zone"]},
-    {:accepted_at, ["timestamp without time zone", "timestamp(6) without time zone"]}
+    {:token_hash, :binary},
+    {:expires_at, :utc_datetime_usec},
+    {:accepted_at, :utc_datetime_usec}
   ]
 
   defp confirm_invitation_columns!(%{invitation: nil}), do: :ok
 
   defp confirm_invitation_columns!(%{invitation: schema}) do
     table = source(schema)
-    oid = table_oid!(table)
+    oid = table_ref!(table)
 
-    Enum.each(@invitation_columns, fn {column, accepted} ->
+    Enum.each(@invitation_columns, fn {column, storage_type} ->
+      accepted = Catalogue.types(repo(), storage_type)
+
       case Catalogue.column(repo(), oid, column) do
         nil ->
           raise ArgumentError,
@@ -390,7 +397,7 @@ defmodule Ithibati.Migration do
   end
 
   defp confirm_account_key!(opts) do
-    oid = table_oid!(opts.users_table)
+    oid = table_ref!(opts.users_table)
 
     case Catalogue.key_column(repo(), oid, opts.users_table, account_key_column(opts)) do
       {:ok, _described} -> :ok
@@ -403,8 +410,8 @@ defmodule Ithibati.Migration do
     references(opts.users_table, type: key_type()).column
   end
 
-  defp table_oid!(table) do
-    Catalogue.table_oid(repo(), schema_prefix(), table) ||
+  defp table_ref!(table) do
+    Catalogue.table(repo(), schema_prefix(), table) ||
       raise(
         ArgumentError,
         "there is no table #{qualified(table)} — this library's migration reads and references " <>

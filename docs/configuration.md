@@ -37,6 +37,44 @@ request. Invalid values raise when a session is issued or looked up.
 The relying-party ID and origin are passed to ceremonies, not configured here. See
 [The relying party](ceremonies.md#the-relying-party).
 
+## Databases
+
+Ithibati supports PostgreSQL and SQLite. Your application selects its Ecto adapter and adds
+its driver dependency. MySQL support is not implemented yet.
+
+For SQLite, add `{:ecto_sqlite3, "~> 0.24.1"}` and use `Ecto.Adapters.SQLite3` in your repo.
+The integration is tested with ecto_sqlite3 0.24.1, Exqlite 0.40.0 and SQLite 3.53.4. That
+adapter requires Ecto SQL 3.14. Configure a file database with foreign keys enabled on every
+connection:
+
+```elixir
+config :my_app, MyApp.Repo,
+  database: "my_app.sqlite3",
+  journal_mode: :wal,
+  foreign_keys: :on,
+  busy_timeout: 5_000,
+  default_transaction_mode: :immediate
+```
+
+SQLite supports the unprefixed main database. Do not set an Ecto schema prefix or
+`migration_default_prefix`. Ithibati's `table_prefix` still changes table names normally.
+Integer account keys and UUIDs are supported. UUID storage follows the adapter-wide
+`config :ecto_sqlite3, :binary_id_type` setting (`:string` by default, or `:binary`); configure
+it before creating tables and keep it consistent across the application.
+
+SQLite allows one writer at a time. Ithibati starts its own credential transactions in
+immediate mode and reserves the writer before making decisions about recovery codes or the
+last passkey. Locks last until the outermost transaction ends. For application-owned
+transactions and `Ecto.Multi`, use the repo default above or `Repo.transaction(multi, mode:
+:immediate)` so the writer is reserved before any application reads.
+
+An existing deferred transaction can proceed if its snapshot is still current. If another
+writer has committed since its earlier read, SQLite raises instead of deciding from stale
+data. Lock contention can also exceed `busy_timeout` and raise an adapter error. These are
+infrastructure failures, not invalid credentials. Ithibati never automatically retries an
+application callback. If your application retries, restart the entire transaction, bound the
+attempts and ensure that any external side effects are safe to repeat.
+
 ## Identifiers
 
 Declare the identifier on your own account schema:

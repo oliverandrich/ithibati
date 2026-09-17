@@ -18,7 +18,10 @@ upgrading to one of those releases.
 
 - ExSlop checks run through the existing Credo development and CI gate.
 - Separate PostgreSQL, SQLite and MySQL adapter probes characterize storage and transaction
-  behavior ahead of broader database support. Ithibati still requires PostgreSQL.
+  behavior independently of the PostgreSQL suite.
+- SQLite migrations, setup diagnosis and identity operations, including safe credential
+  transactions and authentication without joined `RETURNING`. Supports integer account keys
+  and UUIDs stored as text or binary; requires enabled foreign keys and the main database.
 
 ## [0.2.0] - 2026-09-17
 

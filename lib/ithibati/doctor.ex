@@ -13,6 +13,7 @@ defmodule Ithibati.Doctor do
 
   alias Ecto.Adapters.SQL
   alias Ithibati.Catalogue
+  alias Ithibati.Catalogue.SQLite
   alias Ithibati.Config
   alias Ithibati.Identity.Sessions
   # The alias remains valid when the optional web module is absent.
@@ -74,7 +75,7 @@ defmodule Ithibati.Doctor do
   `prefix` is a PostgreSQL schema prefix or `nil`. Queries the supplied repo without modifying it.
   """
   def key_type(repo, prefix, table) do
-    case Catalogue.table_oid(repo, prefix, table) do
+    case Catalogue.table(repo, prefix, table) do
       nil -> {:error, "there is no table #{Catalogue.qualified(prefix, table)}"}
       oid -> Catalogue.key_column(repo, oid, table, foreign_key(repo))
     end
@@ -101,7 +102,7 @@ defmodule Ithibati.Doctor do
   defp identifier_index(repo, table, column) do
     prefix = schema_prefix(repo)
 
-    with oid when not is_nil(oid) <- Catalogue.table_oid(repo, prefix, table),
+    with oid when not is_nil(oid) <- Catalogue.table(repo, prefix, table),
          {_type, unique?} <- Catalogue.column(repo, oid, column) do
       if unique?,
         do: {:ok, "#{table}.#{column} carries one"},
@@ -130,7 +131,7 @@ defmodule Ithibati.Doctor do
     prefix = schema_prefix(repo)
     table = schema.__schema__(:source)
 
-    case Catalogue.table_oid(repo, prefix, table) do
+    case Catalogue.table(repo, prefix, table) do
       nil ->
         {:error,
          "there is no table #{Catalogue.qualified(prefix, table)}, and " <>
@@ -225,7 +226,7 @@ defmodule Ithibati.Doctor do
     prefix = schema_prefix(repo)
     sources = Enum.map(@owned, & &1.__schema__(:source))
 
-    case Enum.reject(sources, &Catalogue.table_oid(repo, prefix, &1)) do
+    case Enum.reject(sources, &Catalogue.table(repo, prefix, &1)) do
       [] ->
         wildcard = Catalogue.qualified(prefix, "#{Config.table_prefix()}_*")
         {:ok, "all #{length(sources)} are there, as #{wildcard}"}
@@ -245,8 +246,12 @@ defmodule Ithibati.Doctor do
       Ecto.Adapters.Postgres ->
         {:ok, "PostgreSQL"}
 
+      Ecto.Adapters.SQLite3 ->
+        {:ok, "SQLite"}
+
       other ->
-        {:error, "Ithibati requires PostgreSQL; #{inspect(repo)} uses #{inspect(other)}."}
+        {:error,
+         "Ithibati requires PostgreSQL or SQLite; #{inspect(repo)} uses #{inspect(other)}."}
     end
   end
 
@@ -257,6 +262,7 @@ defmodule Ithibati.Doctor do
 
   defp reachable({:ok, repo}, {:ok, _}) do
     SQL.query!(repo, "SELECT 1", [], log: false)
+    if repo.__adapter__() == Ecto.Adapters.SQLite3, do: SQLite.validate!(repo)
     {:ok, "yes"}
   rescue
     error -> {:error, Exception.message(error)}

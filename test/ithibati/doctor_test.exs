@@ -21,7 +21,7 @@ defmodule Ithibati.DoctorTest do
   end
 
   defmodule UnsupportedRepo do
-    def __adapter__, do: Ecto.Adapters.SQLite3
+    def __adapter__, do: Ecto.Adapters.MyXQL
   end
 
   defp subjects(results, status),
@@ -175,7 +175,7 @@ defmodule Ithibati.DoctorTest do
       assert subjects(results, :error) == ["the database adapter"]
 
       assert detail(results, "the database adapter") ==
-               "Ithibati requires PostgreSQL; #{inspect(UnsupportedRepo)} uses Ecto.Adapters.SQLite3."
+               "Ithibati requires PostgreSQL or SQLite; #{inspect(UnsupportedRepo)} uses Ecto.Adapters.MyXQL."
 
       for subject <- [
             "the repo answers",

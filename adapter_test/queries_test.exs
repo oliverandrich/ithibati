@@ -5,7 +5,6 @@ defmodule Ithibati.AdapterQueriesTest do
 
   alias Ithibati.AdapterEntry
   alias Ithibati.AdapterRepo, as: Repo
-  alias Ithibati.Identity.Concurrency
 
   setup do
     Repo.delete_all(AdapterEntry)
@@ -28,8 +27,8 @@ defmodule Ithibati.AdapterQueriesTest do
     end
   end
 
-  test "the existing account-lock query is PostgreSQL-specific" do
-    query = Concurrency.lock_rows(AdapterEntry)
+  test "the PostgreSQL row-lock clause is not portable" do
+    query = lock(AdapterEntry, "FOR NO KEY UPDATE")
 
     case Application.fetch_env!(:ithibati, :probe_adapter) do
       Ecto.Adapters.Postgres ->

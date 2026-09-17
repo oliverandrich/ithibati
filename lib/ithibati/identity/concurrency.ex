@@ -3,13 +3,23 @@ defmodule Ithibati.Identity.Concurrency do
 
   # Account locks serialize changes whose invariant spans several credential rows.
 
-  import Ecto.Query, only: [lock: 2, select: 3, where: 3]
+  import Ecto.Query, only: [from: 2, lock: 2, select: 3, where: 3]
 
   alias Ithibati.Config
 
+  @doc "Starts SQLite writes in immediate mode; PostgreSQL uses its default transaction mode."
+  def transaction(repo, fun) do
+    opts = if repo.__adapter__() == Ecto.Adapters.SQLite3, do: [mode: :immediate], else: []
+    repo.transaction(fun, opts)
+  end
+
   @doc """
-  Adds `FOR NO KEY UPDATE` to a query. Execute it inside a transaction so the lock
-  remains held through the write.
+  Serializes credential decisions inside a transaction. PostgreSQL locks the account
+  with `FOR NO KEY UPDATE`. SQLite reserves the database writer before reading the account,
+  including inside caller-owned transactions. A stale SQLite snapshot raises before decisions;
+  callers must restart the entire transaction if they choose to retry.
+
+  The lock remains held through the outermost transaction.
 
   A write's `WHERE` condition protects a single row. Decisions across several rows,
   such as retaining at least one passkey, require all writers to lock a shared account
@@ -24,7 +34,28 @@ defmodule Ithibati.Identity.Concurrency do
   taken by foreign-key inserts. Table-wide uniqueness, such as the single bootstrap
   claim, is enforced by a unique index instead.
   """
-  def lock_rows(query), do: lock(query, "FOR NO KEY UPDATE")
+  def lock_rows(query) do
+    repo = Config.repo()
+
+    case repo.__adapter__() do
+      Ecto.Adapters.SQLite3 ->
+        write_lock!(repo)
+        query
+
+      _row_locking_adapter ->
+        lock(query, "FOR NO KEY UPDATE")
+    end
+  end
+
+  @doc "Acquires SQLite's writer reservation without changing any rows, inside a transaction."
+  def write_lock!(repo) do
+    repo.in_transaction?() || raise ArgumentError, "a SQLite write lock requires a transaction"
+
+    # An UPDATE reserves the writer even with no matching rows. Unlike BEGIN IMMEDIATE this
+    # also works inside a caller's deferred transaction; a stale snapshot fails before decisions.
+    repo.update_all(from(b in Ithibati.Bootstrap, where: false), set: [claimed: true])
+    :ok
+  end
 
   @doc """
   Locks the account row by id within the current transaction.

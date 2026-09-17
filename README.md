@@ -40,8 +40,8 @@ sign-in and recovery endpoints is also the application's responsibility.
 ## Requirements
 
 - Elixir 1.18 or newer.
-- PostgreSQL and an Ecto repo. PostgreSQL is required: the migration checks the existing account
-  table through its database catalogue.
+- PostgreSQL or SQLite and an Ecto repo. See [database configuration](docs/configuration.md#databases)
+  for SQLite settings and transaction requirements.
 - For the optional web integration: Phoenix 1.8, LiveView 1.1 and Plug. They form one web layer;
   the identity core can be used without them.
 

@@ -44,7 +44,7 @@ defmodule Ithibati.Identity.RecoveryCodes do
     account = Config.account!(account)
 
     {:ok, codes} =
-      Config.repo().transaction(fn ->
+      Concurrency.transaction(Config.repo(), fn ->
         # Serialize regeneration with redemption and other regenerations. Without the account lock,
         # concurrent replacements can each miss the other batch and leave both active.
         Concurrency.lock_account!(account.id)
@@ -79,7 +79,7 @@ defmodule Ithibati.Identity.RecoveryCodes do
     digest = Secrets.digest(code)
     repo = Config.repo()
 
-    repo.transaction(fn ->
+    Concurrency.transaction(repo, fn ->
       # Lock the account before updating a code. Regeneration takes locks in that order too;
       # reversing it here would allow the two operations to deadlock.
       with account when account != nil <- lock_owner(digest),
