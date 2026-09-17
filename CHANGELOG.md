@@ -10,6 +10,20 @@ upgrading to one of those releases.
 
 ## Unreleased
 
+## [0.2.0] - 2026-09-17
+
+### Upgrading from 0.1.3
+
+No database migration is required; Ithibati's database schema remains at version 1.
+Public schema options, changeset functions and handler callbacks remain compatible.
+Rebuild browser assets to include the new `exception` detail in `ithibati:failed` events.
+Existing handlers for these events can continue reading the `error` field.
+
+The undocumented `__changeset__` helpers in `Ithibati.Schema.User` and
+`Ithibati.Schema.Invitation` now take an options map at arities 3 and 4, previously 6 and 7.
+Applications should use their schema's generated changeset functions instead of calling these
+internal helpers directly.
+
 ### Added
 
 - `Ithibati.Migration.invitation_columns/1` accepts `type:` for the identifier column, such as
@@ -29,7 +43,6 @@ upgrading to one of those releases.
 
 - Schema macros carry their options as one map, so adding an option no longer changes the
   internal changeset arities. Public schema APIs and validation behavior are unchanged.
-
 - Reorganized the README and guides around setup and common integration tasks, with configuration
   variants in a separate reference page.
 - Reworked module and function documentation to state inputs, results and failure behavior.
@@ -119,6 +132,7 @@ the application.
   receives the account and any replacement code batch to display.
 - Three optional Credo checks for consuming applications.
 
+[0.2.0]: https://github.com/oliverandrich/ithibati/releases/tag/v0.2.0
 [0.1.3]: https://github.com/oliverandrich/ithibati/releases/tag/v0.1.3
 [0.1.2]: https://github.com/oliverandrich/ithibati/releases/tag/v0.1.2
 [0.1.1]: https://github.com/oliverandrich/ithibati/releases/tag/v0.1.1
