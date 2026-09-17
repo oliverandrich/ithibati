@@ -38,7 +38,7 @@ defmodule Ithibati.Doctor do
 
   `app` is the application being examined. It is an argument, not something read here
   because nothing in Ithibati can derive it: `Mix.Project.config/0` knows, and Mix is not there
-  in a release. Only the question about routes uses it.
+  in a release. Only the three questions about the web half use it.
   """
   def examine(app) do
     repo = answered(&Config.repo/0)
@@ -57,7 +57,8 @@ defmodule Ithibati.Doctor do
       {"the invitation table", with({:ok, it} <- database, do: invitation_table(it))},
       {"config :wax_", wax()},
       {"the ceremony routes", routes(app)},
-      {"the handler's callbacks", callbacks(app)}
+      {"the handler's callbacks", callbacks(app)},
+      {"the handler each mount names", reachable_handlers(app)}
     ]
   end
 
@@ -209,6 +210,9 @@ defmodule Ithibati.Doctor do
     end
   end
 
+  defp arities(missing),
+    do: Enum.map_join(missing, " and ", fn {fun, arity} -> "#{fun}/#{arity}" end)
+
   @doc false
   def missing_callbacks(module) do
     {module,
@@ -227,8 +231,7 @@ defmodule Ithibati.Doctor do
       incomplete ->
         {:error,
          Enum.map_join(incomplete, "; ", fn {module, missing} ->
-           "#{inspect(module)} is missing " <>
-             Enum.map_join(missing, " and ", fn {fun, arity} -> "#{fun}/#{arity}" end)
+           "#{inspect(module)} is missing " <> arities(missing)
          end) <>
            ". A ceremony that reaches one of these raises at the request; " <>
            "`Ithibati.Web.Handler` documents each callback and what it answers."}
@@ -305,6 +308,52 @@ defmodule Ithibati.Doctor do
 
       routers ->
         {:ok, Enum.map_join(routers, ", ", &inspect/1)}
+    end
+  end
+
+  # The one question that joins the two above, and `docs/doctor.md` says why nothing else asks it.
+  defp reachable_handlers(app) do
+    if Code.ensure_loaded?(Ithibati.Web.PasskeyController) do
+      app |> application_modules() |> Enum.filter(&publishes_mounts?/1) |> judge_mounts()
+    else
+      {:skip, "the web half is not installed"}
+    end
+  end
+
+  defp judge_mounts([]), do: {:skip, "no router calls `ithibati_routes/1`"}
+
+  defp judge_mounts(routers) do
+    handlers = routers |> Enum.flat_map(& &1.__ithibati_mounts__()) |> Enum.uniq()
+
+    case Enum.reject(Enum.map(handlers, &{&1, mount_fault(&1)}), &(elem(&1, 1) == nil)) do
+      [] -> {:ok, Enum.map_join(handlers, ", ", &inspect/1)}
+      faults -> {:error, Enum.map_join(faults, "; ", &fault_sentence/1) <> "."}
+    end
+  end
+
+  defp fault_sentence({handler, :not_loaded}) do
+    "#{inspect(handler)} is mounted and is not loaded. A ceremony posted to that mount raises " <>
+      "instead of answering, and nothing before this said so"
+  end
+
+  defp fault_sentence({handler, {:missing, missing}}),
+    do: "#{inspect(handler)} is mounted and is missing " <> arities(missing)
+
+  defp publishes_mounts?(module) do
+    Code.ensure_loaded?(module) and function_exported?(module, :__ithibati_mounts__, 0)
+  end
+
+  @doc false
+  # Not `missing_callbacks/1` alone: `function_exported?/3` answers false for a module that was
+  # never loaded, which reads there as every callback missing at once.
+  def mount_fault(handler) do
+    if Code.ensure_loaded?(handler) do
+      case missing_callbacks(handler) do
+        {_, []} -> nil
+        {_, missing} -> {:missing, missing}
+      end
+    else
+      :not_loaded
     end
   end
 

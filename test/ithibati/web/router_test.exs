@@ -25,5 +25,47 @@ if Code.ensure_loaded?(Phoenix.Component) do
 
       assert Enum.sort(actual) == Enum.sort(@expected)
     end
+
+    # In source order, duplicates kept: this is what the router mounted, not the set of handlers
+    # it happens to name.
+    test "the router reports every handler it mounts" do
+      assert Ithibati.TestRouter.__ithibati_mounts__() == [
+               Ithibati.TestHandler,
+               Ithibati.TestExtensionHandler,
+               Ithibati.TestSloppyHandler,
+               Ithibati.TestHandler
+             ]
+    end
+
+    # An attribute is the one that arrives as unresolved AST, which `Ithibati.Doctor` then raises
+    # on, taking all thirteen of its answers down with it.
+    test "however the handler was written" do
+      Code.compile_quoted(
+        quote do
+          defmodule Ithibati.ProbeFormsRouter do
+            use Phoenix.Router
+            import Ithibati.Web.Router
+
+            @attributed Ithibati.TestHandler
+
+            scope("/a", do: ithibati_routes(handler: @attributed, rp_name: "probe"))
+
+            scope("/b",
+              do: ithibati_routes(handler: Ithibati.TestSloppyHandler, rp_name: "probe")
+            )
+
+            scope("/c",
+              do: ithibati_routes(handler: :"Elixir.Ithibati.TestExtensionHandler", rp_name: "p")
+            )
+          end
+        end
+      )
+
+      assert Ithibati.ProbeFormsRouter.__ithibati_mounts__() == [
+               Ithibati.TestHandler,
+               Ithibati.TestSloppyHandler,
+               Ithibati.TestExtensionHandler
+             ]
+    end
   end
 end

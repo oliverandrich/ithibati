@@ -10,6 +10,12 @@ that is the one thing you have to act on: it means writing a migration of your o
 
 ## Unreleased
 
+### Added
+
+- `mix ithibati.doctor` asks a thirteenth question: whether the handler each mount names is there
+  and complete. Naming a module that does not exist compiles clean and was silent until somebody
+  signed in.
+
 ## [0.1.3] - 2026-09-16
 
 ### Fixed

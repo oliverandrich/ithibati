@@ -755,7 +755,7 @@ end
 $ mix ithibati.doctor
 ```
 
-Twelve checks in one run, so you find out now and not at the first sign-in. Then `mix
+Thirteen checks in one run, so you find out now and not at the first sign-in. Then `mix
 phx.server`, open `http://localhost:4000` and register: the browser asks for a passkey, you
 create one, and you land on the recovery codes. Write one down. Sign out, sign back in with the
 passkey, sign out again and use that code instead. Both ways in work. The loop is closed.

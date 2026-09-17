@@ -61,7 +61,8 @@ defmodule Ithibati.DoctorTest do
                "the invitation table",
                "config :wax_",
                "the ceremony routes",
-               "the handler's callbacks"
+               "the handler's callbacks",
+               "the handler each mount names"
              ]
     end
   end
@@ -135,6 +136,26 @@ defmodule Ithibati.DoctorTest do
 
         assert {:recovered, 3} in missing
         assert {:register, 4} in missing
+      end
+
+      test "and the handlers the routers mount are named as reachable" do
+        results = Doctor.examine(:ithibati)
+
+        # The status first: the sentence a fault produces names the handler too, so matching the
+        # name alone cannot tell a healthy answer from a broken one.
+        assert "the handler each mount names" in subjects(results, :ok)
+        assert detail(results, "the handler each mount names") =~ "Ithibati.TestHandler"
+      end
+
+      # Judged against a module rather than through `examine/1`, because a permanently broken
+      # mount would have to live in `test/support/`, where it compiles into this application and
+      # would make the suite's own run report an error for ever.
+      test "a mount naming a module nobody defined is told apart from an incomplete one" do
+        assert Doctor.mount_fault(Ithibati.TestHandler) == nil
+        assert Doctor.mount_fault(Ithibati.NoSuchHandler) == :not_loaded
+
+        assert {:missing, missing} = Doctor.mount_fault(Ithibati.TestPageController)
+        assert {:recovered, 3} in missing
       end
     end
   end

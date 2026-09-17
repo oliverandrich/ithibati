@@ -19,7 +19,7 @@ skip the invitation table
 ** (Mix) 2 things to fix.
 ```
 
-There are twelve checks. A healthy run ends with `Nothing to fix.` and exits zero, so you can put it
+There are thirteen checks. A healthy run ends with `Nothing to fix.` and exits zero, so you can put it
 in your own gate:
 
 ```elixir
@@ -32,7 +32,7 @@ end
 ## The checks only this can make
 
 Most of them are about configuration, and the doctor asks by calling the same code that refuses
-at run time. Six have nowhere else to live.
+at run time. Seven have nowhere else to live.
 
 - **The repo answers.** Being configured means the module exists and is an Ecto repo. It does not
   mean it is in your supervision tree, or that its database is up.
@@ -65,6 +65,10 @@ at run time. Six have nowhere else to live.
   ceremony. [`recovered/3`](`c:Ithibati.Web.Handler.recovered/3`) is the one to forget, because it
   arrived after the
   other three.
+- **The handler each mount names is there.** A route does not
+  carry the handler, so the router publishes what it mounted and this reads it back. Naming a
+  module that does not exist compiles clean, because Elixir diagnoses a call to a missing module
+  and this one is only stored.
 
 One is about something that looks like configuration and is not. `wax_` reads
 `config :wax_, rp_id:` and `origin:` as its own defaults, and Ithibati never lets them be
