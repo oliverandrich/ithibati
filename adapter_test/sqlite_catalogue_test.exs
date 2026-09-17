@@ -1,6 +1,6 @@
 if Application.get_env(:ithibati, :probe_adapter) == Ecto.Adapters.SQLite3 do
   defmodule Ithibati.SQLiteCatalogueTest do
-    use Ithibati.SQLiteCase
+    use Ithibati.AdapterIdentityCase
     alias Ithibati.Catalogue
     alias Ithibati.Doctor
 

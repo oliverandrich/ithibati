@@ -1,12 +1,14 @@
 defmodule Ithibati.Catalogue do
   @moduledoc """
-  Reads PostgreSQL and SQLite table, column and uniqueness metadata.
+  Reads PostgreSQL, SQLite and MySQL table, column and uniqueness metadata.
 
   `Ithibati.Migration` and `Ithibati.Doctor` use these queries to apply the same checks during
   migration and setup diagnosis. Functions receive the repo explicitly; table lookup also takes
-  a PostgreSQL schema prefix. SQLite uses the unprefixed main database.
+  a PostgreSQL schema prefix. SQLite uses the unprefixed main database; MySQL uses the repo's
+  selected database without schema prefixes.
   """
 
+  alias Ithibati.Catalogue.MySQL
   alias Ithibati.Catalogue.SQLite
   alias Ithibati.Config
 
@@ -16,6 +18,7 @@ defmodule Ithibati.Catalogue do
   @doc "Returns an opaque table reference, or nil when the table is absent."
   def table(repo, prefix, name) do
     case repo.__adapter__() do
+      Ecto.Adapters.MyXQL -> MySQL.table(repo, prefix, name)
       Ecto.Adapters.SQLite3 -> SQLite.table(repo, prefix, name)
       Ecto.Adapters.Postgres -> table_oid(repo, prefix, name)
     end
@@ -24,6 +27,9 @@ defmodule Ithibati.Catalogue do
   @doc "Database column types compatible with a supported Ecto storage type."
   def types(repo, type) do
     case repo.__adapter__() do
+      Ecto.Adapters.MyXQL ->
+        mysql_types(type)
+
       Ecto.Adapters.SQLite3 ->
         sqlite_types(type)
 
@@ -31,6 +37,11 @@ defmodule Ithibati.Catalogue do
         postgres_types(type)
     end
   end
+
+  defp mysql_types(:binary_id), do: ["binary(16)"]
+  defp mysql_types(:id), do: ["bigint", "bigint unsigned"]
+  defp mysql_types(:binary), do: ["varbinary(32)"]
+  defp mysql_types(:utc_datetime_usec), do: ["datetime(6)"]
 
   defp sqlite_types(:binary_id),
     do:
@@ -73,6 +84,8 @@ defmodule Ithibati.Catalogue do
   only key column is this column. Additional included columns are allowed; for example,
   `PRIMARY KEY (id) INCLUDE (email)` qualifies.
   """
+  def column(repo, {:mysql, table}, column), do: MySQL.column(repo, table, column)
+
   def column(repo, {:sqlite, table}, column),
     do: SQLite.column(repo, table, column)
 

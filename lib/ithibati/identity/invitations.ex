@@ -26,7 +26,7 @@ defmodule Ithibati.Identity.Invitations do
 
   alias Ecto.Multi
   alias Ithibati.Config
-  alias Ithibati.Identity.Concurrency
+  alias Ithibati.Identity.Mutations
   alias Ithibati.Identity.Secrets
   alias Ithibati.Identity.Steps
 
@@ -134,8 +134,7 @@ defmodule Ithibati.Identity.Invitations do
       # The application's invitation schema determines the primary-key fields.
       |> where(^Ecto.primary_key!(invitation))
 
-    repo.update_all(query, set: [accepted_at: now])
-    |> Concurrency.one_affected(:invalid_invitation)
+    Mutations.update_one(repo, query, [set: [accepted_at: now]], :invalid_invitation)
   end
 
   defp expired_query do

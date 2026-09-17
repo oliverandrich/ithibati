@@ -40,8 +40,8 @@ terminal and refresh the page.
 
 ## Database adapter probes
 
-The adapter suite contains capability probes and SQLite identity integration tests. MySQL
-probes do not imply library support. Run `mise run probe-postgres`, `mise run probe-sqlite` or `mise run probe-mysql`.
+The adapter suite contains capability probes and shared SQLite/MySQL identity integration
+tests. Run `mise run probe-postgres`, `mise run probe-sqlite` or `mise run probe-mysql`.
 Equivalently, run `ITHIBATI_ADAPTER_PROBE=sqlite mix build_and_test` with `postgres`, `sqlite`
 or `mysql`. Unknown adapter names fail rather than silently running the PostgreSQL suite.
 
@@ -49,22 +49,23 @@ Each adapter uses `_build/adapter_<name>_<key-type>_<uuid-storage>` and runs `ad
 serial; the concurrency probes explicitly check out separate connections and synchronize their
 work. They cover migration up/down, rollback, UUIDs, large integer values, binary uniqueness,
 microsecond timestamps, affected rows, SQL limitations and outer/nested transaction snapshots.
-SQLite additionally tests migrations, metadata, diagnosis, authentication, sessions and identity
-races. Its race helper retries only known, rolled-back test operations after busy errors,
+SQLite and MySQL additionally test migrations, metadata, diagnosis, authentication, sessions
+and identity races. The SQLite race helper retries only known, rolled-back test operations after busy errors,
 with a fixed limit; dedicated tests assert that the library itself exposes these failures.
-Run the SQLite suite with `ITHIBATI_USERS_KEY_TYPE=id` for integer account keys or
+Run either suite with `ITHIBATI_USERS_KEY_TYPE=id` for integer account keys. SQLite also accepts
 `ITHIBATI_SQLITE_UUID_STORAGE=binary` for UUIDs stored as BLOBs (defaults: `binary_id`, `string`).
 
 PostgreSQL uses the `PG*` connection variables above. MySQL uses `MYSQL_HOST`, `MYSQL_PORT`,
 `MYSQL_USER` and `MYSQL_PASSWORD`, defaulting to `localhost:3306`, `root` and an empty password.
 Use a dedicated local test server/account with database-creation permissions. Both server probes
 create `ithibati_adapter_probe` and migrate and clear their own tables there; never use that
-database for application data. The MySQL snapshot probes expect the default REPEATABLE READ
-isolation, and explicitly test READ COMMITTED on one connection as well.
+database for application data. The MySQL integer variant uses `ithibati_adapter_probe_id`.
+The capability repo retains the default REPEATABLE READ isolation, while the separate identity
+repo initializes every MySQL connection with READ COMMITTED. MySQL tests cover rejection of
+unsupported isolation, deadlocks, lock timeouts and partial DDL recovery without callback retries.
 
 SQLite needs no server: the adapter uses `tmp/adapter_probe_<key-type>_<uuid-storage>.sqlite3`,
-WAL and a short busy
-timeout to exercise writer contention. The suite prints the actual engine version for all
+WAL and a short busy timeout to exercise writer contention. The suite prints the actual engine version for all
 three backends. Do not run two copies of the same adapter probe simultaneously against the same
 database. The ordinary `mise run check` still runs the existing PostgreSQL suite; adapter
 suites are separate commands.

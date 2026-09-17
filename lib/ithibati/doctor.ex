@@ -13,6 +13,7 @@ defmodule Ithibati.Doctor do
 
   alias Ecto.Adapters.SQL
   alias Ithibati.Catalogue
+  alias Ithibati.Catalogue.MySQL
   alias Ithibati.Catalogue.SQLite
   alias Ithibati.Config
   alias Ithibati.Identity.Sessions
@@ -48,16 +49,24 @@ defmodule Ithibati.Doctor do
       {"config :ithibati, user_schema:", named(answered(&Config.user_schema/0))},
       {"config :ithibati, invitation_schema:", invitation_schema()},
       {"config :ithibati, session_validity:", validity()},
-      {"this library's tables", with({:ok, it} <- database, do: tables(it))},
-      {"config :ithibati, users_key_type:", with({:ok, it} <- database, do: account_key(it))},
-      {"the identifier's unique index", with({:ok, it} <- database, do: identifier_index(it))},
-      {"the invitation table", with({:ok, it} <- database, do: invitation_table(it))},
+      {"this library's tables", database_check(database, &tables/1)},
+      {"config :ithibati, users_key_type:", database_check(database, &account_key/1)},
+      {"the identifier's unique index", database_check(database, &identifier_index/1)},
+      {"the invitation table", database_check(database, &invitation_table/1)},
       {"config :wax_", wax()},
       {"the ceremony routes", routes(app)},
       {"the handler's callbacks", callbacks(app)},
       {"the handler each mount names", reachable_handlers(app)}
     ]
   end
+
+  defp database_check({:ok, repo}, check) do
+    check.(repo)
+  rescue
+    error -> {:error, Exception.message(error)}
+  end
+
+  defp database_check(unavailable, _check), do: unavailable
 
   # Skip database checks when the initial connection check fails, preserving the
   # original diagnostic instead of raising while building the report.
@@ -249,9 +258,12 @@ defmodule Ithibati.Doctor do
       Ecto.Adapters.SQLite3 ->
         {:ok, "SQLite"}
 
+      Ecto.Adapters.MyXQL ->
+        {:ok, "MySQL"}
+
       other ->
         {:error,
-         "Ithibati requires PostgreSQL or SQLite; #{inspect(repo)} uses #{inspect(other)}."}
+         "Ithibati requires PostgreSQL, SQLite or MySQL; #{inspect(repo)} uses #{inspect(other)}."}
     end
   end
 
@@ -263,6 +275,7 @@ defmodule Ithibati.Doctor do
   defp reachable({:ok, repo}, {:ok, _}) do
     SQL.query!(repo, "SELECT 1", [], log: false)
     if repo.__adapter__() == Ecto.Adapters.SQLite3, do: SQLite.validate!(repo)
+    if repo.__adapter__() == Ecto.Adapters.MyXQL, do: MySQL.validate!(repo)
     {:ok, "yes"}
   rescue
     error -> {:error, Exception.message(error)}

@@ -1,24 +1,27 @@
-if Application.compile_env!(:ithibati, :probe_adapter) == Ecto.Adapters.SQLite3 do
-  defmodule Ithibati.SQLiteCase do
+if Application.compile_env!(:ithibati, :probe_adapter) in [
+     Ecto.Adapters.SQLite3,
+     Ecto.Adapters.MyXQL
+   ] do
+  defmodule Ithibati.AdapterIdentityCase do
     @moduledoc false
     use ExUnit.CaseTemplate
-    alias Ithibati.AdapterRepo, as: Repo
+    alias Ithibati.AdapterIdentityRepo, as: Repo
     alias Ithibati.Identity.Passkeys
 
     using do
       quote do
-        alias Ithibati.AdapterRepo, as: Repo
-        alias Ithibati.SQLiteInvitation, as: Invitation
-        alias Ithibati.SQLiteUser, as: User
-        import Ithibati.SQLiteCase
+        alias Ithibati.AdapterIdentityRepo, as: Repo
+        alias Ithibati.AdapterInvitation, as: Invitation
+        alias Ithibati.AdapterUser, as: User
+        import Ithibati.AdapterIdentityCase
       end
     end
 
     setup do
       for {key, value} <- [
             repo: Repo,
-            user_schema: Ithibati.SQLiteUser,
-            invitation_schema: Ithibati.SQLiteInvitation
+            user_schema: Ithibati.AdapterUser,
+            invitation_schema: Ithibati.AdapterInvitation
           ] do
         previous = Application.fetch_env(:ithibati, key)
         Application.put_env(:ithibati, key, value)
@@ -31,15 +34,15 @@ if Application.compile_env!(:ithibati, :probe_adapter) == Ecto.Adapters.SQLite3 
         end)
       end
 
-      Ecto.Migrator.up(Repo, 10, Ithibati.SQLiteApplicationMigration, log: false)
-      Ecto.Migrator.up(Repo, 11, Ithibati.SQLiteLibraryMigration, log: false)
+      Ecto.Migrator.up(Repo, 10, Ithibati.AdapterApplicationMigration, log: false)
+      Ecto.Migrator.up(Repo, 11, Ithibati.AdapterLibraryMigration, log: false)
       clear()
       on_exit(&clear/0)
       :ok
     end
 
     def user do
-      Repo.insert!(%Ithibati.SQLiteUser{
+      Repo.insert!(%Ithibati.AdapterUser{
         email: "user-#{System.unique_integer([:positive])}@example.test"
       })
     end
@@ -86,13 +89,13 @@ if Application.compile_env!(:ithibati, :probe_adapter) == Ecto.Adapters.SQLite3 
     end
 
     defp await_race(parent) do
-      unless Process.get(:sqlite_race_started) do
+      unless Process.get(:adapter_race_started) do
         send(parent, {:ready, self()})
 
         receive do
-          :run -> Process.put(:sqlite_race_started, true)
+          :run -> Process.put(:adapter_race_started, true)
         after
-          2_000 -> raise "SQLite race barrier timed out"
+          2_000 -> raise "adapter race barrier timed out"
         end
       end
     end
@@ -113,8 +116,8 @@ if Application.compile_env!(:ithibati, :probe_adapter) == Ecto.Adapters.SQLite3 
 
     defp clear do
       Repo.delete_all(Ithibati.Bootstrap)
-      Repo.delete_all(Ithibati.SQLiteUser)
-      Repo.delete_all(Ithibati.SQLiteInvitation)
+      Repo.delete_all(Ithibati.AdapterUser)
+      Repo.delete_all(Ithibati.AdapterInvitation)
     end
   end
 end

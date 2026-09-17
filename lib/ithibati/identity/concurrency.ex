@@ -7,15 +7,23 @@ defmodule Ithibati.Identity.Concurrency do
 
   alias Ithibati.Config
 
-  @doc "Starts SQLite writes in immediate mode; PostgreSQL uses its default transaction mode."
+  @doc "Starts credential transactions, reserving SQLite writes and checking MySQL isolation."
   def transaction(repo, fun) do
     opts = if repo.__adapter__() == Ecto.Adapters.SQLite3, do: [mode: :immediate], else: []
-    repo.transaction(fun, opts)
+
+    repo.transaction(
+      fn ->
+        validate_transaction!(repo)
+        fun.()
+      end,
+      opts
+    )
   end
 
   @doc """
   Serializes credential decisions inside a transaction. PostgreSQL locks the account
-  with `FOR NO KEY UPDATE`. SQLite reserves the database writer before reading the account,
+  with `FOR NO KEY UPDATE`; MySQL uses `FOR UPDATE` and requires READ COMMITTED. SQLite
+  reserves the database writer before reading the account,
   including inside caller-owned transactions. A stale SQLite snapshot raises before decisions;
   callers must restart the entire transaction if they choose to retry.
 
@@ -42,8 +50,20 @@ defmodule Ithibati.Identity.Concurrency do
         write_lock!(repo)
         query
 
+      Ecto.Adapters.MyXQL ->
+        validate_transaction!(repo)
+        lock(query, "FOR UPDATE")
+
       _row_locking_adapter ->
         lock(query, "FOR NO KEY UPDATE")
+    end
+  end
+
+  defp validate_transaction!(repo) do
+    if repo.__adapter__() == Ecto.Adapters.MyXQL do
+      repo.query!("SELECT @@transaction_isolation", [], log: false).rows == [["READ-COMMITTED"]] ||
+        raise ArgumentError,
+              "MySQL identity transactions require READ COMMITTED on every connection"
     end
   end
 

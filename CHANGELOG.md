@@ -23,6 +23,10 @@ upgrading to one of those releases.
   transactions and authentication without joined `RETURNING`. Supports integer account keys
   and UUIDs stored as text or binary; requires enabled foreign keys and the main database.
 
+- MySQL 8.4/InnoDB support with exact UUID/BIGINT foreign-key types, bounded binary indexes,
+  migration preflight and partial-installation cleanup, and transactional mutation results.
+  Requires READ COMMITTED on every connection; deadlocks and timeouts are not retried.
+
 ## [0.2.0] - 2026-09-17
 
 ### Upgrading from 0.1.3

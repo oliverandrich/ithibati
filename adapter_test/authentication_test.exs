@@ -1,6 +1,6 @@
-if Application.get_env(:ithibati, :probe_adapter) == Ecto.Adapters.SQLite3 do
-  defmodule Ithibati.SQLiteAuthenticationTest do
-    use Ithibati.SQLiteCase
+if Application.get_env(:ithibati, :probe_adapter) in [Ecto.Adapters.SQLite3, Ecto.Adapters.MyXQL] do
+  defmodule Ithibati.AdapterAuthenticationTest do
+    use Ithibati.AdapterIdentityCase
     alias Ithibati.Identity.Passkeys
     alias Ithibati.TestCredentials
 
@@ -82,8 +82,8 @@ if Application.get_env(:ithibati, :probe_adapter) == Ecto.Adapters.SQLite3 do
 
     defp credential_lookup?(query) do
       String.starts_with?(query, "SELECT") and
-        String.contains?(query, ~s(FROM "ithibati_keys")) and
-        String.contains?(query, "key_id")
+        String.contains?(query, "ithibati_keys") and
+        Regex.match?(~r/WHERE.*["`]key_id["`]/, query)
     end
   end
 end

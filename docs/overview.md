@@ -34,8 +34,8 @@ Ithibati supplies the token and acceptance step.
 - **The relying party is supplied per call.** The core receives `rp_id` and `origin` explicitly.
   The web layer derives defaults from your endpoint and offers a callback for other trusted
   clients. These values never come from Ithibati or `wax_` configuration.
-- **PostgreSQL and SQLite are supported.** Migrations verify existing columns and uniqueness
-  constraints before adding references to application-owned tables. SQLite requires the
+- **PostgreSQL, SQLite and MySQL are supported.** Migrations verify existing columns and uniqueness
+  constraints before adding references to application-owned tables. SQLite and MySQL require the
   [database settings and transaction handling](configuration.md#databases) described in the guide.
 
 ## Choose a guide

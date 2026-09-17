@@ -21,6 +21,7 @@ defmodule Ithibati.Identity.Passkeys do
 
   alias Ithibati.Config
   alias Ithibati.Identity.Concurrency
+  alias Ithibati.Identity.Mutations
   alias Ithibati.Identity.Secrets
   alias Ithibati.Schema.Identifier
   alias Ithibati.Schema.User
@@ -243,13 +244,14 @@ defmodule Ithibati.Identity.Passkeys do
     account = Config.account!(account)
 
     with {:ok, id} <- key_id(id) do
-      account
-      |> own_key(id)
-      |> select([key], key)
-      |> Config.repo().update_all(
-        set: [label: UserKey.label(name), updated_at: DateTime.utc_now()]
+      query = account |> own_key(id) |> select([key], key)
+
+      Mutations.update_one(
+        Config.repo(),
+        query,
+        [set: [label: UserKey.label(name), updated_at: DateTime.utc_now()]],
+        :not_found
       )
-      |> Concurrency.one_affected(:not_found)
     end
   end
 
@@ -293,10 +295,26 @@ defmodule Ithibati.Identity.Passkeys do
     # The account lock is needed only when protecting the final passkey.
     if last == :refuse, do: Concurrency.lock_account!(account.id)
 
-    case repo.delete_all(deletable_key(account, id, last)) do
+    query =
+      if repo.__adapter__() == Ecto.Adapters.MyXQL,
+        do: mysql_deletable_key(repo, account, id, last),
+        else: deletable_key(account, id, last)
+
+    case Mutations.delete_one(repo, query) do
       {1, [key]} -> {:ok, key}
       {0, _none} -> refusal(repo, account, id, last)
     end
+  end
+
+  # MySQL cannot delete from a table also used in its subquery. The account lock
+  # serializes removals, so check siblings in a separate READ COMMITTED statement.
+  defp mysql_deletable_key(repo, account, id, last) do
+    query = deletable_key(account, id, :allow)
+
+    if last == :refuse and
+         not repo.exists?(from(k in UserKey, where: k.user_id == ^account.id and k.id != ^id)),
+       do: where(query, false),
+       else: query
   end
 
   # All management queries must bind the key ID to its owner to prevent cross-account access.
@@ -469,20 +487,29 @@ defmodule Ithibati.Identity.Passkeys do
     repo = Config.repo()
 
     case repo.__adapter__() do
-      Ecto.Adapters.SQLite3 -> touch_sqlite(repo, key)
-      _adapter -> touch_joined(key)
+      adapter when adapter in [Ecto.Adapters.SQLite3, Ecto.Adapters.MyXQL] ->
+        touch_transactional(repo, key)
+
+      _adapter ->
+        touch_joined(key)
     end
   end
 
-  # SQLite RETURNING can name only the updated table. Keep the write and account read in
-  # one transaction, so credential/account deletion cannot pass between them.
-  defp touch_sqlite(repo, key) do
+  # These adapters cannot return a joined account. Keep the credential write and
+  # account read in one transaction so deletion cannot pass between them.
+  defp touch_transactional(repo, key) do
     {:ok, outcome} =
       Concurrency.transaction(repo, fn ->
-        query = from k in UserKey, where: k.id == ^key.id, select: k.user_id
+        query = from k in UserKey, where: k.id == ^key.id, select: k
 
-        with {1, [user_id]} <- repo.update_all(query, set: [last_used_at: DateTime.utc_now()]),
-             account when not is_nil(account) <- repo.get(Config.user_schema(), user_id) do
+        with {:ok, touched} <-
+               Mutations.update_one(
+                 repo,
+                 query,
+                 [set: [last_used_at: DateTime.utc_now()]],
+                 :unknown_credential
+               ),
+             account when not is_nil(account) <- repo.get(Config.user_schema(), touched.user_id) do
           {:ok, account}
         else
           _absent -> {:error, :unknown_credential}

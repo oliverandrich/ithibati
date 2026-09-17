@@ -34,6 +34,7 @@ defmodule Ithibati.Migration do
 
   alias Ithibati.Bootstrap
   alias Ithibati.Catalogue
+  alias Ithibati.Catalogue.MySQL
   alias Ithibati.Catalogue.SQLite
   alias Ithibati.Config
   alias Ithibati.RecoveryCode
@@ -55,6 +56,8 @@ defmodule Ithibati.Migration do
 
     if repo().__adapter__() == Ecto.Adapters.SQLite3,
       do: SQLite.validate!(repo())
+
+    if repo().__adapter__() == Ecto.Adapters.MyXQL, do: MySQL.validate!(repo())
 
     confirm_tables!(opts)
     Enum.each((opts.from + 1)..opts.version//1, &step(&1, :up, opts))
@@ -107,7 +110,7 @@ defmodule Ithibati.Migration do
     Logger.info("ithibati: adding #{identifier}, token_hash, expires_at, accepted_at")
 
     add(identifier, Keyword.get(opts, :type, :string), null: false)
-    add(:token_hash, :binary, null: false)
+    add(:token_hash, :binary, binary_options(32))
     add(:expires_at, :utc_datetime_usec, null: false)
     add(:accepted_at, :utc_datetime_usec)
   end
@@ -190,12 +193,17 @@ defmodule Ithibati.Migration do
   end
 
   defp step(1, :up, opts) do
+    # MySQL commits DDL statements individually. Resolve application index collisions
+    # before creating owned tables so predictable failures leave no partial auth schema.
+    if repo().__adapter__() == Ecto.Adapters.MyXQL,
+      do: Enum.each(application_indexes(opts), &maintain_index/1)
+
     holder = references(opts.users_table, type: key_type(), on_delete: :delete_all)
 
     create table(source(UserKey), primary_key: false) do
       add :id, :binary_id, primary_key: true
       add :user_id, holder, null: false
-      add :key_id, :binary, null: false
+      add :key_id, :binary, binary_options(1023)
       add :public_key, :binary, null: false
       # `:text`, not a sized column. The limit on a label is a display decision, applied in
       # the changeset. See `Ithibati.UserKey`.
@@ -211,7 +219,7 @@ defmodule Ithibati.Migration do
     create table(source(RecoveryCode), primary_key: false) do
       add :id, :binary_id, primary_key: true
       add :user_id, holder, null: false
-      add :code_hash, :binary, null: false
+      add :code_hash, :binary, binary_options(32)
       add :used_at, :utc_datetime_usec
 
       timestamps(type: :utc_datetime_usec)
@@ -225,7 +233,7 @@ defmodule Ithibati.Migration do
     create table(source(Session), primary_key: false) do
       add :id, :binary_id, primary_key: true
       add :user_id, holder, null: false
-      add :token_hash, :binary, null: false
+      add :token_hash, :binary, binary_options(32)
 
       timestamps(type: :utc_datetime_usec, updated_at: false)
     end
@@ -246,11 +254,16 @@ defmodule Ithibati.Migration do
     # The guarantee. Every row carries the same value, so at most one row can exist.
     create unique_index(source(Bootstrap), [:claimed])
 
-    Enum.each(application_indexes(opts), &maintain_index/1)
+    unless repo().__adapter__() == Ecto.Adapters.MyXQL,
+      do: Enum.each(application_indexes(opts), &maintain_index/1)
   end
 
   defp step(1, :down, opts) do
-    for schema <- Enum.reverse(@v1_schemas), do: drop(table(source(schema)))
+    for schema <- Enum.reverse(@v1_schemas) do
+      if repo().__adapter__() == Ecto.Adapters.MyXQL,
+        do: drop_if_exists(table(source(schema))),
+        else: drop(table(source(schema)))
+    end
 
     opts |> application_indexes() |> Enum.reverse() |> Enum.each(&drop_index/1)
   end
@@ -288,15 +301,29 @@ defmodule Ithibati.Migration do
   # Allow both `up/1` and a later invitation migration to request the same index.
   # Postgres checks only the name for `IF NOT EXISTS`, so verify the resulting index too.
   defp maintain_index(index) do
-    if index.create?, do: create_if_not_exists(index_for(index))
-
+    if index.create?, do: create_index_unless_exists(index)
     confirm_index!(index)
   end
 
+  defp create_index_unless_exists(index) do
+    if repo().__adapter__() == Ecto.Adapters.MyXQL do
+      flush()
+
+      unless MySQL.index?(repo(), index.table, index_for(index).name),
+        do: create(index_for(index))
+    else
+      create_if_not_exists(index_for(index))
+    end
+  end
+
+  defp drop_index(%{create?: false}), do: :ok
+
   defp drop_index(index) do
-    # `drop_if_exists`, because the decision is read from configuration that can change between the
-    # two runs.
-    if index.create?, do: drop_if_exists(index_for(index))
+    if repo().__adapter__() == Ecto.Adapters.MyXQL do
+      if MySQL.index?(repo(), index.table, index_for(index).name), do: drop(index_for(index))
+    else
+      drop_if_exists(index_for(index))
+    end
   end
 
   # `name: nil` is not a missing name. `Ecto.Migration.index/3` fills it in with the one it derives.
@@ -407,7 +434,7 @@ defmodule Ithibati.Migration do
 
   # Respect the repository’s `:migration_foreign_key` configuration when checking the target column.
   defp account_key_column(opts) do
-    references(opts.users_table, type: key_type()).column
+    references(opts.users_table, type: reference_type(Config.users_key_type())).column
   end
 
   defp table_ref!(table) do
@@ -427,5 +454,25 @@ defmodule Ithibati.Migration do
 
   defp source(schema), do: schema.__schema__(:source)
 
-  defp key_type, do: reference_type(UserKey.__schema__(:type, :user_id))
+  defp binary_options(size) do
+    if repo().__adapter__() == Ecto.Adapters.MyXQL,
+      do: [size: size, null: false],
+      else: [null: false]
+  end
+
+  defp key_type do
+    type = reference_type(UserKey.__schema__(:type, :user_id))
+
+    if repo().__adapter__() == Ecto.Adapters.MyXQL and type == :bigint do
+      table = source(Config.user_schema())
+      column = references(table, type: type).column
+
+      case Catalogue.column(repo(), {:mysql, table}, column) do
+        {"bigint unsigned", _unique} -> :"bigint unsigned"
+        _signed_or_invalid -> :bigint
+      end
+    else
+      type
+    end
+  end
 end

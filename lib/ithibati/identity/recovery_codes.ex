@@ -13,6 +13,7 @@ defmodule Ithibati.Identity.RecoveryCodes do
 
   alias Ithibati.Config
   alias Ithibati.Identity.Concurrency
+  alias Ithibati.Identity.Mutations
   alias Ithibati.Identity.Secrets
   alias Ithibati.RecoveryCode
 
@@ -103,8 +104,7 @@ defmodule Ithibati.Identity.RecoveryCodes do
     query =
       from(r in RecoveryCode, where: r.code_hash == ^digest and is_nil(r.used_at), select: r)
 
-    Config.repo().update_all(query, set: [used_at: DateTime.utc_now()])
-    |> Concurrency.one_affected(:invalid)
+    Mutations.update_one(Config.repo(), query, [set: [used_at: DateTime.utc_now()]], :invalid)
   end
 
   # The account lock serializes spending different code rows. Count after acquiring it so

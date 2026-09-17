@@ -1,5 +1,8 @@
-if Application.compile_env!(:ithibati, :probe_adapter) == Ecto.Adapters.SQLite3 do
-  defmodule Ithibati.SQLiteUser do
+if Application.compile_env!(:ithibati, :probe_adapter) in [
+     Ecto.Adapters.SQLite3,
+     Ecto.Adapters.MyXQL
+   ] do
+  defmodule Ithibati.AdapterUser do
     @moduledoc false
     use Ecto.Schema
     use Ithibati.Schema.User, identifier: :email
@@ -10,7 +13,7 @@ if Application.compile_env!(:ithibati, :probe_adapter) == Ecto.Adapters.SQLite3 
     end
   end
 
-  defmodule Ithibati.SQLiteInvitation do
+  defmodule Ithibati.AdapterInvitation do
     @moduledoc false
     use Ecto.Schema
     use Ithibati.Schema.Invitation, identifier: :email
@@ -20,7 +23,7 @@ if Application.compile_env!(:ithibati, :probe_adapter) == Ecto.Adapters.SQLite3 
     end
   end
 
-  defmodule Ithibati.SQLiteApplicationMigration do
+  defmodule Ithibati.AdapterApplicationMigration do
     @moduledoc false
     use Ecto.Migration
 
@@ -28,7 +31,7 @@ if Application.compile_env!(:ithibati, :probe_adapter) == Ecto.Adapters.SQLite3 
       create table(:app_users, primary_key: false) do
         add :id,
             if(Application.get_env(:ithibati, :users_key_type, :binary_id) == :id,
-              do: :integer,
+              do: :bigserial,
               else: :binary_id
             ),
             primary_key: true
@@ -44,17 +47,29 @@ if Application.compile_env!(:ithibati, :probe_adapter) == Ecto.Adapters.SQLite3 
     end
   end
 
-  defmodule Ithibati.SQLiteLibraryMigration do
+  defmodule Ithibati.AdapterLibraryMigration do
     @moduledoc false
     use Ecto.Migration
     def up, do: Ithibati.Migration.up(version: 1)
     def down, do: Ithibati.Migration.down(version: 1)
   end
 
-  defmodule Ithibati.SQLiteLaterInvitationMigration do
+  defmodule Ithibati.AdapterLaterInvitationMigration do
     @moduledoc false
     use Ecto.Migration
     def up, do: Ithibati.Migration.invitation_index(version: 1)
     def down, do: drop(index(:app_invitations, [:token_hash]))
+  end
+end
+
+if Application.compile_env!(:ithibati, :probe_adapter) in [
+     Ecto.Adapters.SQLite3,
+     Ecto.Adapters.MyXQL
+   ] do
+  defmodule Ithibati.AdapterIdentityRepo do
+    @moduledoc false
+    use Ecto.Repo,
+      otp_app: :ithibati,
+      adapter: Application.compile_env!(:ithibati, :probe_adapter)
   end
 end

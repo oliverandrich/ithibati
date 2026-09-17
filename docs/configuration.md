@@ -39,8 +39,10 @@ The relying-party ID and origin are passed to ceremonies, not configured here. S
 
 ## Databases
 
-Ithibati supports PostgreSQL and SQLite. Your application selects its Ecto adapter and adds
-its driver dependency. MySQL support is not implemented yet.
+Ithibati supports PostgreSQL, SQLite and MySQL. Your application selects its Ecto adapter and
+adds its driver dependency. SQL Server and MariaDB are outside the supported scope.
+
+### SQLite
 
 For SQLite, add `{:ecto_sqlite3, "~> 0.24.1"}` and use `Ecto.Adapters.SQLite3` in your repo.
 The integration is tested with ecto_sqlite3 0.24.1, Exqlite 0.40.0 and SQLite 3.53.4. That
@@ -74,6 +76,52 @@ data. Lock contention can also exceed `busy_timeout` and raise an adapter error.
 infrastructure failures, not invalid credentials. Ithibati never automatically retries an
 application callback. If your application retries, restart the entire transaction, bound the
 attempts and ensure that any external side effects are safe to repeat.
+
+### MySQL
+
+MySQL integration is tested with MySQL 8.4.11, InnoDB and MyXQL 0.9.0. Add
+`{:myxql, "~> 0.9.0"}` and use `Ecto.Adapters.MyXQL` in your repo. Configure READ COMMITTED
+on every connection before starting application transactions:
+
+```elixir
+config :my_app, MyApp.Repo,
+  after_connect: {MyXQL, :query!, ["SET SESSION TRANSACTION ISOLATION LEVEL READ COMMITTED", []]}
+```
+
+Add this to your existing host, database and credential configuration. Keep
+`foreign_key_checks = 1`, use InnoDB for the account and invitation tables, and use only the
+repo's selected database without schema prefixes. `mix ithibati.doctor` diagnoses these
+settings. Ithibati also checks session isolation before its credential transactions; do not
+override isolation for individual transactions that call Ithibati. The MySQL default,
+REPEATABLE READ, can retain an earlier application snapshot even after a nested transaction
+starts and is unsupported for these operations.
+
+Account IDs may be UUIDs in `BINARY(16)` or signed/unsigned `BIGINT`s. Ithibati matches the
+foreign key's signedness to the existing account column; smaller integer widths are refused.
+The default MyXQL auto-increment key uses unsigned BIGINT. Indexed credential IDs use
+`VARBINARY(1023)` and digests use `VARBINARY(32)`, with full-column unique indexes. A prefix-only
+index does not qualify. Invitation timestamps must be `DATETIME(6)` and their token digest
+`VARBINARY(32)`; `Ithibati.Migration.invitation_columns/1` chooses these types automatically.
+
+Identifier normalization remains the changeset's responsibility. Your application's column
+collation determines which normalized strings compare equal, including accent sensitivity;
+use the same identifier semantics for invitations and accounts.
+
+MySQL has no mutation `RETURNING`. Ithibati locks the matching row, checks the conditional
+write and reads the result within one transaction. Account locks serialize recovery-code
+replacement and final-passkey deletion, including inside existing application transactions.
+Deadlocks and lock timeouts propagate as database errors. Ithibati does not replay callbacks;
+any application retry must restart the entire transaction and account for external side effects.
+
+MySQL commits DDL statements individually. Migrations validate table requirements and resolve
+application-index conflicts before creating owned tables, but an unexpected DDL failure can
+still leave a partial schema. Inspect it before retrying. For an initial installation with no
+authentication data to retain, a temporary recovery migration may call
+`Ithibati.Migration.down(version: 1)` in its `up/0`, then retry the original installation.
+This removes any existing Ithibati tables and its managed application indexes; it is destructive
+and must not be used as an automatic repair of a populated installation. Your account and
+invitation tables remain application-owned. Existing PostgreSQL and SQLite migrations are
+unchanged and stay at schema version 1.
 
 ## Identifiers
 

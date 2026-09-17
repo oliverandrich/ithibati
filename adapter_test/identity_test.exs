@@ -1,10 +1,9 @@
-if Application.get_env(:ithibati, :probe_adapter) == Ecto.Adapters.SQLite3 do
-  defmodule Ithibati.SQLiteIdentityTest do
-    use Ithibati.SQLiteCase
+if Application.get_env(:ithibati, :probe_adapter) in [Ecto.Adapters.SQLite3, Ecto.Adapters.MyXQL] do
+  defmodule Ithibati.AdapterIdentityTest do
+    use Ithibati.AdapterIdentityCase
     alias Ecto.Multi
 
     alias Ithibati.Identity.{
-      Concurrency,
       Grant,
       Instance,
       Invitations,
@@ -103,47 +102,49 @@ if Application.get_env(:ithibati, :probe_adapter) == Ecto.Adapters.SQLite3 do
       assert fresh |> Enum.map(&Secrets.digest/1) |> Enum.sort() == hashes
     end
 
-    test "a stale application snapshot raises before replacing recovery codes" do
-      user = user()
-      RecoveryCodes.regenerate(user, count: 2)
+    if Application.compile_env!(:ithibati, :probe_adapter) == Ecto.Adapters.SQLite3 do
+      test "a stale application snapshot raises before replacing recovery codes" do
+        user = user()
+        RecoveryCodes.regenerate(user, count: 2)
 
-      assert_raise Exqlite.Error, ~r/[Bb]usy|locked/, fn ->
-        Repo.transaction(fn ->
-          Repo.get!(User, user.id)
+        assert_raise Exqlite.Error, ~r/[Bb]usy|locked/, fn ->
+          Repo.transaction(fn ->
+            Repo.get!(User, user.id)
 
-          task =
-            Task.async(fn ->
-              user |> Ecto.Changeset.change(email: "changed@example.test") |> Repo.update!()
-            end)
+            task =
+              Task.async(fn ->
+                user |> Ecto.Changeset.change(email: "changed@example.test") |> Repo.update!()
+              end)
 
-          Task.await(task)
-          RecoveryCodes.regenerate(user, count: 3)
-        end)
+            Task.await(task)
+            RecoveryCodes.regenerate(user, count: 3)
+          end)
+        end
+
+        assert RecoveryCodes.remaining(user) == 2
       end
 
-      assert RecoveryCodes.remaining(user) == 2
-    end
+      @tag capture_log: true
+      test "the library writer reservation lasts until the outer transaction commits" do
+        user = user()
 
-    @tag capture_log: true
-    test "the library writer reservation lasts until the outer transaction commits" do
-      user = user()
+        assert {:ok, :held} =
+                 Repo.transaction(fn ->
+                   RecoveryCodes.regenerate(user, count: 2)
 
-      assert {:ok, :held} =
-               Repo.transaction(fn ->
-                 RecoveryCodes.regenerate(user, count: 2)
+                   task =
+                     Task.async(fn ->
+                       assert_raise Exqlite.Error, ~r/[Bb]usy|locked/, fn ->
+                         RecoveryCodes.regenerate(user, count: 3)
+                       end
+                     end)
 
-                 task =
-                   Task.async(fn ->
-                     assert_raise Exqlite.Error, ~r/[Bb]usy|locked/, fn ->
-                       RecoveryCodes.regenerate(user, count: 3)
-                     end
-                   end)
+                   assert %Exqlite.Error{} = Task.await(task, 3_000)
+                   :held
+                 end)
 
-                 assert %Exqlite.Error{} = Task.await(task, 3_000)
-                 :held
-               end)
-
-      assert RecoveryCodes.remaining(user) == 2
+        assert RecoveryCodes.remaining(user) == 2
+      end
     end
 
     test "renaming preserves ownership and account deletion cascades credentials" do
@@ -160,29 +161,33 @@ if Application.get_env(:ithibati, :probe_adapter) == Ecto.Adapters.SQLite3 do
       assert Repo.all(Ithibati.RecoveryCode) == []
     end
 
-    @tag capture_log: true
-    test "the account lock reserves the writer before credential decisions" do
-      user = user()
+    if Application.compile_env!(:ithibati, :probe_adapter) == Ecto.Adapters.SQLite3 do
+      alias Ithibati.Identity.Concurrency
 
-      assert {:ok, :locked} =
-               Repo.transaction(fn ->
-                 Repo.get!(User, user.id)
-                 Concurrency.lock_account!(user.id)
+      @tag capture_log: true
+      test "the account lock reserves the writer before credential decisions" do
+        user = user()
 
-                 task =
-                   Task.async(fn ->
-                     assert_raise Exqlite.Error, ~r/busy|locked/i, fn ->
-                       user
-                       |> Ecto.Changeset.change(email: "blocked@example.test")
-                       |> Repo.update!()
-                     end
-                   end)
+        assert {:ok, :locked} =
+                 Repo.transaction(fn ->
+                   Repo.get!(User, user.id)
+                   Concurrency.lock_account!(user.id)
 
-                 assert %Exqlite.Error{} = Task.await(task, 3_000)
-                 :locked
-               end)
+                   task =
+                     Task.async(fn ->
+                       assert_raise Exqlite.Error, ~r/busy|locked/i, fn ->
+                         user
+                         |> Ecto.Changeset.change(email: "blocked@example.test")
+                         |> Repo.update!()
+                       end
+                     end)
 
-      assert Repo.get!(User, user.id).email == user.email
+                   assert %Exqlite.Error{} = Task.await(task, 3_000)
+                   :locked
+                 end)
+
+        assert Repo.get!(User, user.id).email == user.email
+      end
     end
 
     test "sessions resolve, expire and revoke against SQLite timestamps" do

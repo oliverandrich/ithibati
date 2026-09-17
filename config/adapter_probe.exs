@@ -53,10 +53,23 @@ connection =
         port: String.to_integer(System.get_env("MYSQL_PORT", "3306")),
         username: System.get_env("MYSQL_USER", "root"),
         password: System.get_env("MYSQL_PASSWORD", ""),
-        database: "ithibati_adapter_probe"
+        database:
+          if(key_type == :id, do: "ithibati_adapter_probe_id", else: "ithibati_adapter_probe")
       ]
   end
 
 config :ithibati,
        Ithibati.AdapterRepo,
        connection ++ [pool: Ecto.Adapters.SQL.Sandbox, pool_size: 4]
+
+identity_options =
+  if adapter == Ecto.Adapters.MyXQL,
+    do: [
+      after_connect:
+        {MyXQL, :query!, ["SET SESSION TRANSACTION ISOLATION LEVEL READ COMMITTED", []]}
+    ],
+    else: []
+
+config :ithibati,
+       Ithibati.AdapterIdentityRepo,
+       connection ++ identity_options ++ [pool: Ecto.Adapters.SQL.Sandbox, pool_size: 4]
