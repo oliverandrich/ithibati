@@ -1,5 +1,12 @@
 import Config
 
+env = fn name, default ->
+  case System.get_env(name) do
+    value when value in [nil, ""] -> default
+    value -> value
+  end
+end
+
 adapter =
   case System.fetch_env!("ITHIBATI_ADAPTER_PROBE") do
     "postgres" -> Ecto.Adapters.Postgres
@@ -9,14 +16,14 @@ adapter =
   end
 
 key_type =
-  case System.get_env("ITHIBATI_USERS_KEY_TYPE", "binary_id") do
+  case env.("ITHIBATI_USERS_KEY_TYPE", "binary_id") do
     "binary_id" -> :binary_id
     "id" -> :id
     other -> raise "invalid account key type: #{inspect(other)}"
   end
 
 uuid_storage =
-  case System.get_env("ITHIBATI_SQLITE_UUID_STORAGE", "string") do
+  case env.("ITHIBATI_SQLITE_UUID_STORAGE", "string") do
     "string" -> :string
     "binary" -> :binary
     other -> raise "invalid SQLite UUID storage: #{inspect(other)}"

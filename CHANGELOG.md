@@ -34,6 +34,8 @@ upgrading to one of those releases.
 
 ### Fixed
 
+- Treat empty adapter probe key-type and UUID-storage environment variables as defaults,
+  including their build directories, so inherited blank CI matrix values do not abort probes.
 - Compile project checks before every `mix credo` invocation, including the precommit gate,
   so restored CI build caches cannot run outdated architecture rules against current source.
 - WebAuthn challenges are consumed atomically in the database before verification, including

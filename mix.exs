@@ -26,7 +26,7 @@ defmodule Ithibati.MixProject do
       build_path:
         if(probe,
           do:
-            "_build/adapter_#{probe}_#{System.get_env("ITHIBATI_USERS_KEY_TYPE", "binary_id")}_#{System.get_env("ITHIBATI_SQLITE_UUID_STORAGE", "string")}",
+            "_build/adapter_#{probe}_#{probe_env("ITHIBATI_USERS_KEY_TYPE", "binary_id")}_#{probe_env("ITHIBATI_SQLITE_UUID_STORAGE", "string")}",
           else: "_build"
         ),
       test_paths: if(probe, do: ["adapter_test"], else: ["test"]),
@@ -41,6 +41,13 @@ defmodule Ithibati.MixProject do
       docs: docs(),
       source_url: @source_url
     ]
+  end
+
+  defp probe_env(name, default) do
+    case System.get_env(name) do
+      value when value in [nil, ""] -> default
+      value -> value
+    end
   end
 
   # Both end in `mix test`, which refuses to run outside the test environment — and without this
