@@ -10,6 +10,14 @@ upgrading to one of those releases.
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-09-18
+
+### Upgrading from 0.3.0
+
+No database migration is required; Ithibati's database schema remains at version 2.
+Invitation mail is opt-in. Existing registration handlers continue to work without mail
+configuration.
+
 ### Added
 
 - A third Phoenix example, `examples/email_registration`, demonstrates one email address as
@@ -199,6 +207,7 @@ the application.
   receives the account and any replacement code batch to display.
 - Three optional Credo checks for consuming applications.
 
+[0.4.0]: https://github.com/oliverandrich/ithibati/releases/tag/v0.4.0
 [0.3.0]: https://github.com/oliverandrich/ithibati/releases/tag/v0.3.0
 [0.2.0]: https://github.com/oliverandrich/ithibati/releases/tag/v0.2.0
 [0.1.3]: https://github.com/oliverandrich/ithibati/releases/tag/v0.1.3
