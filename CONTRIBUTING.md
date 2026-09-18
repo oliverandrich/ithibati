@@ -26,6 +26,16 @@ so restored build caches cannot run outdated project checks against current sour
 from an existing build is insufficient: leftover Phoenix beams can make `Code.ensure_loaded?`
 succeed and hide problems in the optional-dependency guards.
 
+Credo retains the existing ExSlop policy and adds selected Jump checks for test and
+Phoenix mistakes. Excellent Migrations checks the example applications' migrations
+from the root gate, after timestamp `20260918000000`. Keep that adoption boundary
+fixed and give new migrations newer timestamps; applied example migrations stay
+unchanged. Disposable test/adapter migrations are excluded from this deployment
+safety check. The library's migration API remains covered by its behavior and adapter
+tests. The exact selection is in `.credo.exs`; these development dependencies do not
+become dependencies of consumers. Migration warnings need context for the target
+database/version, and any safety exception needs a concrete reason.
+
 For changes affecting shared browser integration, run both example gates from the repository
 root. For a change confined to one example, run that example's gate:
 

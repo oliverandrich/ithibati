@@ -152,6 +152,8 @@ defmodule Ithibati.MixProject do
       # consumer's own `MIX_ENV=prod` build.
       {:credo, "~> 1.7", optional: true, runtime: false},
       {:ex_slop, "~> 0.4.4", only: [:dev, :test], runtime: false},
+      {:jump_credo_checks, "~> 0.5.0", only: [:dev, :test], runtime: false},
+      {:excellent_migrations, "~> 0.1.10", only: [:dev, :test], runtime: false},
       {:ex_doc, "~> 0.34", only: :dev, runtime: false},
       # HEEX in the guides is otherwise rendered unhighlighted beside the Elixir around it.
       {:makeup_eex, "~> 2.0", only: :dev, runtime: false},

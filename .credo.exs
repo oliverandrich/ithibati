@@ -6,9 +6,30 @@
     %{
       name: "default",
       plugins: [{ExSlop, []}],
-      files: %{included: ["lib/", "test/", "adapter_test/", "credo/", "mix.exs"]},
+      files: %{
+        included: [
+          "lib/",
+          "test/",
+          "adapter_test/",
+          "credo/",
+          "mix.exs",
+          "examples/*/priv/repo/migrations/"
+        ]
+      },
       checks: %{
         extra: [
+          {Jump.CredoChecks.AvoidFunctionLevelElse, []},
+          {Jump.CredoChecks.AvoidLoggerConfigureInTest, []},
+          {Jump.CredoChecks.UndeclaredExternalResource, []},
+          {Jump.CredoChecks.TestHasNoAssertions, []},
+          {Jump.CredoChecks.NoManualContentDisposition, []},
+          {Jump.CredoChecks.AssertElementSelectorCanNeverFail, []},
+          {Jump.CredoChecks.LiveViewFormCanBeRehydrated, []},
+          {Jump.CredoChecks.LiveViewPubSubRequiresConnected, []},
+          # Test/adapter migrations are disposable fixtures; deployment safety applies
+          # to the example applications. The library's migration API has behavior tests.
+          {ExcellentMigrations.CredoCheck.MigrationsSafety,
+           files: %{included: ["examples/*/priv/repo/migrations/"]}},
           {Ithibati.Credo.IdentityIsPortable, []},
           {Ithibati.Credo.NoBeanIds, []},
           # Exact list sizes are useful assertions, including for generated recovery codes.

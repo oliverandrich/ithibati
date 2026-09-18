@@ -1,5 +1,10 @@
 import Config
 
+if config_env() in [:dev, :test] do
+  # Preserve existing example migrations; lint subsequent deployment migrations.
+  config :excellent_migrations, start_after: "20260918000000"
+end
+
 # A library has no configuration of its own — a consumer configures the repo it wants used. What is
 # here exists only so this project can run its own tests, and a consumer never reads it: Mix loads
 # the top-level application's `config/`, never a dependency's.
