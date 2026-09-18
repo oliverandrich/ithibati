@@ -36,15 +36,16 @@ tests. The exact selection is in `.credo.exs`; these development dependencies do
 become dependencies of consumers. Migration warnings need context for the target
 database/version, and any safety exception needs a concrete reason.
 
-For changes affecting shared browser integration, run both example gates from the repository
+For changes affecting shared browser integration, run all three example gates from the repository
 root. For a change confined to one example, run that example's gate:
 
 ```console
 $ (cd examples/open_registration && mix precommit)
 $ (cd examples/invitation_only && mix precommit)
+$ (cd examples/email_registration && mix precommit)
 ```
 
-CI runs both examples in a matrix. Their browser tests are the only tests that execute
+CI runs all three examples in a matrix. Their browser tests are the only tests that execute
 `priv/static/ithibati.js`.
 
 To preview documentation, run `mise run docs` and open `http://127.0.0.1:8000`. Python 3 is
@@ -176,3 +177,22 @@ Omit the body for self-explanatory changes such as a version bump.
 
 Ithibati is MIT; contributions use the same licence. Attribute externally sourced code and
 state its licence.
+
+## Example application tooling
+
+The examples inherit the repository's mise toolchain, local Beans tracker and GitHub workflows;
+they are consumer examples within this repository, not independently scaffolded projects.
+`email_registration` reuses the existing example scaffold and browser helpers to preserve that
+integration. Its `mix precommit` checks compilation, non-mutating lockfile hygiene, formatting,
+compile-connected dependencies, assets and tests. The root Credo gate includes its source, tests
+and migrations using the existing external check selection. No second toolchain, tracker,
+Credo dependency set or additional development server is installed inside the example.
+Sobelow and Tidewave are omitted to keep the same application tooling boundary as the existing
+examples. New migrations have timestamps after the fixed migration-lint adoption boundary.
+
+The email example uses port 4003 in development and 4103 for browser tests, and its own
+`ithibati_email_dev` / `ithibati_email_test` databases. Its mailbox preview is compiled only with
+`dev_routes: true`, enabled in development and absent by default in test and production.
+`mise run audit-email-example` audits its independent lockfile separately from the check gate;
+the scheduled audit workflow and Dependabot include it. No development database reset is part
+of verification.

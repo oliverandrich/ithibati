@@ -24,7 +24,7 @@ defmodule Ithibati.Schema.Identifier do
 
   The pattern accepts forms such as `you@example.com` and `you@localhost` and rejects quoted
   local parts such as `"a b"@example.com`. It checks syntax only; it does not verify ownership
-  of a mailbox. Ithibati sends no email.
+  of a mailbox. Optional invitation delivery is separate from identifier validation.
 
   This deliberately narrow input format keeps identifiers easy to enter in browser forms.
   It does not implement the full RFC 5322 mailbox grammar; a rejected address is not
@@ -137,7 +137,7 @@ defmodule Ithibati.Schema.Identifier do
         raise ArgumentError,
               "use #{inspect(macro)} needs `identifier:` — the field somebody is known by, such " <>
                 "as `identifier: :email` or `identifier: :username`. There is no default: this " <>
-                "library never sends mail, so it will not ask you for an address by assumption."
+                "library does not assume that an account identifier is an email address."
     end
   end
 

@@ -1,7 +1,7 @@
 # Ithibati, invitation only
 
 Nobody registers here without an invitation — except the first person, who has nobody to invite
-them. Both answers live in one function, `registration_subject/2` in `lib/ithibati_invites/auth.ex`,
+them. Both answers live in one function, `registration_subject/2` in `lib/ithibati_invites_web/auth.ex`,
 where [`examples/open_registration`](../open_registration) simply answers `{:ok, username}`.
 
 Read the two side by side. The account schema, the users migration, the ceremony routes, the hook
@@ -50,7 +50,7 @@ driver fails the run and says what to do.
 
 | | |
 |---|---|
-| `lib/ithibati_invites/auth.ex` | The hinge. Two shapes of one transaction: the first account claims the instance, an invited one is spent as it is accepted. |
+| `lib/ithibati_invites_web/auth.ex` | The hinge. Two shapes of one transaction: the first account claims the instance, an invited one is spent as it is accepted. |
 | `lib/ithibati_invites/accounts/invitation.ex` | The invitations table is yours. Ithibati adds the invitee's identifier, the token digest, an expiry and an acceptance timestamp; what an invitation *grants* would go here. |
 | `lib/ithibati_invites_web/live/inside_live.ex` | Writing one. The token exists in memory for exactly as long as this page renders. |
 | `lib/ithibati_invites_web/live/invite_live.ex` | Accepting one, and why there is no field to change the name. |
@@ -77,3 +77,44 @@ it would look like a form that hands an invitation to whoever fills it in.
 Both are artefacts of living inside the library: a path dependency has no `deps/ithibati` for the
 bare specifier to resolve against, and Node's module resolution would otherwise walk up into the
 library's own `package.json`. Take Ithibati from Hex and neither is needed.
+
+## Optional invitation mail and open registration
+
+This application owns a [Swoosh mailer](https://hexdocs.pm/swoosh/Swoosh.Mailer.html).
+`Ithibati.InvitationMail` calls the content and delivery functions in
+`lib/ithibati_invites/invitation_email.ex`. Replace the wording with your templates and configure
+the application's sender and mailer adapter for real delivery. The default Local adapter only
+stores messages in memory; it does not send to external mailboxes.
+
+To enable mail in `config/dev.exs`:
+
+```elixir
+config :ithibati, :invitation_mail, enabled: true
+```
+
+Config merges keyword settings from `config/config.exs`, preserving both callback functions.
+An authorized application action can send a link that it already holds:
+
+```elixir
+Ithibati.InvitationMail.deliver("ada@example.test", invitation_url)
+```
+
+To also allow visitors to request their own invitations:
+
+```elixir
+config :ithibati_invites, :open_registration, true
+```
+
+After the initial instance claim, the public page offers username and email fields. Submitting
+sends the link; following it uses the existing invitation page and passkey registration.
+Both switches are required. This example uses username identifiers. In an application with email
+identifiers, collect one email address and use it for both the invitation identifier and delivery.
+The email address is only the delivery destination in this username-based example;
+it is not stored as an account identifier or a verified profile field. The mail request does not
+reserve the username. Before exposing this flow publicly, add rate limits per source and recipient.
+
+With the Local adapter you can inspect the captured messages in `iex -S mix phx.server` using
+`Swoosh.Adapters.Local.Storage.Memory.all()`. The test suite uses `Swoosh.Adapters.Test` and
+covers manual delivery, the public form, acceptance, disabled switches and failure paths.
+The application returns a neutral public message for failed and successful requests alike;
+`Registration.request_invitation/2` returns the detailed result to application callers.

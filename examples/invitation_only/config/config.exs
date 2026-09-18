@@ -20,6 +20,15 @@ config :ithibati_invites,
   ecto_repos: [IthibatiInvites.Repo],
   generators: [timestamp_type: :utc_datetime]
 
+config :ithibati, :invitation_mail,
+  enabled: false,
+  content: &IthibatiInvites.InvitationEmail.content/2,
+  deliver: &IthibatiInvites.InvitationEmail.deliver/2
+
+config :ithibati_invites, :open_registration, false
+config :ithibati_invites, IthibatiInvites.Mailer, adapter: Swoosh.Adapters.Local
+config :swoosh, :api_client, false
+
 # Configures the endpoint
 config :ithibati_invites, IthibatiInvitesWeb.Endpoint,
   url: [host: "localhost"],

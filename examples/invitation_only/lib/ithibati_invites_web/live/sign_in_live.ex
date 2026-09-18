@@ -10,6 +10,7 @@ defmodule IthibatiInvitesWeb.SignInLive do
   use IthibatiInvitesWeb, :live_view
 
   alias Ithibati.Identity.Instance
+  alias IthibatiInvites.Registration
   alias IthibatiInvitesWeb.CeremonyMessages
 
   @impl true
@@ -17,7 +18,13 @@ defmodule IthibatiInvitesWeb.SignInLive do
     # Courtesy only: `registration_subject/2` asks the same question before minting a challenge,
     # and that is the answer that counts. A request posted straight at the endpoint meets the real
     # refusal whatever this page shows.
-    {:ok, assign(socket, username: "", error: nil, needs_setup?: Instance.needs_setup?())}
+    {:ok,
+     assign(socket,
+       username: "",
+       error: nil,
+       needs_setup?: Instance.needs_setup?(),
+       open_registration?: Registration.open?()
+     )}
   end
 
   @impl true
@@ -29,6 +36,17 @@ defmodule IthibatiInvitesWeb.SignInLive do
     # Pushed to the hook, which takes it from here.
     {:noreply,
      socket |> assign(error: nil) |> push_event("ithibati:register", %{username: username})}
+  end
+
+  def handle_event("request-invitation", params, socket) do
+    _result = Registration.request_invitation(params["username"], params["email"])
+
+    {:noreply,
+     put_flash(
+       socket,
+       :info,
+       "If registration is available for these details, an invitation email will arrive shortly."
+     )}
   end
 
   def handle_event("sign-in", _params, socket) do
@@ -48,11 +66,11 @@ defmodule IthibatiInvitesWeb.SignInLive do
     ~H"""
     <Layouts.app flash={@flash}>
       <.header>
-        Invitation only
+        {if @open_registration?, do: "Register by email", else: "Invitation only"}
         <:subtitle :if={@needs_setup?}>
           Nobody has claimed this instance yet. Whoever does invites everyone else.
         </:subtitle>
-        <:subtitle :if={not @needs_setup?}>
+        <:subtitle :if={not @needs_setup? and not @open_registration?}>
           Registration is by invitation. Sign in, or open the link somebody sent you.
         </:subtitle>
       </.header>
@@ -78,6 +96,23 @@ defmodule IthibatiInvitesWeb.SignInLive do
           placeholder="ada_lovelace"
         />
         <.button variant="primary">Claim this instance</.button>
+      </form>
+
+      <form
+        :if={@open_registration?}
+        id="request-invitation"
+        phx-submit="request-invitation"
+        class="mt-6"
+      >
+        <.input
+          name="username"
+          value=""
+          label="Username"
+          required
+          pattern={Layouts.username_pattern()}
+        />
+        <.input name="email" type="email" value="" label="Email address" required />
+        <.button variant="primary">Email me a registration link</.button>
       </form>
 
       <div class="mt-4">

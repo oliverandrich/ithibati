@@ -142,3 +142,7 @@ run = ["mix deps.audit", "mix hex.audit"]
 [tasks.beans]
 description = "List the live backlog (everything not completed or scrapped)"
 run = "beans list --no-status completed --no-status scrapped"
+
+[tasks.audit-email-example]
+description = "Audit the email registration example's independent dependency lock"
+run = ["mix deps.audit --path examples/email_registration", "cd examples/email_registration && mix hex.audit"]

@@ -13,6 +13,8 @@
           "adapter_test/",
           "credo/",
           "mix.exs",
+          "examples/email_registration/lib/",
+          "examples/email_registration/test/",
           "examples/*/priv/repo/migrations/"
         ]
       },

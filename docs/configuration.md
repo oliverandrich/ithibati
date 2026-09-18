@@ -15,6 +15,7 @@ Set these keys under `config :ithibati`:
 | `table_prefix` | `"ithibati"` | Prefix of Ithibati's table names |
 | `session_validity` | `{60, :day}` | Maximum age of a session |
 | `invitation_schema` | Unset | Application-owned invitation schema, when invitations are enabled |
+| `invitation_mail` | `[]` (disabled) | Opt-in content and delivery callbacks for existing invitation links |
 
 For example, in `config/config.exs`:
 
@@ -109,7 +110,10 @@ associations. Your application declares any additional fields.
 
 `identifier_changeset/2` trims and lowercases the identifier, requires a value and applies
 `format:` when supplied. Omitting `format:` keeps normalization and presence validation.
-Choosing an email identifier does not verify that someone owns the mailbox; Ithibati sends no mail.
+Choosing an email identifier does not verify that someone owns the mailbox. Optional
+[invitation mail](invitations.md#email-delivery) requires explicit configuration. In the email
+registration flow, the invitation and account use the same email identifier, and the link is
+sent to that address. The initial form needs only one email field.
 
 ### Formats and messages
 
@@ -246,3 +250,24 @@ The identifier field must match the account schema's identifier. The
 [invitation guide](invitations.md) covers the columns, token index and acceptance transaction.
 
 After changing the integration, run [`mix ithibati.doctor`](doctor.md) against the target database.
+
+## Invitation mail
+
+`Ithibati.InvitationMail.deliver/2` reads `config :ithibati, :invitation_mail` at runtime.
+The three-argument form takes a complete options list instead; it does not merge configuration.
+
+```elixir
+config :ithibati, :invitation_mail,
+  enabled: true,
+  content: &MyApp.InvitationEmail.content/2,
+  deliver: &MyApp.InvitationEmail.deliver/2
+```
+
+Delivery defaults to disabled. `enabled: false` returns `{:ok, :disabled}` and invokes neither
+callback. When enabled, both callbacks must be functions of arity two. Optional `context:` is
+passed unchanged to the content callback, defaulting to `%{}`. The sender belongs to the delivery
+callback; the subject belongs to the content result. No mail or template dependency is added to
+the library. See [email delivery](invitations.md#email-delivery) for the contracts and Swoosh example.
+
+This switch enables delivery, not public registration. The application still decides who may
+request an invitation and when to call delivery. Existing registration handlers are unchanged.

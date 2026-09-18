@@ -52,6 +52,8 @@ Ithibati supplies the token and acceptance step.
 | Diagnose an installation | [Setup checks](doctor.md) |
 | Check integration code automatically | [Credo checks](credo.md) |
 
-The repository includes complete [open-registration](https://github.com/oliverandrich/ithibati/tree/main/examples/open_registration)
-and [invitation-only](https://github.com/oliverandrich/ithibati/tree/main/examples/invitation_only)
-applications. CI runs their suites, including browser tests.
+The repository includes complete [open-registration](https://github.com/oliverandrich/ithibati/tree/main/examples/open_registration),
+[invitation-only](https://github.com/oliverandrich/ithibati/tree/main/examples/invitation_only),
+and [email-registration](https://github.com/oliverandrich/ithibati/tree/main/examples/email_registration)
+applications. The email example uses one email field and a local mailbox preview. CI runs their
+suites, including browser tests.

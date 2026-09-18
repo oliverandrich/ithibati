@@ -251,13 +251,13 @@ jobs:
     runs-on: ubuntu-latest
 
     strategy:
-      # One red example must not hide the other: they are the same application either side of one
-      # decision, and which of them fails is most of the answer.
+      # Run every registration example even when another example fails.
       fail-fast: false
       matrix:
         example:
           - open_registration
           - invitation_only
+          - email_registration
 
     services:
       postgres:
@@ -351,7 +351,7 @@ jobs:
       # all. So the output is read — and printed before it is judged, because a compile that *fails*
       # says why in the same stream, and swallowing that leaves a red job with an empty log.
       #
-      # Once, not per example: both take the same library at the same path with the same optional
+      # Once, not per example: all take the same library at the same path with the same optional
       # dependencies present.
       - name: Check the library compiled into the example without warnings
         if: matrix.example == 'open_registration'

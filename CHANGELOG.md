@@ -8,6 +8,19 @@ Releases that change the database schema state the new schema version and the re
 migration. Add a migration calling `Ithibati.Migration.up(from: <old>, version: <new>)` when
 upgrading to one of those releases.
 
+## [Unreleased]
+
+### Added
+
+- A third Phoenix example, `examples/email_registration`, demonstrates one email address as
+  account identifier and mail recipient, a development mailbox preview, and passkey registration
+  through emailed invitation links, including for the first account.
+
+- Optional delivery of existing invitation links with `Ithibati.InvitationMail`, using
+  application-owned content and mailer callbacks. Supports text and optional HTML, explicit
+  delivery errors and a guard against sending inside a transaction. The invitation example
+  demonstrates opt-in public registration by email through its existing acceptance flow.
+
 ## [0.3.0] - 2026-09-18
 
 ### Breaking changes

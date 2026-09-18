@@ -39,3 +39,6 @@ jobs:
 
       - name: Audit dependencies
         run: mise run audit
+
+      - name: Audit the email registration example
+        run: mise run audit-email-example

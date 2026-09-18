@@ -31,3 +31,16 @@ updates:
         update-types:
           - minor
           - patch
+
+  - package-ecosystem: mix
+    directory: /examples/email_registration
+    cooldown:
+      default-days: 7
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 3
+    groups:
+      hex:
+        update-types:
+          - minor
+          - patch

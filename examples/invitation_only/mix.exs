@@ -43,6 +43,7 @@ defmodule IthibatiInvites.MixProject do
       {:ithibati, path: "../.."},
       {:phoenix, "~> 1.8.1"},
       {:phoenix_ecto, "~> 4.5"},
+      {:swoosh, "~> 1.28"},
       # Pinned to the patch line, not the minor: the virtual authenticator goes through
       # `Wallaby.HTTPClient`, which is `@moduledoc false`, so an internal change would land in
       # every feature test at once looking like a browser problem.

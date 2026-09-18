@@ -362,7 +362,8 @@ MyAppWeb.Endpoint.url() <> "/invite/" <> invitation.token
 ```
 
 The returned struct carries the plaintext `token`; a later database read does not recover it.
-Deliver the link to its intended recipient. Ithibati does not send mail.
+Deliver the link to its intended recipient, manually or through the optional
+[email delivery integration](#email-delivery).
 
 An invitation is a bearer secret: whoever holds the link can accept it. In an application keyed
 by email, mailing the token to that address can form the application's address-verification
@@ -405,3 +406,115 @@ consistent order throughout the application and its fixtures to avoid deadlocks.
 `Invitations.expired/0` returns expired, unaccepted invitations. `Invitations.delete_expired/0`
 deletes them and returns the count. Ithibati schedules no cleanup job; expired links are refused
 whether or not the rows have been removed.
+
+## Email delivery
+
+`Ithibati.InvitationMail` sends an **existing link** through two application functions. It does
+not create a second kind of invitation. Keep the schema, token generation, expiry and acceptance
+flow above, and call delivery after the invitation has been persisted successfully.
+
+For a Phoenix application with an existing Swoosh mailer, create
+`lib/my_app/invitation_email.ex`:
+
+```elixir
+defmodule MyApp.InvitationEmail do
+  import Swoosh.Email
+
+  def content(url, _context) do
+    {:ok, %{subject: "Your invitation", text: "Complete your registration: #{url}"}}
+  end
+
+  def deliver(recipient, content) do
+    new()
+    |> to(recipient)
+    |> from({"My application", "invites@example.com"})
+    |> subject(content.subject)
+    |> text_body(content.text)
+    |> html_body(Map.get(content, :html))
+    |> MyApp.Mailer.deliver()
+  end
+end
+```
+
+Configure these functions:
+
+```elixir
+config :ithibati, :invitation_mail,
+  enabled: true,
+  content: &MyApp.InvitationEmail.content/2,
+  deliver: &MyApp.InvitationEmail.deliver/2
+```
+
+The content callback receives the full URL and optional `context:` (default `%{}`). Return
+`{:ok, %{subject: subject, text: text}}` or include `html: html` for a multipart message. Subject
+and text must be non-empty strings. The callback can render application templates and handle
+localization; escape dynamic values in HTML. MJML and other template tools can live behind this
+callback, without becoming dependencies of Ithibati. The delivery callback receives the recipient
+and the content map, and returns `{:ok, receipt}` or `{:error, reason}`. A mailer other than Swoosh
+works through the same contract.
+
+An authorized admin action can pass the link it already generated:
+
+```elixir
+url = MyAppWeb.Endpoint.url() <> "/invite/" <> invitation.token
+Ithibati.InvitationMail.deliver("recipient@example.com", url)
+```
+
+Use a trusted endpoint URL, not a request-supplied host. In the email registration scenario,
+the email address is both the account identifier and the recipient address. Send to the same
+normalized email stored on the invitation; do not collect a second address. The username-based
+example in this guide instead supplies a separate delivery address because a username is not a
+mailbox. Delivery validates the address's shape using
+`Ithibati.Schema.Identifier.email_format/0`, not its existence. Following a bearer link proves
+possession of that link; sending a message alone does not verify mailbox ownership, and a
+forwarded link can be used by its holder. This API adds no verified-email field to an account.
+
+### Open registration through email
+
+Keep public registration policy in the application. When public registration **and** mail
+sending are enabled in the email registration scenario, the initial form collects one email
+address. That address is the identifier on both the invitation and the eventual account, and
+also the mail recipient. The application creates an invitation through its existing schema and
+repo, then calls `Ithibati.InvitationMail.deliver/2` with the invitation's normalized email and
+the resulting link. Do not start a passkey ceremony at
+this point. The email opens the existing invitation page, whose handler requires a valid token
+at both the challenge and completion steps and accepts it in the account transaction.
+
+See the [runnable email-registration example](https://github.com/oliverandrich/ithibati/tree/main/examples/email_registration).
+`IthibatiEmail.Registration` creates and sends invitations, `IthibatiEmail.InvitationEmail`
+connects to its Swoosh mailer, and `IthibatiEmailWeb.SignInLive` requests the link automatically.
+There is one email field, and even the first account requires a link. The development mailbox
+at `/dev/mailbox` lets you inspect the message and follow its link without real email delivery.
+
+The [invitation-only example](https://github.com/oliverandrich/ithibati/tree/main/examples/invitation_only)
+uses usernames and a separate first-instance bootstrap. The ordinary
+[open-registration example](https://github.com/oliverandrich/ithibati/tree/main/examples/open_registration)
+continues to demonstrate registration without email.
+
+Without mail configuration, delivery is disabled and existing registration handlers continue to
+work as written. Do not silently bypass a required invitation when sending fails. Give public
+requests a neutral response regardless of whether an identifier already exists, and apply rate
+limits per source and recipient before issuing invitations. A generic response does not by
+itself remove timing differences. Authorization for admin actions remains in the application.
+
+### Transactions, failures and retries
+
+Call delivery only after the **outermost** invitation transaction commits. Calls inside the
+configured repo's transaction return `{:error, :transaction_in_progress}` before rendering or
+sending. Delivery does not enqueue work for later and cannot inspect transactions in other
+processes or repos; the caller must ensure the link refers to a committed invitation.
+
+A successful send returns `{:ok, receipt}`; disabled delivery returns `{:ok, :disabled}`.
+Input/configuration errors are `{:error, :invalid_recipient}`, `{:error, :invalid_url}` or
+`{:error, :invalid_configuration}`. Callback errors are tagged as `{:error, {:content, reason}}`
+or `{:error, {:delivery, reason}}`; a malformed result uses `:invalid_result` as the reason.
+Callback exceptions propagate as programming errors. Do not log complete callback failures,
+content maps or URLs if they contain secrets or recipient data.
+
+Rendering or delivery failure does not undo an already committed invitation. Retry with the
+same URL while it is still held in memory. A transport failure can be ambiguous and a retry
+may send a duplicate. Once the plaintext token is lost, a database read cannot recover it:
+issue another invitation through the existing schema flow. If replacement should invalidate
+older invitations, revoke them in application code; creating a new invitation does not do that
+automatically. Existing links remain subject to their expiry and single-use acceptance checks.
+No plaintext-token storage, queue or scheduling service is introduced by this integration.

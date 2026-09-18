@@ -33,9 +33,10 @@ You also build the registration, sign-in and recovery-code pages. Ithibati suppl
 endpoints and browser integration; the examples show how to connect them to a working interface.
 
 For invitations, you own the invitation table and decide what accepting one grants. Your
-application delivers the link. Ithibati sends no mail, and choosing an email address as an
-account identifier does not by itself verify ownership of that address. Rate limiting for
-sign-in and recovery endpoints is also the application's responsibility.
+application can deliver existing links with `Ithibati.InvitationMail`, using its own content
+callback and mailer. See [email delivery](docs/invitations.md#email-delivery). Choosing an email
+address as an account identifier does not by itself verify ownership of that address. Rate
+limiting for registration, sign-in and recovery is the application's responsibility.
 
 ## Requirements
 
@@ -111,14 +112,18 @@ web framework connects.
 
 ## Examples and documentation
 
-Two complete Phoenix applications show the supported registration flows:
+Three complete Phoenix applications show the supported registration flows:
 
 - [Open registration](https://github.com/oliverandrich/ithibati/tree/main/examples/open_registration):
   anyone who reaches the page can choose a username and register a passkey.
 - [Invitation only](https://github.com/oliverandrich/ithibati/tree/main/examples/invitation_only):
   the first account claims the instance; subsequent accounts need an invitation link.
 
-CI compiles both applications, runs their tests and exercises them in a browser.
+- [Email registration](https://github.com/oliverandrich/ithibati/tree/main/examples/email_registration):
+  one email address identifies the account and receives the registration link; a local mailbox
+  preview lets you follow the link and create a passkey without real email delivery.
+
+CI compiles all three applications, runs their tests and exercises them in a browser.
 
 The [documentation](https://hexdocs.pm/ithibati) includes guides for:
 
