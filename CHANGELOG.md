@@ -8,7 +8,7 @@ Releases that change the database schema state the new schema version and the re
 migration. Add a migration calling `Ithibati.Migration.up(from: <old>, version: <new>)` when
 upgrading to one of those releases.
 
-## Unreleased
+## [0.3.0] - 2026-09-18
 
 ### Breaking changes
 
@@ -186,6 +186,7 @@ the application.
   receives the account and any replacement code batch to display.
 - Three optional Credo checks for consuming applications.
 
+[0.3.0]: https://github.com/oliverandrich/ithibati/releases/tag/v0.3.0
 [0.2.0]: https://github.com/oliverandrich/ithibati/releases/tag/v0.2.0
 [0.1.3]: https://github.com/oliverandrich/ithibati/releases/tag/v0.1.3
 [0.1.2]: https://github.com/oliverandrich/ithibati/releases/tag/v0.1.2
