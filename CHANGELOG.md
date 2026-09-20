@@ -10,6 +10,8 @@ upgrading to one of those releases.
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-09-20
+
 ### Upgrading from 0.4.0
 
 Database schema version is now 3. Existing installations must add a new application migration
@@ -231,6 +233,7 @@ the application.
   receives the account and any replacement code batch to display.
 - Three optional Credo checks for consuming applications.
 
+[0.5.0]: https://github.com/oliverandrich/ithibati/releases/tag/v0.5.0
 [0.4.0]: https://github.com/oliverandrich/ithibati/releases/tag/v0.4.0
 [0.3.0]: https://github.com/oliverandrich/ithibati/releases/tag/v0.3.0
 [0.2.0]: https://github.com/oliverandrich/ithibati/releases/tag/v0.2.0
