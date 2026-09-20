@@ -124,5 +124,5 @@ results such as `:invalid` or `:last_key`. Ithibati never automatically replays 
 callback. If your application retries, restart the entire transaction, bound the attempts and
 ensure that external side effects are safe to repeat.
 
-All three backends use Ithibati schema version 2. Keep applied migrations pinned to their original
+All three backends support Ithibati schema version 3. Keep applied migrations pinned to their original
 version; see [Upgrading the database schema](configuration.md#upgrading-the-database-schema).

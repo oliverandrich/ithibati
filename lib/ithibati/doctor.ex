@@ -27,6 +27,7 @@ defmodule Ithibati.Doctor do
     Ithibati.Challenge,
     Ithibati.RecoveryCode,
     Ithibati.Session,
+    Ithibati.SetupCode,
     Ithibati.UserKey
   ]
 
@@ -55,6 +56,7 @@ defmodule Ithibati.Doctor do
       {"config :ithibati, user_schema:", named(answered(&Config.user_schema/0))},
       {"config :ithibati, invitation_schema:", invitation_schema()},
       {"config :ithibati, session_validity:", validity()},
+      {"config :ithibati, initial_claim:", named(answered(&Config.initial_claim_mode/0))},
       {"this library's tables", database_check(database, &tables/1)},
       {"config :ithibati, users_key_type:", database_check(database, &account_key/1)},
       {"the identifier's unique index", database_check(database, &identifier_index/1)},

@@ -61,6 +61,7 @@ defmodule Ithibati.DoctorTest do
                "config :ithibati, user_schema:",
                "config :ithibati, invitation_schema:",
                "config :ithibati, session_validity:",
+               "config :ithibati, initial_claim:",
                "this library's tables",
                "config :ithibati, users_key_type:",
                "the identifier's unique index",
@@ -259,6 +260,15 @@ defmodule Ithibati.DoctorTest do
       detail = detail(Doctor.examine(:ithibati), "this library's tables")
 
       assert detail =~ "ithibati_bootstrap"
+      assert detail =~ "migration"
+    end
+
+    test "a protected claim reports a missing operator-code table" do
+      put_env(:ithibati, :initial_claim, :operator_code)
+      SQL.query!(Ithibati.TestRepo, "DROP TABLE ithibati_setup_codes", [])
+
+      detail = detail(Doctor.examine(:ithibati), "this library's tables")
+      assert detail =~ "ithibati_setup_codes"
       assert detail =~ "migration"
     end
 

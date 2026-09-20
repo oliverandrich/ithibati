@@ -6,8 +6,9 @@ defmodule Ithibati.Config do
   and table names. Configure them before compiling Ithibati. The account schema, invitation
   schema and repo are read at runtime, when the consuming application's modules are available.
 
-  `Ithibati.Identity.Sessions` reads and validates `:session_validity`. The relying-party ID and
-  origin are per-call ceremony parameters, not Ithibati configuration.
+  `Ithibati.Identity.Sessions` reads and validates `:session_validity`.
+  `initial_claim: :operator_code` protects `Ithibati.Identity.Instance.claim/2`. The relying-party
+  ID and origin are per-call ceremony parameters, not Ithibati configuration.
 
   [Configuration and schemas](configuration.md) lists the keys, defaults and migration requirements.
   """
@@ -27,6 +28,18 @@ defmodule Ithibati.Config do
       ArgumentError,
       "config :ithibati, users_key_type: must be :binary_id or :id, got: #{inspect(@users_key_type)}"
     )
+
+  @doc "Returns `:open` or `:operator_code` for the first account claim."
+  def initial_claim_mode do
+    case Application.get_env(:ithibati, :initial_claim, :open) do
+      mode when mode in [:open, :operator_code] ->
+        mode
+
+      other ->
+        raise ArgumentError,
+              "config :ithibati, initial_claim: must be :open or :operator_code, got: #{inspect(other)}"
+    end
+  end
 
   @doc "Returns the compiled table-name prefix (default: `ithibati`)."
   def table_prefix, do: @table_prefix

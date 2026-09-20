@@ -8,13 +8,24 @@ defmodule IthibatiInvitesWeb.InvitationTest do
   """
   use IthibatiInvitesWeb.FeatureCase
 
+  alias Ithibati.Identity.Instance
   alias IthibatiInvites.Accounts.Invitation
 
   # The two preludes the first test walks through with its own assertions, so that the tests about
   # something else can reach their subject in a line.
-  defp claim(session, username) do
+  defp enter_operator_code(session) do
+    {:ok, code} = Instance.issue_code()
+
     session
     |> open("/")
+    |> fill_in(css("input[name=setup_code]"), with: code)
+    |> click(button("Continue to first account"))
+    |> through_navigation(css("input[name=username]"))
+  end
+
+  defp claim(session, username) do
+    session
+    |> enter_operator_code()
     |> fill_in(css("input[name=username]"), with: username)
     |> click(button("Claim this instance"))
     |> landed_on("/recovery-codes")
@@ -40,9 +51,15 @@ defmodule IthibatiInvitesWeb.InvitationTest do
   } do
     virtual_authenticator(session)
 
+    {:ok, code} = Instance.issue_code()
+
     session
     |> open("/")
     |> assert_has(css("p", text: "Nobody has claimed this instance yet"))
+    |> refute_has(css("input[name=username]"))
+    |> fill_in(css("input[name=setup_code]"), with: code)
+    |> click(button("Continue to first account"))
+    |> through_navigation(css("input[name=username]"))
     |> fill_in(css("input[name=username]"), with: "ada")
     |> click(button("Claim this instance"))
     |> landed_on("/recovery-codes")

@@ -72,12 +72,12 @@ defmodule Ithibati.Credo.IdentityIsPortableTest do
     test "what the core may name is left alone" do
       """
       defmodule Ithibati.Identity do
-        alias Ithibati.{Challenge, RecoveryCode, Session, UserKey}
+        alias Ithibati.{Challenge, RecoveryCode, Session, SetupCode, UserKey}
         alias Ithibati.Bootstrap
         alias Ithibati.Config
 
         def get(id), do: Config.repo().get(UserKey, id)
-        def codes, do: {RecoveryCode, Session, Bootstrap}
+        def codes, do: {RecoveryCode, Session, SetupCode, Bootstrap}
       end
       """
       |> check()

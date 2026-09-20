@@ -61,6 +61,13 @@ if Application.compile_env!(:ithibati, :probe_adapter) in [
     def down, do: Ithibati.Migration.down(from: 1, version: 2)
   end
 
+  defmodule Ithibati.AdapterSetupCodeMigration do
+    @moduledoc false
+    use Ecto.Migration
+    def up, do: Ithibati.Migration.up(from: 2, version: 3)
+    def down, do: Ithibati.Migration.down(from: 2, version: 3)
+  end
+
   defmodule Ithibati.AdapterLaterInvitationMigration do
     @moduledoc false
     use Ecto.Migration

@@ -24,6 +24,7 @@ defmodule Ithibati.Migration do
   Keep versions pinned in applied migrations. `current_version/0` reports the newest version
   this release supports. `down/1` removes the changes covered by the matching range.
 
+  Version 3 adds the operator-code digest table used by protected first claims.
   Table names and account foreign-key types come from the configured schemas. `up/1` verifies
   required columns, key types and unique indexes before creating its tables. The application
   continues to own its account and invitation tables.
@@ -43,9 +44,10 @@ defmodule Ithibati.Migration do
   alias Ithibati.Config
   alias Ithibati.RecoveryCode
   alias Ithibati.Session
+  alias Ithibati.SetupCode
   alias Ithibati.UserKey
 
-  @current_version 2
+  @current_version 3
 
   # Ordered as they are created; `down` reverses it, so a table added to one clause cannot be
   # forgotten in the other.
@@ -195,6 +197,16 @@ defmodule Ithibati.Migration do
     value in allowed ||
       raise(ArgumentError, "#{name} must be #{described}, got: #{inspect(value)}")
   end
+
+  defp step(3, :up, _opts) do
+    create table(source(SetupCode), primary_key: false) do
+      add :id, :integer, primary_key: true
+      add :digest, :binary, binary_options(32)
+      timestamps(type: :utc_datetime_usec)
+    end
+  end
+
+  defp step(3, :down, _opts), do: drop_if_exists(table(source(SetupCode)))
 
   defp step(2, :up, _opts) do
     create table(source(Challenge), primary_key: false) do

@@ -13,6 +13,19 @@ if Application.get_env(:ithibati, :probe_adapter) in [Ecto.Adapters.SQLite3, Ect
       Sessions
     }
 
+    test "operator-code storage migrates down and back up without losing bootstrap" do
+      assert :ok =
+               Ecto.Migrator.down(Repo, 15, Ithibati.AdapterSetupCodeMigration, log: false)
+
+      refute Ithibati.Catalogue.table(Repo, nil, Ithibati.Config.table("setup_codes"))
+
+      assert :ok =
+               Ecto.Migrator.up(Repo, 15, Ithibati.AdapterSetupCodeMigration, log: false)
+
+      assert Ithibati.Catalogue.table(Repo, nil, Ithibati.Config.table("setup_codes"))
+      assert Ithibati.Catalogue.table(Repo, nil, Ithibati.Config.table("bootstrap"))
+    end
+
     test "recovery codes are single-use and final redemption refills exactly once" do
       user = user()
       [code] = RecoveryCodes.regenerate(user, count: 1)
@@ -63,6 +76,88 @@ if Application.get_env(:ithibati, :probe_adapter) in [Ecto.Adapters.SQLite3, Ect
       assert Enum.any?(results, &match?({:error, :bootstrap, :already_claimed, _}, &1))
       Repo.delete!(user)
       refute Instance.needs_setup?()
+    end
+
+    test "operator code authorization is consumed by one protected claim" do
+      previous = Application.fetch_env(:ithibati, :initial_claim)
+      Application.put_env(:ithibati, :initial_claim, :operator_code)
+
+      on_exit(fn ->
+        case previous do
+          {:ok, value} -> Application.put_env(:ithibati, :initial_claim, value)
+          :error -> Application.delete_env(:ithibati, :initial_claim)
+        end
+      end)
+
+      assert {:ok, first} = Instance.issue_code()
+      assert {:ok, old_proof} = Instance.authorize_code(first)
+      assert {:ok, second} = Instance.issue_code()
+      refute Instance.authorized?(old_proof)
+      assert {:ok, proof} = Instance.authorize_code(second)
+
+      assert {:error, :bootstrap, :setup_authorization_required, _} =
+               Multi.new()
+               |> Multi.put(:account, user())
+               |> Instance.claim()
+               |> Repo.transaction()
+
+      account = user()
+
+      results =
+        race(fn _ ->
+          Multi.new()
+          |> Multi.put(:account, account)
+          |> Instance.claim(authorization: proof)
+          |> Repo.transaction()
+        end)
+
+      assert Enum.count(results, &match?({:ok, _}, &1)) == 1
+
+      assert Enum.any?(
+               results,
+               &match?({:error, :bootstrap, :setup_authorization_required, _}, &1)
+             )
+
+      refute Instance.needs_setup?()
+      assert {:error, :already_claimed} = Instance.issue_code()
+    end
+
+    test "rotation racing a protected claim leaves one valid outcome" do
+      previous = Application.fetch_env(:ithibati, :initial_claim)
+      Application.put_env(:ithibati, :initial_claim, :operator_code)
+
+      on_exit(fn ->
+        case previous do
+          {:ok, value} -> Application.put_env(:ithibati, :initial_claim, value)
+          :error -> Application.delete_env(:ithibati, :initial_claim)
+        end
+      end)
+
+      {:ok, code} = Instance.issue_code()
+      {:ok, proof} = Instance.authorize_code(code)
+      account = user()
+
+      [issued, claimed] =
+        race(fn
+          1 ->
+            Instance.issue_code()
+
+          2 ->
+            Multi.new()
+            |> Multi.put(:account, account)
+            |> Instance.claim(authorization: proof)
+            |> Repo.transaction()
+        end)
+
+      case {issued, claimed} do
+        {{:ok, replacement}, {:error, :bootstrap, :setup_authorization_required, _}} ->
+          assert {:ok, _} = Instance.authorize_code(replacement)
+          assert Instance.needs_setup?()
+
+        {{:error, :already_claimed}, {:ok, _}} ->
+          refute Instance.needs_setup?()
+          refute Repo.get(Ithibati.SetupCode, 1)
+      end
     end
 
     test "different final recovery codes refill only once" do

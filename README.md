@@ -15,8 +15,9 @@ and built for Phoenix.
 - Single-use recovery codes for signing in when a passkey is unavailable.
 - Revocable server-side sessions. The browser holds a secret; the database stores its digest.
   Signing out revokes the session in the database.
-- Invitation tokens, expiry and redemption, plus a way to claim the first account on an empty
-  instance. Both open registration and invitation-only applications are supported.
+- Invitation tokens, expiry and redemption, plus an optional operator-code guard for claiming the
+  first account on an empty instance. Both open registration and invitation-only applications
+  are supported.
 - Changeset helpers and composable `Ecto.Multi` steps. Create an account, its first passkey and
   its recovery codes in one transaction, alongside your own application changes.
 

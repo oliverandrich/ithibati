@@ -28,6 +28,12 @@ defmodule Ithibati.MigrationTest do
     def down, do: Ithibati.Migration.down(from: 1, version: 2)
   end
 
+  defmodule SetupCodeUpgrade do
+    use Ecto.Migration
+    def up, do: Ithibati.Migration.up(from: 2, version: 3)
+    def down, do: Ithibati.Migration.down(from: 2, version: 3)
+  end
+
   defmodule Probe do
     use Ecto.Migration
 
@@ -287,6 +293,35 @@ defmodule Ithibati.MigrationTest do
 
     assert Ithibati.Catalogue.table(TestRepo, @schema, "ithibati_challenges") == nil
     assert missing() == []
+  end
+
+  test "version 3 adds and rolls back operator-code storage independently" do
+    :ok = migrate(:up)
+
+    assert :ok =
+             Ecto.Migrator.up(TestRepo, @version + 1, ChallengeUpgrade,
+               prefix: @schema,
+               log: false
+             )
+
+    assert :ok =
+             Ecto.Migrator.up(TestRepo, @version + 2, SetupCodeUpgrade,
+               prefix: @schema,
+               log: false
+             )
+
+    table = Ithibati.Catalogue.table(TestRepo, @schema, "ithibati_setup_codes")
+    assert is_integer(table)
+    assert {"bytea", false} = Ithibati.Catalogue.column(TestRepo, table, :digest)
+
+    assert :ok =
+             Ecto.Migrator.down(TestRepo, @version + 2, SetupCodeUpgrade,
+               prefix: @schema,
+               log: false
+             )
+
+    assert Ithibati.Catalogue.table(TestRepo, @schema, "ithibati_setup_codes") == nil
+    assert Ithibati.Catalogue.table(TestRepo, @schema, "ithibati_challenges")
   end
 
   test "down removes every table it built" do

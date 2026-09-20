@@ -42,6 +42,7 @@ defmodule IthibatiInvitesWeb.Router do
       live "/inside", InsideLive
     end
 
+    post "/setup-code", SetupController, :authorize
     get "/recovery-codes", SessionController, :recovery_codes
     delete "/session", SessionController, :sign_out
   end

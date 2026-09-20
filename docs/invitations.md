@@ -1,7 +1,8 @@
 # Invitations and the first account
 
 Adapt the application from [Getting started](getting_started.md) so the first account claims
-the instance and subsequent accounts need an invitation. Your application owns the invitation
+the instance and subsequent accounts need an invitation. Protect that first claim with an
+operator-issued code before exposing the application publicly. Your application owns the invitation
 table and decides who may issue links and what accepting one grants.
 
 This guide uses username identifiers, matching the walkthrough. For finished code, see the
@@ -110,6 +111,34 @@ Migration and doctor checks do not require identical account and invitation iden
 Choose their comparison semantics deliberately. For an existing table, use a new application
 migration to alter its column; do not edit a migration that has already run.
 
+### Protect the first account claim
+
+The one-time bootstrap row prevents a *second* claim; by itself it does not prove that the first
+visitor is the operator. Configure the protected mode before serving an unclaimed instance:
+
+```elixir
+config :ithibati, initial_claim: :operator_code
+```
+
+The [getting-started migration](getting_started.md#4-the-migration) at version 3 already creates
+the operator-code digest table. If your application has only applied version 2, add a **new**
+application migration with `Ithibati.Migration.up(from: 2, version: 3)` and the matching `down/1`.
+Apply it explicitly before issuing a code. Never edit an applied migration.
+
+`Instance.issue_code/0` issues a fresh 32-byte random code and returns its plaintext once.
+Ithibati stores only its SHA-256 digest in the database. Expose the operation through an application-owned
+operator command, such as the `mix ithibati_invites.setup_code` task in the
+[invitation-only example](https://github.com/oliverandrich/ithibati/tree/main/examples/invitation_only). Print the returned code to the
+operator's terminal, not an HTTP response or a startup log. Running the command again rotates the
+code and revokes earlier authorization. After a successful claim it returns
+`{:error, :already_claimed}`. The application chooses a rate limit for its public code form.
+
+`Instance.authorize_code/1` checks the code and returns a short-lived proof for the browser
+session. The application calls `Instance.authorized?/1` before starting a passkey challenge and
+passes that same proof to `Instance.claim/2` at completion. The claim atomically consumes it with
+the account insert and bootstrap claim. A direct request without a proof therefore fails even if
+the page hid its form. In protected mode, `Instance.claim/2` refuses missing authorization.
+
 ## 3. Replace the registration handler
 
 Replace `lib/my_app_web/auth.ex` with this handler. It retains authentication and recovery from
@@ -120,7 +149,7 @@ defmodule MyAppWeb.Auth do
   @behaviour Ithibati.Web.Handler
 
   import Phoenix.Controller, only: [json: 2]
-  import Plug.Conn, only: [put_session: 3]
+  import Plug.Conn, only: [get_session: 2, put_session: 3]
 
   alias Ecto.Multi
   alias Ithibati.Identity.Grant
@@ -131,10 +160,14 @@ defmodule MyAppWeb.Auth do
   alias MyApp.Repo
 
   @impl true
-  def registration_subject(_conn, params) do
-    if Instance.needs_setup?(),
-      do: first_account(params),
-      else: invited(params["token"])
+  def registration_subject(conn, params) do
+    if Instance.needs_setup?() do
+      if Instance.authorized?(get_session(conn, :initial_claim_authorization)),
+        do: first_account(params),
+        else: {:error, :setup_authorization_required}
+    else
+      invited(params["token"])
+    end
   end
 
   defp first_account(%{"username" => username}) do
@@ -158,7 +191,7 @@ defmodule MyAppWeb.Auth do
 
   @impl true
   def register(conn, key_attrs, username, params) do
-    registration_multi(username, params["token"], key_attrs)
+    registration_multi(username, conn, params["token"], key_attrs)
     |> Repo.transaction()
     |> case do
       {:ok, %{account: account, recovery_codes: codes}} ->
@@ -193,13 +226,13 @@ defmodule MyAppWeb.Auth do
      |> json(%{redirect: "/recovery-codes"})}
   end
 
-  defp registration_multi(username, token, key_attrs) do
+  defp registration_multi(username, conn, token, key_attrs) do
     account = User.changeset(%User{}, %{"username" => username})
 
     if Instance.needs_setup?() do
       Multi.new()
       |> Multi.insert(:account, account)
-      |> Instance.claim()
+      |> Instance.claim(authorization: get_session(conn, :initial_claim_authorization))
       |> Grant.with_key_and_codes(key_attrs)
     else
       case Invitations.fetch(token) do
@@ -221,6 +254,7 @@ end
 `Instance.needs_setup?/0` selects the path for the request. `Instance.claim/2` enforces the
 one-time claim inside the transaction, including when two people try concurrently. A losing
 claim returns `{:error, :bootstrap, :already_claimed, changes}` and rolls back the account.
+A missing, expired or rotated proof returns `:setup_authorization_required` under the same step.
 
 `Invitations.fetch/1` returns a pending, unexpired invitation or `nil`. The handler checks again
 at completion and handles `nil` before calling `accept/3`. An invitation can expire or be spent
@@ -324,21 +358,45 @@ In `MyAppWeb.SignInLive`, alias `Ithibati.Identity.Instance` and replace `mount/
 
 ```elixir
 @impl true
-def mount(_params, _session, socket),
-  do: {:ok, assign(socket, username: "", error: nil, setup: Instance.needs_setup?())}
+def mount(_params, session, socket) do
+  setup = Instance.needs_setup?()
+
+  {:ok,
+   assign(socket,
+     username: "",
+     error: nil,
+     setup: setup,
+     setup_authorized?: setup and Instance.authorized?(session["initial_claim_authorization"])
+   )}
+end
 ```
 
-Add `:if={@setup}` to the username registration form:
+Show a regular, CSRF-protected form that posts the operator code to an application controller
+while `@setup and not @setup_authorized?`. Only offer the username registration form when
+`@setup and @setup_authorized?`:
 
 ```heex
-<form :if={@setup} phx-change="validate" phx-submit="register">
+<.form :if={@setup and not @setup_authorized?} for={%{}} action={~p"/setup-code"}>
+  <.input name="setup_code" type="password" value="" label="Operator code" required />
+  <.button>Continue</.button>
+</.form>
 ```
+
+Add `:if={@setup and @setup_authorized?}` to the existing username registration form.
+Add `post "/setup-code", SetupController, :authorize` to the CSRF-protected browser scope. The
+controller calls `Instance.authorize_code/1`, stores the returned proof under
+`:initial_claim_authorization` in the session, sets `Cache-Control: no-store`, and redirects
+back to the page. The
+[invitation-only example](https://github.com/oliverandrich/ithibati/tree/main/examples/invitation_only)
+has the complete controller. Include `"setup_code"` in Phoenix's `:filter_parameters` so request
+logs hide it. Apply an application or edge rate limit to this public POST.
 
 Keep the sign-in button, recovery form and hook outside that conditional form. Add these
 clauses before the existing catch-all `message/1` clause:
 
 ```elixir
 defp message("already_claimed"), do: "Somebody has already set this instance up."
+defp message("setup_authorization_required"), do: "Enter the current operator code first."
 defp message("invitation_unknown"), do: "Registration now needs a valid invitation link."
 defp message("invalid_invitation"), do: "This invitation is no longer available."
 defp message("identifier_mismatch"), do: "This invitation does not match the registration."
@@ -374,12 +432,13 @@ not establish how its current holder obtained the link.
 
 Run `mix ithibati.doctor`, then try this on a fresh development instance:
 
-1. Open `/` and create the first account.
-2. Sign out. The public page should no longer offer open registration.
-3. Create an invitation through the console or your authorized invitation action.
-4. Open the link and register its account with a passkey.
-5. Save the codes and confirm access to `/inside`.
-6. Open the same link again. It should be unavailable.
+1. Issue a code with the application-owned operator command, then open `/` and enter it.
+2. Create the first account with a passkey.
+3. Sign out. The public page should no longer offer open registration.
+4. Create an invitation through the console or your authorized invitation action.
+5. Open the link and register its account with a passkey.
+6. Save the codes and confirm access to `/inside`.
+7. Open the same link again. It should be unavailable.
 
 The bootstrap claim survives deletion of the account that made it. Use a fresh development
 database for another first-claim walkthrough; deleting an account is not a setup reset.

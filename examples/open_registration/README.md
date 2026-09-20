@@ -49,7 +49,7 @@ driver fails the run and says what to do.
 | `lib/ithibati_open/auth.ex` | The three decisions Ithibati refuses to make for you. Here they are as short as they go. |
 | `lib/ithibati_open/accounts/user.ex` | Your account table stays yours, and the identifier here is a **username** — `Identifier.username_format/0`, one of the two patterns the library offers rather than imposes. Neither is a default: what an identifier may look like is not its business. |
 | `config/config.exs` | What Ithibati is told: your repo, your account schema, the type your `users.id` has. |
-| `priv/repo/migrations/` | Yours first, then `Ithibati.Migration.up(version: 1)`, pinned. |
+| `priv/repo/migrations/` | Application tables first, then pinned Ithibati versions 1, 2 and 3 in separate migrations. |
 | `lib/ithibati_open_web/router.ex` | One macro call for the ceremony, its own pipeline, and `Ithibati.Web.Gate` for who is signed in. |
 | `lib/ithibati_open_web/live/sign_in_live.ex` | The LiveView says *when*; the hook does the round-trips. |
 | `assets/js/app.js` | One import line, merged into the hooks the socket already takes. |

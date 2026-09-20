@@ -23,7 +23,10 @@ defmodule IthibatiInvitesWeb.InvitationEmailTest do
       Application.put_env(:ithibati_invites, :open_registration, open)
     end)
 
-    {:ok, _} = Auth.register(session_conn(), key_attrs(), "admin", %{})
+    {:ok, code} = Ithibati.Identity.Instance.issue_code()
+    {:ok, proof} = Ithibati.Identity.Instance.authorize_code(code)
+    conn = Plug.Conn.put_session(session_conn(), :initial_claim_authorization, proof)
+    {:ok, _} = Auth.register(conn, key_attrs(), "admin", %{})
     :ok
   end
 

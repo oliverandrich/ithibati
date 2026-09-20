@@ -10,6 +10,30 @@ upgrading to one of those releases.
 
 ## [Unreleased]
 
+### Upgrading from 0.4.0
+
+Database schema version is now 3. Existing installations must add a new application migration
+before deploying a release with this change:
+
+```elixir
+def up, do: Ithibati.Migration.up(from: 2, version: 3)
+def down, do: Ithibati.Migration.down(from: 2, version: 3)
+```
+
+Keep older migrations pinned. Version 3 adds the operator-code digest table; it preserves
+existing accounts, passkeys and sessions. Apply the migration even if the application keeps the
+default `initial_claim: :open`. See [Upgrading the database schema](docs/configuration.md#upgrading-the-database-schema).
+
+### Added
+
+- Optional `initial_claim: :operator_code` protects the first-account claim with an
+  operator-issued code. `Ithibati.Identity.Instance` issues and rotates the code, exchanges it
+  for a ten-minute authorization, and consumes that authorization in the account transaction.
+  The default `:open` mode preserves existing claim behavior. See
+  [Invitations and the first account](docs/invitations.md#protect-the-first-account-claim).
+- The invitation-only example demonstrates the operator command, code form and protected
+  registration handler. `mix ithibati.doctor` checks the new table and configuration.
+
 ## [0.4.0] - 2026-09-18
 
 ### Upgrading from 0.3.0

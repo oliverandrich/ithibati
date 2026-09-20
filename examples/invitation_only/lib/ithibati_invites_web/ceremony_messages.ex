@@ -17,6 +17,9 @@ defmodule IthibatiInvitesWeb.CeremonyMessages do
   def message("ceremony_failed", name) when is_binary(name), do: "Your browser refused: #{name}."
   def message(code, _name), do: sentence(code)
 
+  defp sentence("setup_authorization_required"),
+    do: "Enter the current operator code before creating a passkey."
+
   defp sentence("invitation_required"), do: "This instance is invitation-only."
   defp sentence("invitation_unknown"), do: "That invitation has been used, or has expired."
   defp sentence("username_taken"), do: "That username is taken."

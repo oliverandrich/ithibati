@@ -1,7 +1,9 @@
 # Ithibati, invitation only
 
 Nobody registers here without an invitation — except the first person, who has nobody to invite
-them. Both answers live in one function, `registration_subject/2` in `lib/ithibati_invites_web/auth.ex`,
+them. The first person must enter an operator-issued code before starting a passkey ceremony.
+Both answers live in one function, `registration_subject/2` in
+`lib/ithibati_invites_web/auth.ex`,
 where [`examples/open_registration`](../open_registration) simply answers `{:ok, username}`.
 
 Read the two side by side. The account schema, the users migration, the ceremony routes, the hook
@@ -14,21 +16,25 @@ Needs Postgres. Credentials are the generated defaults in `config/dev.exs`.
 
 ```
 mix setup
+mix ithibati_invites.setup_code
 mix phx.server
 ```
 
 Then open <http://localhost:4000> (the open-registration example uses the same port, so run one at
 a time, or give this one `PORT=4001`):
 
-1. The instance is unclaimed, so it offers a form. Pick a username and prove it with a passkey —
-   that account claims the instance and the form never appears again.
+1. The operator command prints a code to your terminal. Enter it on the unclaimed instance,
+   then pick a username and prove it with a passkey. That account claims the instance and the
+   setup form never appears again. Issuing another code before the claim revokes the old one.
+   Add a per-source rate limit to the public code form before exposing the application.
 2. Go inside, invite somebody, and copy the link. It is shown once: the row holds the token's
    sha256, so nothing can show it to you again.
 3. Open the link (a private window is easiest). It names the username the invitation was addressed
    to and does not offer to change it.
 
 No hardware needed if you would rather not: Chrome DevTools has a virtual authenticator under
-*More tools → WebAuthn*. `mix ecto.reset` starts over.
+*More tools → WebAuthn*. `mix ecto.reset` deletes the development database and starts over;
+use it only with disposable data.
 
 ## The browser tests
 
@@ -50,11 +56,12 @@ driver fails the run and says what to do.
 
 | | |
 |---|---|
-| `lib/ithibati_invites_web/auth.ex` | The hinge. Two shapes of one transaction: the first account claims the instance, an invited one is spent as it is accepted. |
+| `lib/ithibati_invites_web/auth.ex` | The hinge. The first claim consumes operator authorization; an invited link is spent as it is accepted. |
+| `lib/ithibati_invites_web/controllers/setup_controller.ex` | Exchanges the operator code for a short-lived session proof. |
 | `lib/ithibati_invites/accounts/invitation.ex` | The invitations table is yours. Ithibati adds the invitee's identifier, the token digest, an expiry and an acceptance timestamp; what an invitation *grants* would go here. |
 | `lib/ithibati_invites_web/live/inside_live.ex` | Writing one. The token exists in memory for exactly as long as this page renders. |
 | `lib/ithibati_invites_web/live/invite_live.ex` | Accepting one, and why there is no field to change the name. |
-| `priv/repo/migrations/` | Yours first — both tables — then `Ithibati.Migration.up(version: 1)`, pinned. |
+| `priv/repo/migrations/` | Application tables first, then pinned Ithibati versions 1, 2 and 3 in separate migrations. |
 
 ## Three things worth noticing
 

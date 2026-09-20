@@ -37,6 +37,7 @@ if Application.compile_env!(:ithibati, :probe_adapter) in [
       Ecto.Migrator.up(Repo, 10, Ithibati.AdapterApplicationMigration, log: false)
       Ecto.Migrator.up(Repo, 11, Ithibati.AdapterLibraryMigration, log: false)
       Ecto.Migrator.up(Repo, 14, Ithibati.AdapterChallengeMigration, log: false)
+      Ecto.Migrator.up(Repo, 15, Ithibati.AdapterSetupCodeMigration, log: false)
       clear()
       on_exit(&clear/0)
       :ok
@@ -118,6 +119,7 @@ if Application.compile_env!(:ithibati, :probe_adapter) in [
     defp clear do
       Repo.delete_all(Ithibati.Challenge)
       Repo.delete_all(Ithibati.Bootstrap)
+      Repo.delete_all(Ithibati.SetupCode)
       Repo.delete_all(Ithibati.AdapterUser)
       Repo.delete_all(Ithibati.AdapterInvitation)
     end

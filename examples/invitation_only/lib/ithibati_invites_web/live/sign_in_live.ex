@@ -14,15 +14,19 @@ defmodule IthibatiInvitesWeb.SignInLive do
   alias IthibatiInvitesWeb.CeremonyMessages
 
   @impl true
-  def mount(_params, _session, socket) do
+  def mount(_params, session, socket) do
     # Courtesy only: `registration_subject/2` asks the same question before minting a challenge,
     # and that is the answer that counts. A request posted straight at the endpoint meets the real
     # refusal whatever this page shows.
+    needs_setup? = Instance.needs_setup?()
+
     {:ok,
      assign(socket,
        username: "",
        error: nil,
-       needs_setup?: Instance.needs_setup?(),
+       needs_setup?: needs_setup?,
+       setup_authorized?:
+         needs_setup? and Instance.authorized?(session["initial_claim_authorization"]),
        open_registration?: Registration.open?()
      )}
   end
@@ -68,7 +72,7 @@ defmodule IthibatiInvitesWeb.SignInLive do
       <.header>
         {if @open_registration?, do: "Register by email", else: "Invitation only"}
         <:subtitle :if={@needs_setup?}>
-          Nobody has claimed this instance yet. Whoever does invites everyone else.
+          Nobody has claimed this instance yet. Enter the operator code to create the first account.
         </:subtitle>
         <:subtitle :if={not @needs_setup? and not @open_registration?}>
           Registration is by invitation. Sign in, or open the link somebody sent you.
@@ -85,7 +89,30 @@ defmodule IthibatiInvitesWeb.SignInLive do
 
       <div :if={@error} class="alert alert-error mt-6"><span>{@error}</span></div>
 
-      <form :if={@needs_setup?} phx-change="validate" phx-submit="register" class="mt-6">
+      <.form
+        :if={@needs_setup? and not @setup_authorized?}
+        for={%{}}
+        id="setup-code-form"
+        action={~p"/setup-code"}
+        class="mt-6"
+      >
+        <.input
+          name="setup_code"
+          type="password"
+          value=""
+          label="Operator code"
+          autocomplete="off"
+          required
+        />
+        <.button variant="primary">Continue to first account</.button>
+      </.form>
+
+      <form
+        :if={@needs_setup? and @setup_authorized?}
+        phx-change="validate"
+        phx-submit="register"
+        class="mt-6"
+      >
         <.input
           name="username"
           value={@username}

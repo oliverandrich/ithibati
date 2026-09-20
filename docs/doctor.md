@@ -26,6 +26,7 @@ The doctor combines configuration validation with checks that require a running 
 | Handler callbacks | Each discovered handler implements the four required callbacks |
 | Mounted handlers | Router mounts refer to available handler modules |
 | Session validity | The value uses a positive count and a supported unit |
+| Initial claim | The configured mode is `:open` or `:operator_code`; the version 3 code table exists |
 | WebAuthn configuration | No unused `wax_` origin or RP-ID settings are misleading the integration |
 
 The complete set is defined in `Ithibati.Doctor`; this table groups related checks by the action

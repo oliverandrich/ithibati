@@ -9,7 +9,10 @@ defmodule IthibatiInvitesWeb.CeremonyTest do
   use IthibatiInvitesWeb.ConnCase
 
   defp signed_conn do
-    conn = get(build_conn(), "/")
+    {:ok, code} = Ithibati.Identity.Instance.issue_code()
+    initial = get(build_conn(), "/")
+    authorized = initial |> recycle() |> post("/setup-code", %{"setup_code" => code})
+    conn = authorized |> recycle() |> get("/")
     [_, token] = Regex.run(~r/name="csrf-token" content="([^"]+)"/, html_response(conn, 200))
 
     {recycle(conn), token}

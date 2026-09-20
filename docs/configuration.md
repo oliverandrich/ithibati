@@ -14,6 +14,7 @@ Set these keys under `config :ithibati`:
 | `users_key_type` | `:binary_id` | Type used for foreign keys to the account table |
 | `table_prefix` | `"ithibati"` | Prefix of Ithibati's table names |
 | `session_validity` | `{60, :day}` | Maximum age of a session |
+| `initial_claim` | `:open` | `:operator_code` requires an operator-issued code for the first claim |
 | `invitation_schema` | Unset | Application-owned invitation schema, when invitations are enabled |
 | `invitation_mail` | `[]` (disabled) | Opt-in content and delivery callbacks for existing invitation links |
 
@@ -188,8 +189,8 @@ tables and, by default, the identifier's unique index:
 defmodule MyApp.Repo.Migrations.AddIthibati do
   use Ecto.Migration
 
-  def up, do: Ithibati.Migration.up(version: 2)
-  def down, do: Ithibati.Migration.down(version: 2)
+  def up, do: Ithibati.Migration.up(version: 3)
+  def down, do: Ithibati.Migration.down(version: 3)
 end
 ```
 
@@ -226,7 +227,7 @@ changes who creates the index, not the uniqueness Ithibati requires.
 ### Upgrading the database schema
 
 Keep existing migrations pinned to their original version. `Ithibati.Migration.current_version/0`
-returns the version supported by the installed library. This checkout uses version 2.
+returns the version supported by the installed library. This checkout uses version 3.
 
 Existing calls to `Ithibati.Migration.up(version: 1)` and
 `Ithibati.Migration.down(version: 1)` must remain pinned to version 1.
@@ -239,9 +240,20 @@ def up, do: Ithibati.Migration.up(from: 1, version: 2)
 def down, do: Ithibati.Migration.down(from: 1, version: 2)
 ```
 
-Fresh installations use `up(version: 2)`. Rolling back only version 2 removes outstanding
-challenges but preserves accounts, passkeys, recovery codes and sessions. Deploy the older
-application code when rolling back; the current endpoints require this table.
+Version 3 adds the operator-code digest table. Add another application migration when upgrading
+from version 2:
+
+```elixir
+def up, do: Ithibati.Migration.up(from: 2, version: 3)
+def down, do: Ithibati.Migration.down(from: 2, version: 3)
+```
+
+Fresh installations use `up(version: 3)`. Rolling back only version 2 removes outstanding
+challenges; rolling back version 3 removes any pending operator code. Neither rollback removes
+accounts, passkeys, recovery codes or sessions. Deploy code compatible with the remaining schema
+when rolling back. An application that enables `initial_claim: :operator_code` must apply version 3
+before issuing codes or serving setup requests. Keep the mode enabled while the instance is
+unclaimed; switching it to `:open` permits an unprotected claim.
 
 ## Invitations
 

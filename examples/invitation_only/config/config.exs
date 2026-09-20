@@ -14,7 +14,8 @@ config :ithibati,
   repo: IthibatiInvites.Repo,
   user_schema: IthibatiInvites.Accounts.User,
   invitation_schema: IthibatiInvites.Accounts.Invitation,
-  users_key_type: :id
+  users_key_type: :id,
+  initial_claim: :operator_code
 
 config :ithibati_invites,
   ecto_repos: [IthibatiInvites.Repo],
@@ -67,6 +68,16 @@ config :tailwind,
     ),
     cd: Path.expand("..", __DIR__)
   ]
+
+# Keep setup credentials and other bearer secrets out of Phoenix request logs.
+config :phoenix, :filter_parameters, [
+  "password",
+  "secret",
+  "token",
+  "code",
+  "setup_code",
+  "credential"
+]
 
 # Configures Elixir's Logger
 config :logger, :default_formatter,

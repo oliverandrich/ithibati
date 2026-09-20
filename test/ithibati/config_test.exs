@@ -43,6 +43,21 @@ defmodule Ithibati.ConfigTest do
     end
   end
 
+  describe "initial_claim_mode/0" do
+    test "defaults to an open claim for existing integrations" do
+      delete_env(:ithibati, :initial_claim)
+      assert Config.initial_claim_mode() == :open
+    end
+
+    test "rejects an unknown claim mode" do
+      put_env(:ithibati, initial_claim: :unsafe)
+
+      assert_raise ArgumentError, ~r/initial_claim.*:open or :operator_code/, fn ->
+        Config.initial_claim_mode()
+      end
+    end
+  end
+
   describe "invitation_schema/0" do
     # The one setting of the three that is allowed to be absent: an application that invites nobody
     # configures nothing, and every path that would read it is one it never takes.
