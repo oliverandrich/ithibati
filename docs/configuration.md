@@ -189,8 +189,8 @@ tables and, by default, the identifier's unique index:
 defmodule MyApp.Repo.Migrations.AddIthibati do
   use Ecto.Migration
 
-  def up, do: Ithibati.Migration.up(version: 3)
-  def down, do: Ithibati.Migration.down(version: 3)
+  def up, do: Ithibati.Migration.up(version: 4)
+  def down, do: Ithibati.Migration.down(version: 4)
 end
 ```
 
@@ -227,7 +227,7 @@ changes who creates the index, not the uniqueness Ithibati requires.
 ### Upgrading the database schema
 
 Keep existing migrations pinned to their original version. `Ithibati.Migration.current_version/0`
-returns the version supported by the installed library. This checkout uses version 3.
+returns the version supported by the installed library. This checkout uses version 4.
 
 Existing calls to `Ithibati.Migration.up(version: 1)` and
 `Ithibati.Migration.down(version: 1)` must remain pinned to version 1.
@@ -248,8 +248,22 @@ def up, do: Ithibati.Migration.up(from: 2, version: 3)
 def down, do: Ithibati.Migration.down(from: 2, version: 3)
 ```
 
-Fresh installations use `up(version: 3)`. Rolling back only version 2 removes outstanding
-challenges; rolling back version 3 removes any pending operator code. Neither rollback removes
+Version 4 adds `invited_by_id` to the invitation table, which the application owns. An
+application that uses invitations and created that table earlier adds the column when upgrading
+from version 3:
+
+```elixir
+alter table(:invitations) do
+  Ithibati.Migration.invitation_inviter_column(version: 4)
+end
+```
+
+An application without invitations has nothing to do for version 4.
+
+Fresh installations use `up(version: 4)`. Rolling back only version 2 removes outstanding
+challenges; rolling back version 3 removes any pending operator code. Version 4 changes nothing
+in Ithibati's own tables — it adds the inviter to the invitation table the application owns — so
+stepping to it or back builds nothing here. Neither rollback removes
 accounts, passkeys, recovery codes or sessions. Deploy code compatible with the remaining schema
 when rolling back. An application that enables `initial_claim: :operator_code` must apply version 3
 before issuing codes or serving setup requests. Keep the mode enabled while the instance is

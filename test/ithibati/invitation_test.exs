@@ -59,12 +59,44 @@ defmodule Ithibati.Schema.InvitationTest do
     test "the invitee's identifier, the digest, the two timestamps and the virtual token" do
       fields = TestInvitation.__schema__(:fields)
 
-      for field <- [:email, :token_hash, :expires_at, :accepted_at], do: assert(field in fields)
+      for field <- [:email, :token_hash, :expires_at, :accepted_at, :invited_by_id],
+          do: assert(field in fields)
+
+      # The column, not the association. Declaring `belongs_to` here would need the account
+      # schema while this one compiles, which would pin a third setting to compile time — and an
+      # application that already wrote the association by hand would stop compiling.
+      assert TestInvitation.__schema__(:type, :invited_by_id) == Ithibati.Config.users_key_type()
+      assert TestInvitation.__schema__(:associations) == []
 
       # Virtual fields are not in `:fields` at all, which is exactly what makes it the safe place to
       # put a secret: nothing selects it, nothing writes it.
       refute :token in fields
       assert :token in TestInvitation.__schema__(:virtual_fields)
+    end
+
+    # Never from the attributes. An application that hands a form's params to the changeset would
+    # otherwise let whoever filled it in name the inviter.
+    test "and never takes the inviter from the attributes" do
+      changeset =
+        TestInvitation.changeset(%TestInvitation{}, %{
+          email: "invited@example.test",
+          role: :author,
+          invited_by_id: "whoever-i-like"
+        })
+
+      assert changeset.valid?
+      refute Ecto.Changeset.get_change(changeset, :invited_by_id)
+    end
+
+    # The caller puts it there, because the caller is the one who knows.
+    test "and the caller puts it there" do
+      changeset =
+        %TestInvitation{}
+        |> TestInvitation.changeset(%{email: "invited@example.test", role: :author})
+        |> Ecto.Changeset.put_change(:invited_by_id, inviter_id())
+
+      assert changeset.valid?
+      assert Ecto.Changeset.get_change(changeset, :invited_by_id) == inviter_id()
     end
 
     test "and answers what it was told" do
@@ -319,6 +351,14 @@ defmodule Ithibati.Schema.InvitationTest do
           inside: "ithibati_invitation()"
         )
       end
+    end
+  end
+
+  # The account key the suite was compiled for, so this reads on both legs of the matrix.
+  defp inviter_id do
+    case Ithibati.Config.users_key_type() do
+      :binary_id -> "11111111-1111-4111-8111-111111111111"
+      :id -> 4_294_967_296
     end
   end
 end

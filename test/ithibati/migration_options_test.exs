@@ -15,7 +15,11 @@ defmodule Ithibati.MigrationOptionsTest do
   end
 
   test "a version this release does not know" do
-    assert_raise ArgumentError, ~r/version must be 1\.\.3/, fn ->
+    # The range comes from the release rather than being written out, so a version bump does not
+    # need this line changed — and the message is checked to name the range it actually allows.
+    expected = ~r/version must be 1\.\.#{Migration.current_version()}/
+
+    assert_raise ArgumentError, expected, fn ->
       Migration.up(version: Migration.current_version() + 1)
     end
   end

@@ -81,6 +81,16 @@ defmodule Ithibati.Schema.Invitation do
       field :token_hash, :binary
       field :expires_at, :utc_datetime_usec
       field :accepted_at, :utc_datetime_usec
+
+      # The column, not the association. A `belongs_to` here would need the account schema while
+      # this one compiles, pinning a third setting to compile time; and an application that
+      # already wrote the association itself would stop compiling. Write it beside this macro
+      # when you want it — the foreign key is named for it.
+      #
+      # Not cast by `invitation_changeset/3` either. Who is inviting is known to the caller and
+      # to nobody else, least of all to the form: an application that hands its params straight
+      # through would otherwise let a visitor name whoever they liked.
+      field :invited_by_id, Ithibati.Config.users_key_type()
     end
   end
 

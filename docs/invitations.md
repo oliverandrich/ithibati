@@ -64,11 +64,11 @@ defmodule MyApp.Repo.Migrations.CreateInvitations do
 
   def change do
     create table(:invitations) do
-      Ithibati.Migration.invitation_columns(version: 1)
+      Ithibati.Migration.invitation_columns(version: 4)
       timestamps(type: :utc_datetime_usec)
     end
 
-    Ithibati.Migration.invitation_index(version: 1)
+    Ithibati.Migration.invitation_index(version: 4)
   end
 end
 ```
@@ -89,9 +89,14 @@ $ mix ecto.migrate
 | `token_hash` | `:binary` | No |
 | `expires_at` | `:utc_datetime_usec` | No |
 | `accepted_at` | `:utc_datetime_usec` | Yes |
+| `invited_by_id` | Your account key, from version 4 | Yes |
 
-The plaintext token is virtual and is not stored. For an existing table, supply the same
-columns and required index. Most applications can keep `:string`: both changesets trim and
+The plaintext token is virtual and is not stored. Pin the version the way `up/1` is pinned: a
+migration written today says `version: 4`, and one written before that goes on producing what it
+produced then. For a table created before version 4, add the inviter with
+`invitation_inviter_column/1` rather than editing the migration that made it.
+
+For an existing table, supply the same columns and required index. Most applications can keep `:string`: both changesets trim and
 lowercase identifiers. If you deliberately use PostgreSQL `citext`, for example to handle
 writes outside the changesets, select it explicitly:
 
@@ -488,6 +493,35 @@ from(i in Ithibati.Identity.Invitations.pending_query(),
 ```
 
 `Invitations.pending/0` returns all of them for an application that needs no scoping.
+
+An invitation also carries `invited_by_id`. The changeset does not cast it: who is inviting is
+known to the caller and to nobody else, so an application that hands a form's params straight
+through cannot let a visitor name whoever they like. Put it there yourself:
+
+```elixir
+%MyApp.Accounts.Invitation{}
+|> MyApp.Accounts.Invitation.changeset(attrs)
+|> Ecto.Changeset.put_change(:invited_by_id, inviter.id)
+```
+
+It is nullable: rows written before the column existed have none.
+
+> #### The column, not the association {: .info}
+>
+> Ithibati declares `invited_by_id` and stops there. Write the association yourself when you
+> want one:
+>
+> ```elixir
+> schema "invitations" do
+>   ithibati_invitation()
+>   belongs_to :invited_by, MyApp.Accounts.User, define_field: false
+> end
+> ```
+>
+> Declaring it in the macro would need the account schema while your invitation schema compiles,
+> which would pin `user_schema` to compile time — a third setting frozen at build, beside
+> `users_key_type` and `table_prefix`. It would also stop compiling for any application that had
+> already written the association by hand, because Ecto refuses a field declared twice.
 
 `Invitations.withdraw/1` takes one back and returns `{:ok, invitation}`, or
 `{:error, :already_accepted}` when the row was accepted or is no longer there. It rechecks the

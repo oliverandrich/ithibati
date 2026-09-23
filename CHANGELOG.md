@@ -10,8 +10,35 @@ upgrading to one of those releases.
 
 ## [Unreleased]
 
+### Upgrading from 0.5.0
+
+Database schema version is now 4. An application that uses invitations and created its table
+before this release adds the inviter column with a new migration:
+
+```elixir
+def change do
+  alter table(:invitations) do
+    Ithibati.Migration.invitation_inviter_column(version: 4)
+  end
+end
+```
+
+Ithibati's own tables do not change in version 4, so `up(from: 3, version: 4)` succeeds and
+builds nothing. Write it if your deployment steps through versions; it is not required.
+
+Keep older migrations pinned. `invitation_columns/1` produces the column only from `version: 4`,
+so a migration file already written goes on producing the table it produced then and a rebuilt
+database does not receive it twice. An application that does not use invitations has nothing to
+do. See [Upgrading the database schema](docs/configuration.md#upgrading-the-database-schema).
+
 ### Added
 
+- `invited_by_id` on the invitation schema, set by the caller with `put_change/3` rather than
+  cast — who is inviting is known to the caller and to nobody else, least of all to a form — and
+  `Ithibati.Migration.invitation_inviter_column/1` for a table that predates it. The column and
+  not the association: declaring `belongs_to` in the macro would pin `user_schema` to compile
+  time and would stop compiling for an application that had already written it by hand. See
+  [Invitations](docs/invitations.md#showing-and-withdrawing-pending-invitations).
 - `Ithibati.Identity.Invitations.pending_query/0`, `pending/0` and `withdraw/1`. The module could
   open an invitation and accept it, but an application could not see what was outstanding or take
   one back, so every consumer wrote the same three queries against a schema this library

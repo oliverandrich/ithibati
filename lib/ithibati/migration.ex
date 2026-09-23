@@ -47,7 +47,7 @@ defmodule Ithibati.Migration do
   alias Ithibati.SetupCode
   alias Ithibati.UserKey
 
-  @current_version 3
+  @current_version 4
 
   # Ordered as they are created; `down` reverses it, so a table added to one clause cannot be
   # forgotten in the other.
@@ -91,7 +91,7 @@ defmodule Ithibati.Migration do
   Declare `field :role, Ecto.Enum, values: [:admin, :author]` in the application's Ecto schema
   when using that string column as an enum.
 
-  The helper adds exactly four columns:
+  The helper adds:
 
     * the identifier, `:string` by default, `null: false`
     * `:token_hash`, `:binary`, `null: false`
@@ -111,14 +111,55 @@ defmodule Ithibati.Migration do
     pinned!(opts, "invitation_columns/1")
 
     identifier = identifier(Config.invitation_schema!())
+    inviter? = Keyword.fetch!(opts, :version) >= 4
+    named = if inviter?, do: ", invited_by_id", else: ""
 
     # Include the columns because Ecto logs only the enclosing table operation.
-    Logger.info("ithibati: adding #{identifier}, token_hash, expires_at, accepted_at")
+    Logger.info("ithibati: adding #{identifier}, token_hash, expires_at, accepted_at#{named}")
 
     add(identifier, Keyword.get(opts, :type, :string), null: false)
     add(:token_hash, :binary, binary_options(32))
     add(:expires_at, :utc_datetime_usec, null: false)
     add(:accepted_at, :utc_datetime_usec)
+
+    # Only from version 4. An application's older migration file has to go on producing the table
+    # it produced then: a database rebuilt from every migration replays it before the newer one,
+    # and a column added to both would collide.
+    if inviter?, do: add(:invited_by_id, reference_type(Config.users_key_type()))
+  end
+
+  @doc """
+  Adds the inviter column to an invitation table that was created before version 4.
+
+  For an application that turned invitations on earlier. A table created with
+  `invitation_columns(version: 4)` already has it. The column type follows `users_key_type`,
+  which is why this exists rather than a line in the guide: an application that guessed
+  `:binary_id` against a `:id` account table would only find out at the first invitation.
+
+      defmodule MyApp.Repo.Migrations.AddInvitedBy do
+        use Ecto.Migration
+
+        def change do
+          alter table(:invitations) do
+            Ithibati.Migration.invitation_inviter_column(version: 4)
+          end
+        end
+      end
+
+  Nullable, and Ithibati writes no foreign key: rows written before the column existed have no
+  inviter, and whether one is enforced is the application's to decide about its own table.
+  """
+  def invitation_inviter_column(opts) do
+    pinned!(opts, "invitation_inviter_column/1")
+
+    Keyword.fetch!(opts, :version) >= 4 ||
+      raise ArgumentError,
+            "invitation_inviter_column/1 adds a version 4 column, got: " <>
+              inspect(Keyword.fetch!(opts, :version))
+
+    Logger.info("ithibati: adding invited_by_id")
+
+    add(:invited_by_id, reference_type(Config.users_key_type()))
   end
 
   @doc """
@@ -197,6 +238,11 @@ defmodule Ithibati.Migration do
     value in allowed ||
       raise(ArgumentError, "#{name} must be #{described}, got: #{inspect(value)}")
   end
+
+  # Version 4 changed only the invitation table, which the application owns and adds to with
+  # `invitation_columns/1` or `invitation_inviter_column/1`. Nothing here moves — but an operator
+  # stepping to it writes `up(from: 3, version: 4)` by reflex, and that has to answer.
+  defp step(4, _direction, _opts), do: :ok
 
   defp step(3, :up, _opts) do
     create table(source(SetupCode), primary_key: false) do
@@ -426,19 +472,27 @@ defmodule Ithibati.Migration do
 
   defp confirm_invitation_columns!(%{invitation: nil}), do: :ok
 
-  defp confirm_invitation_columns!(%{invitation: schema}) do
+  defp confirm_invitation_columns!(%{invitation: schema} = opts) do
     table = source(schema)
     oid = table_ref!(table)
 
-    Enum.each(@invitation_columns, fn {column, storage_type} ->
+    # From version 4 the schema macro declares the inviter, so every invitation query selects it.
+    # Left unchecked, an installation that migrated without adding the column passes here and
+    # fails at its first `fetch/1` — which is the failure this whole check exists to come first.
+    expected =
+      if opts.version >= 4,
+        do: @invitation_columns ++ [{:invited_by_id, Config.users_key_type()}],
+        else: @invitation_columns
+
+    Enum.each(expected, fn {column, storage_type} ->
       accepted = Catalogue.types(repo(), storage_type)
 
       case Catalogue.column(repo(), oid, column) do
         nil ->
           raise ArgumentError,
                 "#{inspect(schema)} declares #{qualified(table)}.#{column}, and the table has " <>
-                  "no such column. `ithibati_invitation/0` declares four columns and this is " <>
-                  "one of them; the table is yours to create."
+                  "no such column. `ithibati_invitation/0` declares it and this is one of " <>
+                  "them; the table is yours to create."
 
         {type, _unique?} ->
           type in accepted ||

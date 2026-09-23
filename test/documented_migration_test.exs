@@ -5,6 +5,10 @@ defmodule Ithibati.DocumentedMigrationTest do
   The support migrations exist to exercise the documented path; that is worth nothing the moment
   the two drift. Initial setup lives in `docs/getting_started.md`; upgrades and historical
   migration pins are explained in `docs/configuration.md`.
+
+  Version stepping is not the only documented path any more: from version 4 the suite adds the
+  inviter column the way an application is told to, so the names below are the calls a migration
+  is allowed to make rather than only `up` and `down`.
   """
   use ExUnit.Case, async: true
 
@@ -25,7 +29,10 @@ defmodule Ithibati.DocumentedMigrationTest do
       |> Enum.uniq()
       |> Enum.sort()
 
-    assert names == ["down", "up"],
+    assert names -- ["down", "invitation_inviter_column", "up"] == [],
+           "a call the guides do not describe as a migration step: #{inspect(calls)}"
+
+    assert "up" in names and "down" in names,
            "expected an up and a down call, found: #{inspect(calls)}"
 
     for call <- calls do

@@ -96,6 +96,25 @@ defmodule Ithibati.MigrationTest do
       end
     end
 
+    # What an application standing the table up today gets. Version 4 is the first that changed
+    # the column set, which is what the pin has always been for.
+    defp create_invitations(:from_the_library_v4) do
+      create table(:invitations, primary_key: false) do
+        add :id, :binary_id, primary_key: true
+        Ithibati.Migration.invitation_columns(version: 4)
+      end
+    end
+
+    # The application that turned invitations on before version 4 and adds the column afterwards,
+    # which is every existing installation.
+    defp create_invitations(:from_the_library_then_inviter) do
+      create_invitations(:from_the_library)
+
+      alter table(:invitations) do
+        Ithibati.Migration.invitation_inviter_column(version: 4)
+      end
+    end
+
     defp create_invitations(:with_citext) do
       create table(:invitations, primary_key: false) do
         add :id, :binary_id, primary_key: true
@@ -238,6 +257,13 @@ defmodule Ithibati.MigrationTest do
     use Ecto.Migration
 
     def change, do: Ithibati.Migration.invitation_index(version: 1)
+  end
+
+  defmodule ToVersionFour do
+    use Ecto.Migration
+
+    def up, do: Ithibati.Migration.up(from: 3, version: 4)
+    def down, do: Ithibati.Migration.down(from: 3, version: 4)
   end
 
   # The sandbox is switched off for this module rather than checked out: `Ecto.Migrator` does its
@@ -546,12 +572,67 @@ defmodule Ithibati.MigrationTest do
     end
   end
 
+  # An operator upgrading writes this by reflex. Version 4 changed nothing in this library's own
+  # tables, but answering a reflex with a FunctionClauseError is not an answer.
+  test "stepping to version four builds nothing here and succeeds anyway" do
+    as_invitation_table(:from_the_library_v4)
+    migrate(:up)
+
+    assert :ok =
+             Ecto.Migrator.up(TestRepo, @version + 2, ToVersionFour, prefix: @schema, log: false)
+
+    assert missing() == []
+
+    assert :ok =
+             Ecto.Migrator.down(TestRepo, @version + 2, ToVersionFour,
+               prefix: @schema,
+               log: false
+             )
+
+    assert missing() == []
+  end
+
+  # The check exists so that a missing column is a word at migration time rather than a Postgres
+  # error at the first invitation. Version 4 added one, and leaving it out of the check is how an
+  # upgrade goes green and the application falls over afterwards.
+  test "and refuses a version four migration against a table without the inviter" do
+    as_invitation_table(:from_the_library)
+    migrate(:up)
+
+    assert_raise ArgumentError, ~r/invited_by_id/, fn ->
+      Ecto.Migrator.up(TestRepo, @version + 3, ToVersionFour, prefix: @schema, log: false)
+    end
+  end
+
   describe "invitation_columns/1" do
     test "builds a table the migration then accepts" do
       as_invitation_table(:from_the_library)
 
       assert :ok = migrate(:up)
       assert missing() == []
+    end
+
+    # An old migration file has to go on meaning what it meant: a database rebuilt from every
+    # migration replays it and then the newer one, and a column added to both would collide.
+    test "adds the inviter from version four, and not before it" do
+      as_invitation_table(:from_the_library)
+      migrate(:up)
+
+      refute "invited_by_id" in invitation_column_names()
+
+      reset_schema()
+      as_invitation_table(:from_the_library_v4)
+      migrate(:up)
+
+      assert "invited_by_id" in invitation_column_names()
+    end
+
+    test "and an existing table gets it from invitation_inviter_column/1" do
+      as_invitation_table(:from_the_library_then_inviter)
+
+      assert :ok = migrate(:up)
+      assert missing() == []
+      assert "invited_by_id" in invitation_column_names()
     end
 
     test "names the identifier the schema declares and defaults to string" do
@@ -727,6 +808,19 @@ defmodule Ithibati.MigrationTest do
   defp as_account_table(shape), do: as_env(:test_account_table, shape)
 
   defp as_application_index(kind), do: as_env(:test_app_index, kind)
+
+  defp invitation_column_names do
+    %{rows: rows} =
+      query(
+        """
+        SELECT column_name FROM information_schema.columns
+        WHERE table_schema = $1 AND table_name = 'invitations'
+        """,
+        [@schema]
+      )
+
+    List.flatten(rows)
+  end
 
   defp as_invitation_table(shape), do: as_env(:test_invitation_table, shape)
 
