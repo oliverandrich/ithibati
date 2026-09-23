@@ -10,6 +10,18 @@ upgrading to one of those releases.
 
 ## [Unreleased]
 
+### Changed
+
+- `Ithibati.Identity.Instance.issue_code/0` and `authorize_code/1` answer
+  `{:error, :claim_is_open}` when `initial_claim` is not `:operator_code`. They raised an
+  `ArgumentError` before, which a caller could not tell apart from a misconfigured repository
+  raising the same kind of error from the same call. A mode that is neither `:open` nor
+  `:operator_code` still raises: that is a mistake in the configuration, not a state.
+
+  An application that guarded these calls to avoid the raise can drop its guard. One that
+  rescued `ArgumentError` around them must stop, or it will swallow the configuration error it
+  was never meant to catch.
+
 ## [0.5.0] - 2026-09-20
 
 ### Upgrading from 0.4.0

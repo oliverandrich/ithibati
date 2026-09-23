@@ -10,6 +10,7 @@ defmodule Mix.Tasks.IthibatiInvites.SetupCode do
     case Ithibati.Identity.Instance.issue_code() do
       {:ok, code} -> Mix.shell().info("Initial setup code: #{code}")
       {:error, :already_claimed} -> Mix.raise("the instance has already been claimed")
+      {:error, :claim_is_open} -> Mix.raise("set initial_claim: :operator_code to use a code")
     end
   end
 end

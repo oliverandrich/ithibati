@@ -131,10 +131,13 @@ operator command, such as the `mix ithibati_invites.setup_code` task in the
 [invitation-only example](https://github.com/oliverandrich/ithibati/tree/main/examples/invitation_only). Print the returned code to the
 operator's terminal, not an HTTP response or a startup log. Running the command again rotates the
 code and revokes earlier authorization. After a successful claim it returns
-`{:error, :already_claimed}`. The application chooses a rate limit for its public code form.
+`{:error, :already_claimed}`, and under any mode but `:operator_code` it returns
+`{:error, :claim_is_open}` — an instance that leaves its claim open has no code to issue.
+The application chooses a rate limit for its public code form.
 
 `Instance.authorize_code/1` checks the code and returns a short-lived proof for the browser
-session. The application calls `Instance.authorized?/1` before starting a passkey challenge and
+session, `{:error, :invalid_setup_code}` when the code does not check out, or
+`{:error, :claim_is_open}` under any mode but `:operator_code`. The application calls `Instance.authorized?/1` before starting a passkey challenge and
 passes that same proof to `Instance.claim/2` at completion. The claim atomically consumes it with
 the account insert and bootstrap claim. A direct request without a proof therefore fails even if
 the page hid its form. In protected mode, `Instance.claim/2` refuses missing authorization.

@@ -255,6 +255,11 @@ when rolling back. An application that enables `initial_claim: :operator_code` m
 before issuing codes or serving setup requests. Keep the mode enabled while the instance is
 unclaimed; switching it to `:open` permits an unprotected claim.
 
+`Ithibati.Identity.Instance.issue_code/0` and `authorize_code/1` answer `{:error,
+:claim_is_open}` under any other mode, so an application that supports one mode can say so in
+its own words rather than rescue. A value that is neither `:open` nor `:operator_code` raises
+instead: nothing useful can be answered about a setting that is not a setting.
+
 ## Invitations
 
 Set `invitation_schema` only when your application provides an invitation schema and table.

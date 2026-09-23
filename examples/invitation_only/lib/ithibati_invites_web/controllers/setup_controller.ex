@@ -18,6 +18,13 @@ defmodule IthibatiInvitesWeb.SetupController do
           conn
           |> put_flash(:error, "That operator code is invalid or has been replaced.")
           |> redirect(to: ~p"/")
+
+        # This instance sets `initial_claim: :operator_code`, so it cannot arrive — but the
+        # answer exists, and an example that ignored it would teach an incomplete `case`.
+        {:error, :claim_is_open} ->
+          conn
+          |> put_flash(:error, "This instance does not ask for an operator code.")
+          |> redirect(to: ~p"/")
       end
     else
       redirect(conn, to: ~p"/")

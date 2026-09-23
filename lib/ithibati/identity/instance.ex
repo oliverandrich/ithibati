@@ -52,16 +52,23 @@ defmodule Ithibati.Identity.Instance do
   @doc """
   Issues or replaces the first-account operator code.
 
-  Requires `initial_claim: :operator_code`. Returns `{:ok, code}` before the instance is claimed,
-  or `{:error, :already_claimed}` afterwards. The code contains 32 random bytes encoded as
-  Base64url. Only its SHA-256 digest is stored. Print the plaintext once from an explicit
-  application-owned operator command; never include it in a web response or startup log.
+  Returns `{:ok, code}` before the instance is claimed, `{:error, :already_claimed}` afterwards,
+  and `{:error, :claim_is_open}` when `initial_claim` is not `:operator_code` — an instance that
+  leaves its claim open has no code to issue. A value that is neither mode raises: that is a
+  mistake in the configuration rather than a state a caller can be in.
+
+  The code contains 32 random bytes encoded as Base64url. Only its SHA-256 digest is stored.
+  Print the plaintext once from an explicit application-owned operator command; never include it
+  in a web response or startup log.
 
   Rotation invalidates both the old code and session authorizations made from it. Issuance and
   claim synchronize through the code row. Errors from the repo propagate.
   """
   def issue_code do
-    require_operator_code!()
+    with :ok <- operator_code(), do: issue()
+  end
+
+  defp issue do
     code = Secrets.token()
     digest = Secrets.digest(code)
     repo = Config.repo()
@@ -82,13 +89,21 @@ defmodule Ithibati.Identity.Instance do
   @doc """
   Exchanges the current operator code for a ten-minute authorization.
 
-  Returns `{:ok, proof}` or `{:error, :invalid_setup_code}`. Store the proof only in a protected,
+  Returns `{:ok, proof}`, `{:error, :invalid_setup_code}`, or `{:error, :claim_is_open}` when
+  `initial_claim` is not `:operator_code`. Store the proof only in a protected,
   signed browser session. `authorized?/1` rechecks it before the passkey challenge; `claim/2`
   checks and consumes it again inside the registration transaction. The plaintext code is never
   placed in that session.
   """
   def authorize_code(code) when is_binary(code) do
-    require_operator_code!()
+    with :ok <- operator_code(), do: verify_code(code)
+  end
+
+  def authorize_code(_code) do
+    with :ok <- operator_code(), do: {:error, :invalid_setup_code}
+  end
+
+  defp verify_code(code) do
     current = Config.repo().get(SetupCode, 1)
     candidate = Secrets.digest(String.trim(code))
 
@@ -99,11 +114,6 @@ defmodule Ithibati.Identity.Instance do
     else
       {:error, :invalid_setup_code}
     end
-  end
-
-  def authorize_code(_code) do
-    require_operator_code!()
-    {:error, :invalid_setup_code}
   end
 
   @doc "Returns whether a session authorization is unexpired and matches the current code."
@@ -151,10 +161,14 @@ defmodule Ithibati.Identity.Instance do
 
   defp valid_proof?(_proof), do: false
 
-  defp require_operator_code! do
-    Config.initial_claim_mode() == :operator_code ||
-      raise ArgumentError,
-            "operator codes require config :ithibati, initial_claim: :operator_code"
+  # An instance whose claim is open is a state a caller can be in, so it is answered. A mode
+  # nobody can read is a mistake in the configuration, and `initial_claim_mode/0` raises for it:
+  # no answer describes a value that is not one of the two.
+  defp operator_code do
+    case Config.initial_claim_mode() do
+      :operator_code -> :ok
+      :open -> {:error, :claim_is_open}
+    end
   end
 
   @doc """

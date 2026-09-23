@@ -31,6 +31,29 @@ defmodule Ithibati.Identity.InstanceSetupCodeTest do
     assert {:error, :already_claimed} = Instance.issue_code()
   end
 
+  # An instance whose claim is open is a state a caller can be in, not a library used wrongly:
+  # the application that asked for a code is configured one way and the library another, and
+  # whoever typed the command or submitted the form deserves a sentence rather than a stack
+  # trace. Raising also made this indistinguishable from a misconfigured repository, which
+  # raises the same kind of error from the same call and means something else entirely.
+  test "an open claim is answered, not raised" do
+    put_env(:ithibati, :initial_claim, :open)
+
+    assert {:error, :claim_is_open} = Instance.issue_code()
+    assert {:error, :claim_is_open} = Instance.authorize_code("anything")
+    assert {:error, :claim_is_open} = Instance.authorize_code(nil)
+  end
+
+  # A value nobody can read is the other thing: a mistake in the configuration rather than a
+  # state, and one no answer can describe usefully.
+  test "a claim mode that is not a mode still raises" do
+    put_env(:ithibati, :initial_claim, :operator_codes)
+
+    assert_raise ArgumentError, ~r/initial_claim/, &Instance.issue_code/0
+    assert_raise ArgumentError, ~r/initial_claim/, fn -> Instance.authorize_code("anything") end
+    assert_raise ArgumentError, ~r/initial_claim/, fn -> Instance.authorize_code(nil) end
+  end
+
   test "rotation and expiry revoke authorization before the claim" do
     assert {:ok, first} = Instance.issue_code()
     assert {:ok, old_proof} = Instance.authorize_code(first)
