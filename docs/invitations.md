@@ -137,7 +137,8 @@ The application chooses a rate limit for its public code form.
 
 `Instance.authorize_code/1` checks the code and returns a short-lived proof for the browser
 session, `{:error, :invalid_setup_code}` when the code does not check out, or
-`{:error, :claim_is_open}` under any mode but `:operator_code`. The application calls `Instance.authorized?/1` before starting a passkey challenge and
+`{:error, :claim_is_open}` under any mode but `:operator_code`. The application calls
+`Instance.authorized?/1` before starting a passkey challenge and
 passes that same proof to `Instance.claim/2` at completion. The claim atomically consumes it with
 the account insert and bootstrap claim. A direct request without a proof therefore fails even if
 the page hid its form. In protected mode, `Instance.claim/2` refuses missing authorization.
@@ -468,6 +469,32 @@ consistent order throughout the application and its fixtures to avoid deadlocks.
 `Invitations.expired/0` returns expired, unaccepted invitations. `Invitations.delete_expired/0`
 deletes them and returns the count. Ithibati schedules no cleanup job; expired links are refused
 whether or not the rows have been removed.
+
+## Showing and withdrawing pending invitations
+
+`Invitations.pending_query/0` returns the query that finds unaccepted, unexpired invitations —
+the same predicate `fetch/1` applies to a token. Narrow it with whatever the application's own
+columns call for, then run it with your repo:
+
+```elixir
+import Ecto.Query
+
+from(i in Ithibati.Identity.Invitations.pending_query(),
+  where: i.site_id == ^site.id,
+  order_by: [asc: i.email],
+  preload: [:invited_by]
+)
+|> MyApp.Repo.all()
+```
+
+`Invitations.pending/0` returns all of them for an application that needs no scoping.
+
+`Invitations.withdraw/1` takes one back and returns `{:ok, invitation}`, or
+`{:error, :already_accepted}` when the row was accepted or is no longer there. It rechecks the
+acceptance inside its delete, so a withdrawal cannot remove an invitation that is being redeemed
+at that moment. Take the list and the withdrawal from the same predicate: a page that can show
+an invitation it cannot withdraw, or withdraw one it does not show, is the same bug twice.
+
 
 ## Email delivery
 

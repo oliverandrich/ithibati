@@ -10,6 +10,15 @@ upgrading to one of those releases.
 
 ## [Unreleased]
 
+### Added
+
+- `Ithibati.Identity.Invitations.pending_query/0`, `pending/0` and `withdraw/1`. The module could
+  open an invitation and accept it, but an application could not see what was outstanding or take
+  one back, so every consumer wrote the same three queries against a schema this library
+  declares. `pending_query/0` hands over the predicate `fetch/1` uses, for the application to
+  scope, order and preload; `withdraw/1` rechecks the acceptance inside its delete, so a
+  withdrawal cannot remove an invitation that is being redeemed at that moment.
+
 ### Changed
 
 - `Ithibati.Identity.Instance.issue_code/0` and `authorize_code/1` answer

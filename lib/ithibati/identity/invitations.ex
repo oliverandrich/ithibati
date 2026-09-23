@@ -1,6 +1,7 @@
 defmodule Ithibati.Identity.Invitations do
   @moduledoc """
-  Finds pending invitations and composes their acceptance into application transactions.
+  Finds, lists and withdraws pending invitations, and composes their acceptance into
+  application transactions.
 
   The application owns the invitation schema and any membership or permission it grants.
   Ithibati checks the token, expiry and acceptance state, and binds the invitation's identifier
@@ -26,6 +27,7 @@ defmodule Ithibati.Identity.Invitations do
 
   alias Ecto.Multi
   alias Ithibati.Config
+  alias Ithibati.Identity.Concurrency
   alias Ithibati.Identity.Mutations
   alias Ithibati.Identity.Secrets
   alias Ithibati.Identity.Steps
@@ -102,6 +104,65 @@ defmodule Ithibati.Identity.Invitations do
 
   defp compare(same, same), do: :ok
   defp compare(_account, _invitation), do: {:error, :identifier_mismatch}
+
+  @doc """
+  Returns the query that finds pending invitations, for the application to narrow.
+
+  Pending means the same thing it means to `fetch/1`: unaccepted and unexpired. The application
+  owns the table and whatever columns it added, so the list it wants is rarely all of them — it
+  scopes, orders and preloads on top of this. Taking the predicate from here rather than writing
+  it again is what keeps a page from offering a link that no longer opens anything, and keeps
+  whatever the page can show to exactly what `withdraw/1` will take back.
+
+  The query holds the moment it was built, not the moment it runs. Build it where you run it. A
+  query kept across requests goes on listing invitations that have since expired, and each one
+  offers a link that opens nothing. Ithibati asks no database for its own clock here, because
+  the three it supports do not agree on what that answer means.
+  """
+  def pending_query do
+    from i in Config.invitation_schema!(),
+      where: is_nil(i.accepted_at),
+      where: i.expires_at > ^DateTime.utc_now()
+  end
+
+  @doc "Returns every pending invitation. See `pending_query/0` to narrow the list first."
+  def pending, do: Config.repo().all(pending_query())
+
+  @doc """
+  Takes back an invitation nobody has accepted, so its link opens nothing.
+
+  Returns `{:ok, invitation}`, or `{:error, :already_accepted}` when the row was accepted or is
+  no longer there. The state is rechecked inside the delete rather than read beforehand: an
+  invitation accepted between the reading and the writing would otherwise be withdrawn along
+  with the account it just made.
+
+  An expired invitation can still be withdrawn. It opens nothing either way, and leaving the row
+  for `delete_expired/0` is a separate decision.
+  """
+  def withdraw(%schema{} = invitation) do
+    configured = Config.invitation_schema!()
+
+    schema == configured ||
+      raise ArgumentError,
+            "expected a #{inspect(configured)}, got: #{inspect(schema)}"
+
+    repo = Config.repo()
+
+    query =
+      from(i in configured, where: is_nil(i.accepted_at), select: i)
+      # The application's invitation schema determines the primary-key fields.
+      |> where(^Ecto.primary_key!(invitation))
+
+    {:ok, outcome} =
+      Concurrency.transaction(repo, fn ->
+        case Mutations.delete_one(repo, query) do
+          {1, [withdrawn]} -> {:ok, withdrawn}
+          {0, _none} -> {:error, :already_accepted}
+        end
+      end)
+
+    outcome
+  end
 
   @doc """
   Returns expired invitations that have not been accepted.

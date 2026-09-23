@@ -175,6 +175,67 @@ defmodule Ithibati.Identity.InvitationsTest do
     end
   end
 
+  describe "the pending ones" do
+    test "are the ones still open to somebody" do
+      open = invite("open@example.test")
+      invite("stale@example.test", days: -1)
+      accepted = invite("done@example.test")
+      accept!(accepted)
+
+      assert Enum.map(Invitations.pending(), & &1.id) == [open.id]
+    end
+
+    # The application owns the table and whatever it added to it, so the list it wants is almost
+    # never all of them. What the library contributes is the predicate — which has to be the one
+    # `fetch/1` uses, or a page shows a link that no longer opens anything.
+    test "and pending_query/0 is something the application can narrow" do
+      invite("first@example.test")
+      wanted = invite("second@example.test")
+
+      narrowed =
+        from(i in Invitations.pending_query(), where: i.email == ^"second@example.test")
+
+      assert Enum.map(TestRepo.all(narrowed), & &1.id) == [wanted.id]
+    end
+  end
+
+  describe "withdrawing one" do
+    test "takes back an invitation nobody has accepted" do
+      invitation = invite("regret@example.test")
+
+      assert {:ok, _withdrawn} = Invitations.withdraw(invitation)
+      assert TestRepo.all(TestInvitation) == []
+    end
+
+    # The link stops opening anything, which is the whole point: an invitation withdrawn but
+    # still redeemable would be worse than none at all.
+    test "and the link it was is no longer one" do
+      invitation = invite("regret@example.test")
+      token = invitation.token
+
+      assert {:ok, _withdrawn} = Invitations.withdraw(invitation)
+      assert Invitations.fetch(token) == nil
+    end
+
+    # Checked in the delete itself rather than before it. Reading the row first and deleting
+    # afterwards is how a withdrawal removes an invitation somebody accepted in between.
+    test "and refuses one that was accepted in the meantime" do
+      invitation = invite("quick@example.test")
+      accept!(invitation)
+
+      assert {:error, :already_accepted} = Invitations.withdraw(invitation)
+      assert [kept] = TestRepo.all(TestInvitation)
+      assert kept.accepted_at
+    end
+
+    test "and says so for one that is no longer there at all" do
+      invitation = invite("gone@example.test")
+      TestRepo.delete!(invitation)
+
+      assert {:error, :already_accepted} = Invitations.withdraw(invitation)
+    end
+  end
+
   defp invite(email, opts \\ []) do
     TestRepo.insert!(
       TestInvitation.changeset(%TestInvitation{}, %{email: email, role: :author}, opts)
