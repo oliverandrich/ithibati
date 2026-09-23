@@ -1,0 +1,402 @@
+name: Gate
+
+# The jobs both `ci.yml` and `release.yml` run, defined once. They were only in `ci.yml` before,
+# and a release asked a smaller set of questions than a push to `main` did — so v0.6.0 was tagged
+# on a commit whose adapter legs were red, passed its own gate, and asked for the deploy approval.
+# A release now fails wherever CI would fail, because it is the same file.
+#
+# `zizmor` stays in `ci.yml`. Its offline audit already runs inside `mise run check`, on every leg
+# of this gate; what the separate job adds is the online audit and the upload to the security tab,
+# which are facts about this repository rather than about the code being released.
+on:
+  workflow_call:
+    inputs:
+      hardened:
+        description: >-
+          Build from nothing. A cache entry is writable by any ordinary branch run, and a release
+          publishes under a version number that can never be reused, so a poisoned `_build` would
+          ship. A release is rare and a cold build is minutes; zizmor's `cache-poisoning` audit
+          reports the alternative.
+        type: boolean
+        default: false
+
+  # So the hardened path can be proved before a tag spends a version number on it. A `v*` tag is
+  # permanent here, and v0.6.0 is what one costs when the gate is wrong.
+  workflow_dispatch:
+    inputs:
+      hardened:
+        description: Build from nothing, the way a release does.
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: ${{ matrix.name }}
+    runs-on: ubuntu-latest
+
+    strategy:
+      # One red leg must not hide the others: which of them fail is the whole answer.
+      fail-fast: false
+      matrix:
+        include:
+          # The pinned pair, which is also what a laptop gets from mise.toml.
+          - name: check
+          # The floor of the `elixir` requirement in mix.exs. The pin moves by a file written
+          # below; mise.toml stays the single source for a local checkout.
+          - name: floor (elixir 1.18)
+            elixir: "1.18"
+            erlang: "27"
+            # A narrower task, named in mise.toml with its reason: the full gate judges style
+            # against the toolchain the tree was written with, and this leg's question is
+            # compatibility.
+            gate: build-and-test
+          # The claim that `users_key_type: :id` is supported. Why it needs a build of its own:
+          # config/config.exs.
+          - name: integer account keys
+            users_key_type: id
+          # The claim that a consumer without Phoenix gets a core that compiles. `mix deps.get`
+          # fetches optional dependencies for this project's own build, so every other leg compiles
+          # with them present.
+          - name: without optional deps
+            without_optional: "1"
+            # Not the full gate, for the same reason the colocated leg is not: style is judged
+            # once, on this same source. And `mix docs` cannot run here at all — without the web
+            # half there is no `Ithibati.Web.Handler` for a guide to link to, so every reference
+            # to it is unresolved. The published documentation is always built with the optional
+            # dependencies present, so a docs build without them would be checking a product
+            # nobody ships.
+            gate: build-and-test
+          # The colocated delivery route, which every other leg leaves unbuilt: the variable is what
+          # puts LiveView's compiler in `compilers/0`, and nothing else in this matrix sets it. Its
+          # own step below checks that the manifest a consumer imports was actually written — the
+          # compile succeeding proves only that the task exists.
+          - name: colocated hooks
+            colocated_hooks: "1"
+            # Not the full gate: style is judged once, by the `check` leg, on this same source and
+            # this same toolchain. What is new here is the compiler entry and the manifest below.
+            gate: build-and-test
+
+    env:
+      ITHIBATI_USERS_KEY_TYPE: ${{ matrix.users_key_type }}
+      ITHIBATI_WITHOUT_OPTIONAL: ${{ matrix.without_optional }}
+      ITHIBATI_COLOCATED_HOOKS: ${{ matrix.colocated_hooks }}
+      # Through the environment rather than straight into `run:`, which is where a workflow
+      # expression becomes code. `matrix` is written in this file and not attacker-controlled, so
+      # the risk here is theoretical — the habit is not.
+      GATE: ${{ matrix.gate || 'check' }}
+
+    services:
+      postgres:
+        # A tag, where every action below is pinned by SHA, and the difference is deliberate: an
+        # action runs inside this job with its token and its workspace, while this is a database
+        # the tests reach over TCP. A tag that moves breaks the run visibly; an action that moves
+        # does not.
+        image: postgres:18-alpine
+        # No credentials in the job: config/config.exs falls back to postgres/postgres on
+        # localhost:5432, which is exactly what this container offers.
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # A file rather than `MISE_ELIXIR_VERSION`. The variable was set for every step of the job
+      # and mise-action honoured it — it installed 1.17.3-otp-27 — but the `mise run` two steps
+      # below ignored it, re-resolved mise.toml, and tried to start Elixir 1.20 on OTP 27, which
+      # crashes at boot. Why that invocation ignored it is unexplained and reproduces nowhere
+      # locally; a config file is honoured by both, which is the property worth depending on. It
+      # also leaves the tracked pin alone.
+      - name: Pin the toolchain this leg is for
+        if: matrix.elixir
+        env:
+          ELIXIR: ${{ matrix.elixir }}
+          ERLANG: ${{ matrix.erlang }}
+        run: printf '[tools]\nelixir = "%s"\nerlang = "%s"\n' "$ELIXIR" "$ERLANG" > mise.local.toml
+
+      - uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4.3.0
+        with:
+          # Pinned like everything else here.
+          version: 2026.9.5
+          cache: ${{ !inputs.hardened }}
+          # Keyed on the toolchain rather than on the leg: three of the four install the same one
+          # and should share a cache entry, and renaming a leg should not throw one away. Set
+          # explicitly rather than left to the action's own key, which is computed from the config
+          # files it knows about.
+          cache_key_prefix: mise-${{ matrix.elixir || 'pinned' }}-${{ matrix.erlang || 'pinned' }}
+
+      # A cold Elixir compile is otherwise the whole job. _build is only reusable under the Erlang
+      # and Elixir that produced it, so the key names them directly rather than trusting that a leg
+      # bumping its toolchain also renames itself. The leg is in there too, because a build under a
+      # different `users_key_type` does not merely rebuild: Elixir refuses to boot at all, since
+      # that setting is read with `compile_env`.
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        if: ${{ !inputs.hardened }}
+        with:
+          path: |
+            deps
+            _build
+          key: ${{ runner.os }}-mix-${{ matrix.name }}-${{ matrix.elixir || 'pinned' }}-${{ matrix.erlang || 'pinned' }}-${{ hashFiles('mise.toml') }}-${{ hashFiles('mix.lock') }}
+          restore-keys: ${{ runner.os }}-mix-${{ matrix.name }}-${{ matrix.elixir || 'pinned' }}-${{ matrix.erlang || 'pinned' }}-${{ hashFiles('mise.toml') }}-
+
+      - name: Fetch dependencies
+        run: |
+          # Pinned, and kept equal to the archive a laptop has by hand. An unpinned
+          # `mix local.hex --force` fetches whatever is current from builds.hex.pm
+          # unverified, and this gate is what a release is judged by.
+          mix local.hex 2.5.1 --force
+          mix local.rebar --force
+          mix deps.get
+          # `mix deps.get` does not prune, so on the leg that drops the optional dependencies they
+          # and everything they brought stay behind in mix.lock — where `deps.unlock --check-unused`
+          # inside the gate finds them and fails the leg for a reason that is not the leg's point.
+          # This checkout is disposable; the committed lock is untouched.
+          # `= 1` rather than "non-empty", because `enabled?/1` in mix.exs reads named values and
+          # the two must agree about the same variable. The matrix above is its only writer.
+          if [ "$ITHIBATI_WITHOUT_OPTIONAL" = 1 ]; then mix deps.unlock --unused; fi
+
+      - name: Run the gate
+        run: mise run "$GATE"
+
+      - name: Run PostgreSQL capability probes
+        if: matrix.name == 'check'
+        run: mise run probe-postgres
+
+      # The gate compiling proves the compiler task exists; it does not prove a consumer can import
+      # anything. This is the file that import resolves to, and the name inside it is what a
+      # template's `phx-hook` has to say.
+      - name: Check the colocated manifest was written
+        if: matrix.colocated_hooks
+        run: |
+          manifest=_build/test/phoenix-colocated/ithibati/index.js
+          test -f "$manifest" || { echo "no manifest at $manifest"; exit 1; }
+          # The name is spelled here by hand; test/ithibati/web/hooks_test.exs is what owns it and
+          # derives it from the module, so a rename fails there first and loudly.
+          grep -q "Ithibati.Web.Hooks.PasskeyCeremony" "$manifest"
+
+  adapter:
+    name: adapter (${{ matrix.name }})
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: SQLite UUID text
+            adapter: sqlite
+            users_key_type: binary_id
+            uuid_storage: string
+          - name: SQLite UUID binary
+            adapter: sqlite
+            users_key_type: binary_id
+            uuid_storage: binary
+          - name: SQLite integer
+            adapter: sqlite
+            users_key_type: id
+            uuid_storage: string
+          - name: MySQL UUID
+            adapter: mysql
+            users_key_type: binary_id
+            uuid_storage: string
+          - name: MySQL integer
+            adapter: mysql
+            users_key_type: id
+            uuid_storage: string
+
+    env:
+      ITHIBATI_ADAPTER_PROBE: ${{ matrix.adapter }}
+      ITHIBATI_USERS_KEY_TYPE: ${{ matrix.users_key_type }}
+      ITHIBATI_SQLITE_UUID_STORAGE: ${{ matrix.uuid_storage }}
+      MYSQL_HOST: 127.0.0.1
+      MYSQL_USER: root
+      # Disposable service credentials, matching the container below.
+      MYSQL_PASSWORD: mysql
+
+    services:
+      mysql:
+        # An empty image skips the service for SQLite. Each MySQL leg gets its own server.
+        image: ${{ matrix.adapter == 'mysql' && 'mysql:8.4' || '' }}
+        env:
+          MYSQL_ROOT_PASSWORD: mysql
+          MYSQL_ROOT_HOST: "%"
+        ports:
+          - 3306/tcp
+        options: >-
+          --health-cmd "mysql --protocol=TCP -h127.0.0.1 -uroot -pmysql -e 'SELECT 1'"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4.3.0
+        with:
+          version: 2026.9.5
+          cache: ${{ !inputs.hardened }}
+          cache_key_prefix: mise-pinned-pinned
+
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        if: ${{ !inputs.hardened }}
+        with:
+          path: |
+            deps
+            _build
+          key: ${{ runner.os }}-adapter-${{ matrix.adapter }}-${{ matrix.users_key_type }}-${{ matrix.uuid_storage }}-${{ hashFiles('mise.toml') }}-${{ hashFiles('mix.lock') }}
+          restore-keys: ${{ runner.os }}-adapter-${{ matrix.adapter }}-${{ matrix.users_key_type }}-${{ matrix.uuid_storage }}-${{ hashFiles('mise.toml') }}-
+
+      - name: Fetch dependencies
+        run: |
+          mix local.hex 2.5.1 --force
+          mix local.rebar --force
+          mix deps.get
+
+      - name: Run adapter integration tests
+        env:
+          MYSQL_PORT: ${{ job.services.mysql.ports['3306'] || '3306' }}
+        run: mise run build-and-test
+
+  # The examples are documentation that either compiles or does not — and their own suites drive
+  # them in a real browser, which is the only thing here that executes `priv/static/ithibati.js`.
+  # They take the library by path, so this is also the only place that compiles the library the way
+  # a consumer does.
+  example:
+    name: example (${{ matrix.example }})
+    runs-on: ubuntu-latest
+
+    strategy:
+      # Run every registration example even when another example fails.
+      fail-fast: false
+      matrix:
+        example:
+          - open_registration
+          - invitation_only
+          - email_registration
+
+    services:
+      postgres:
+        # A tag, where every action below is pinned by SHA, and the difference is deliberate: an
+        # action runs inside this job with its token and its workspace, while this is a database
+        # the tests reach over TCP. A tag that moves breaks the run visibly; an action that moves
+        # does not.
+        image: postgres:18-alpine
+        # No credentials in the job: config/config.exs falls back to postgres/postgres on
+        # localhost:5432, which is exactly what this container offers.
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4.3.0
+        with:
+          version: 2026.9.5
+          cache: ${{ !inputs.hardened }}
+          cache_key_prefix: mise-example
+
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        if: ${{ !inputs.hardened }}
+        with:
+          path: |
+            examples/${{ matrix.example }}/deps
+            examples/${{ matrix.example }}/_build
+          key: ${{ runner.os }}-example-${{ matrix.example }}-${{ hashFiles(format('examples/{0}/mix.lock', matrix.example)) }}
+          restore-keys: ${{ runner.os }}-example-${{ matrix.example }}-
+
+      # The runner images ship a Chrome and a matching chromedriver and point `CHROMEWEBDRIVER` at
+      # the second; `test_helper.exs` prefers it over a locally installed one precisely so that the
+      # pair cannot drift apart here. Named rather than assumed — if it ever stops being set, this
+      # says so instead of the suite failing to spawn a session.
+      - name: Check the runner brought a browser
+        run: |
+          test -x "$CHROMEWEBDRIVER/chromedriver" || {
+            echo "CHROMEWEBDRIVER=$CHROMEWEBDRIVER has no chromedriver in it"
+            exit 1
+          }
+          "$CHROMEWEBDRIVER/chromedriver" --version
+          google-chrome --version
+
+      # `mix precommit` rather than a second copy of it, the way mise.toml puts it for this
+      # repository: following the example's own alias locally then means following the gate. It
+      # runs compile, format, the assets and the tests — including the browser tests under
+      # `test/features/`, which are the only thing anywhere that executes the library's JavaScript.
+      - name: Run the example's gate
+        working-directory: examples/${{ matrix.example }}
+        run: |
+          mix local.hex 2.5.1 --force
+          mix local.rebar --force
+          mix deps.get
+          # In the environment the gate runs in, not the default `dev`: `assets.setup` goes through
+          # `app.config`, which compiles, so leaving it in `dev` builds the example, the library and
+          # every dependency once in each environment. The binaries land in `_build/` either way.
+          MIX_ENV='test' mix assets.setup
+          mix precommit
+
+      # A failed feature test names a selector and nothing about the page it failed against.
+      - name: Keep the screenshots when a browser test fails
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: screenshots-${{ matrix.example }}
+          path: examples/${{ matrix.example }}/screenshots/
+          if-no-files-found: ignore
+          retention-days: 7
+
+      # What the root matrix cannot see: `lib/` compiled *as a dependency*, where `Mix.env()` is
+      # `prod` — Mix puts `env: :prod` on every dependency that does not ask for another, whatever
+      # the parent's `MIX_ENV` is — so `elixirc_paths` is `["lib"]` alone. Counted rather than
+      # assumed: the build holds 24 modules for the 24 files under `lib/` and nothing from `credo/`.
+      # That is why this can use the build the gate above already filled.
+      #
+      # It has to use that one. Pointed at an empty `_build/dev` the compile answers with a screen
+      # of `cannot infer signatures from :bandit because it is not loaded` — the sibling
+      # dependencies are simply absent there — and the check then reports the library for the state
+      # of its own build.
+      #
+      # The switch cannot do this: measured, a consumer's `mix compile` does not apply
+      # `--warnings-as-errors` to its dependencies, and `mix deps.compile` does not accept it at
+      # all. So the output is read — and printed before it is judged, because a compile that *fails*
+      # says why in the same stream, and swallowing that leaves a red job with an empty log.
+      #
+      # Once, not per example: all take the same library at the same path with the same optional
+      # dependencies present.
+      - name: Check the library compiled into the example without warnings
+        if: matrix.example == 'open_registration'
+        working-directory: examples/${{ matrix.example }}
+        run: |
+          rm -rf _build/test/lib/ithibati
+          set +e
+          out=$(MIX_ENV='test' mix deps.compile ithibati --force 2>&1)
+          rc=$?
+          set -e
+          echo "$out"
+          if [ $rc -ne 0 ]; then
+            echo "the library did not compile as a dependency at all"
+            exit 1
+          fi
+          if sed -n '/^==> ithibati$/,$p' <<<"$out" | grep -q "warning:"; then
+            echo "the library emitted warnings into a consumer's build"
+            exit 1
+          fi

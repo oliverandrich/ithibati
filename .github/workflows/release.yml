@@ -16,25 +16,12 @@ permissions:
   contents: read
 
 jobs:
-  # The same gate `main` gets, run again against exactly what the tag points at. A tag can sit on
-  # a commit CI never saw — an amend, a rebase, a branch that was never pushed — so the green tick
-  # on `main` is not an answer about this commit.
-  verify:
-    name: verify
+  # The tag and the version, asked before anything is built: if they disagree there is nothing to
+  # learn from a green suite. Its own job, because the gate below is a reusable workflow and a
+  # `uses:` job cannot carry steps of its own.
+  tag:
+    name: tag
     runs-on: ubuntu-latest
-
-    services:
-      postgres:
-        image: postgres:18-alpine
-        env:
-          POSTGRES_PASSWORD: postgres
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
 
     steps:
       # `fetch-depth: 0`, because `release-check` reads the tags: `git tag --points-at HEAD`, and
@@ -44,31 +31,26 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
-      # No cache anywhere in this workflow, unlike `ci.yml`. A cache entry is writable by any
-      # ordinary branch run, and what this workflow produces is published under a version number
-      # that can never be reused — so a poisoned `_build` would ship. A release is rare and a cold
-      # build is minutes; zizmor's `cache-poisoning` audit reports the alternative.
       - uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4.3.0
         with:
           version: 2026.9.5
           cache: false
 
-      - name: Fetch dependencies
-        run: |
-          # Pinned, unlike in `ci.yml`. This is the code that reads `HEX_API_KEY` and sends it
-          # to hex.pm, and `mix local.hex --force` otherwise fetches whatever is current from
-          # builds.hex.pm unverified. Kept equal to the archive a laptop has by hand.
-          mix local.hex 2.5.1 --force
-          mix local.rebar --force
-          mix deps.get
-
-      # Before the gate rather than after: if the tag and the version disagree there is nothing to
-      # learn from a green suite.
       - name: Check the tag against the version
         run: mise run release-check
 
-      - name: Run the gate
-        run: mise run check
+  # The same questions a push to `main` gets, from the same file, so this gate cannot drift below
+  # that one again. `hardened`, because this build's verdict is what ships: no cache is restored
+  # anywhere in it.
+  verify:
+    # `./` and not the `$/` that zizmor's `self-repository` audit asks for: actionlint 1.7.12
+    # rejects `$/` as a malformed `uses:`, so the two tools disagree about the same line. This is
+    # the gate that decides what ships, and `./` is the form known to run — the finding is a low
+    # style note, not a hole.
+    uses: ./.github/workflows/gate.yml # zizmor: ignore[self-repository]
+    needs: tag
+    with:
+      hardened: true
 
   # Split from `verify` for one reason: this is the job that can reach the key, so it is the job
   # that has to be the smallest. It declares the environment, which is what puts a human in front
@@ -76,7 +58,7 @@ jobs:
   publish:
     name: publish
     runs-on: ubuntu-latest
-    needs: verify
+    needs: [tag, verify]
 
     # Configured with a required reviewer, so a tag proposes a release and a person allows it.
     # `HEX_API_KEY` is an environment secret rather than a repository one: that way no other job
