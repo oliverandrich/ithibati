@@ -8,12 +8,14 @@ Releases that change the database schema state the new schema version and the re
 migration. Add a migration calling `Ithibati.Migration.up(from: <old>, version: <new>)` when
 upgrading to one of those releases.
 
-## [0.6.1] - 2026-09-23
+## [0.6.2] - 2026-09-23
 
-Version 0.6.0 was tagged and never published. Its commit failed the MySQL and SQLite legs, the
-release workflow did not ask them, and the publish was stopped at the approval. The tag stays
-because version tags here are permanent. Nothing was ever on hex.pm under that number; upgrade
-from 0.5.0 straight to this one.
+Versions 0.6.0 and 0.6.1 were tagged and never published. 0.6.0's commit failed the MySQL and
+SQLite legs and the release workflow did not ask them; 0.6.1's release job could not read its own
+version, because the step that fetched the dependencies stayed behind when those legs moved into
+a shared workflow. Both tags stay, because version tags here are permanent, and a tag run always
+uses the workflow file from the commit it points at. Nothing was ever on hex.pm under either
+number; upgrade from 0.5.0 straight to this one.
 
 ### Upgrading from 0.5.0
 
@@ -298,7 +300,7 @@ the application.
   receives the account and any replacement code batch to display.
 - Three optional Credo checks for consuming applications.
 
-[0.6.1]: https://github.com/oliverandrich/ithibati/releases/tag/v0.6.1
+[0.6.2]: https://github.com/oliverandrich/ithibati/releases/tag/v0.6.2
 [0.5.0]: https://github.com/oliverandrich/ithibati/releases/tag/v0.5.0
 [0.4.0]: https://github.com/oliverandrich/ithibati/releases/tag/v0.4.0
 [0.3.0]: https://github.com/oliverandrich/ithibati/releases/tag/v0.3.0
