@@ -11,6 +11,10 @@ defmodule Ithibati.Schema.Identifier do
 
   import Ecto.Changeset
 
+  # `nil`, `true` and `false` are atoms. A misspelled module attribute is `nil` with only a
+  # warning, so `{@shape, :format}` compiles into `{nil, :format}` and fails at the first form.
+  defguardp is_name(term) when is_atom(term) and term not in [nil, true, false]
+
   # RFC 5321's maximum for an address, and the longest identifier this library expects to see.
   @max 254
 
@@ -71,13 +75,48 @@ defmodule Ithibati.Schema.Identifier do
   def unique_opts(nil), do: []
   def unique_opts(name), do: [name: name]
 
-  defp validate_pattern(changeset, _field, nil, _message), do: changeset
+  defp validate_pattern(changeset, field, format, message),
+    do: applied(changeset, field, format_now(format), message_now(message))
 
-  defp validate_pattern(changeset, field, format, nil),
+  defp applied(changeset, _field, nil, _message), do: changeset
+
+  defp applied(changeset, field, format, nil),
     do: validate_format(changeset, field, format)
 
-  defp validate_pattern(changeset, field, format, message),
+  defp applied(changeset, field, format, message),
     do: validate_format(changeset, field, format, message: message)
+
+  # Asked now rather than remembered, for the option given as a pair. What comes back is checked
+  # here because a schema that compiled cleanly can still be pointed at a function that answers
+  # with the wrong thing, and the first registration is the wrong place to find that out quietly.
+  #
+  # Whether the function exists at all is not checked anywhere earlier. It cannot be: the module
+  # named here is usually compiled after the schema that names it, so asking at `use` time would
+  # refuse a spelling that is right. A wrong one raises `UndefinedFunctionError` at the first
+  # registration, which is why [Configuration](configuration.md) asks for a test that calls it.
+  defp format_now({module, function}) do
+    case apply(module, function, []) do
+      %Regex{} = format -> format
+      other -> refuse_answer!(module, function, :format, "a regular expression", other)
+    end
+  end
+
+  defp format_now(given), do: given
+
+  defp message_now({module, function}) do
+    case apply(module, function, []) do
+      message when is_binary(message) and message != "" -> message
+      other -> refuse_answer!(module, function, :format_message, "a non-empty string", other)
+    end
+  end
+
+  defp message_now(given), do: given
+
+  defp refuse_answer!(module, function, key, expected, value) do
+    raise ArgumentError,
+          "`#{key}: {#{inspect(module)}, #{inspect(function)}}` must answer with #{expected}, " <>
+            "got: #{inspect(value)}"
+  end
 
   @doc false
   # A consumer's own clause for an injected function would win by clause order, and the library's
@@ -192,7 +231,17 @@ defmodule Ithibati.Schema.Identifier do
   # a blank error beside the field.
   @doc false
   def validated_message!(message) when is_binary(message) and message != "", do: message
-  def validated_message!(other), do: refuse!(:format_message, other, "a non-empty string")
+
+  def validated_message!({module, function} = asked) when is_name(module) and is_name(function),
+    do: asked
+
+  def validated_message!(other),
+    do:
+      refuse!(
+        :format_message,
+        other,
+        "a non-empty string, or `{module, function}` answering with one"
+      )
 
   # A format that is not a regular expression should say so where it is written, not at somebody's
   # first registration. A binary slips through `validate_format/4` as `String.contains?/2`, which
@@ -200,13 +249,21 @@ defmodule Ithibati.Schema.Identifier do
   # `"x^[a-z]+$y"`.
   @doc false
   def validated_format!(%Regex{} = format), do: format
-  def validated_format!(other), do: refuse!(:format, other, "a regular expression")
+
+  # A pair rather than a capture, because the option is escaped into the generated changeset and
+  # only a pair survives that unchanged. An instance whose identifier is a name in one deployment
+  # and an address in another cannot answer when the schema compiles, so it names who to ask.
+  def validated_format!({module, function} = asked) when is_name(module) and is_name(function),
+    do: asked
+
+  def validated_format!(other),
+    do:
+      refuse!(:format, other, "a regular expression, or `{module, function}` answering with one")
 
   # `true`/`false` are atoms too, and a constraint named "true" matches no index, so every duplicate
   # would surface as the `Ecto.ConstraintError` this option exists to prevent.
   @doc false
-  def validated_constraint_name!(name) when is_atom(name) and name not in [nil, true, false],
-    do: name
+  def validated_constraint_name!(name) when is_name(name), do: name
 
   def validated_constraint_name!(other), do: refuse!(:constraint_name, other, "an atom")
 
@@ -224,10 +281,11 @@ defmodule Ithibati.Schema.Identifier do
 
   defp hint(:format, other) when is_binary(other), do: " — did you mean ~r/#{other}/?"
 
-  defp hint(key, nil) do
-    " — a misspelled module attribute is `nil` with only a warning. " <>
-      "Leave `#{key}:` out to take the default."
-  end
-
+  defp hint(key, nil), do: attribute_hint("Leave `#{key}:` out to take the default.")
+  defp hint(_key, {nil, _function}), do: attribute_hint("Spell the module the pair names.")
+  defp hint(_key, {_module, nil}), do: attribute_hint("Spell the function the pair names.")
   defp hint(_key, _other), do: ""
+
+  defp attribute_hint(advice),
+    do: " — a misspelled module attribute is `nil` with only a warning. " <> advice
 end

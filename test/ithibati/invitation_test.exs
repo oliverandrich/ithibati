@@ -279,6 +279,38 @@ defmodule Ithibati.Schema.InvitationTest do
     end
   end
 
+  # Threaded separately again, and the account macro's test says nothing about this one.
+  describe "a format the library asks for while it runs" do
+    setup do: Ithibati.TestShape.choose(:username)
+
+    test "reaches the invitation changeset, message and all" do
+      body = """
+      use Ithibati.Schema.Invitation,
+        identifier: :email,
+        format: {Ithibati.TestShape, :format},
+        format_message: {Ithibati.TestShape, :message}
+      """
+
+      module = probe("AskedInvitation", body, inside: "ithibati_invitation()")
+
+      assert %{valid?: true} = module.invitation_changeset(struct(module), %{email: "ada"})
+
+      assert %{email: ["must be a name"]} =
+               errors_on(
+                 module.invitation_changeset(struct(module), %{email: "ada@example.test"})
+               )
+
+      # The same compiled module, a different instance.
+      Ithibati.TestShape.choose(:email)
+
+      assert %{valid?: true} =
+               module.invitation_changeset(struct(module), %{email: "ada@example.test"})
+
+      assert %{email: ["must be an address"]} =
+               errors_on(module.invitation_changeset(struct(module), %{email: "ada"}))
+    end
+  end
+
   # The option checks live once in `Ithibati.Schema.Identifier.options!/2`, and the wiring that
   # carries the value to the changeset does not: this macro threads it separately from the account
   # one, and only a test here says whether that thread is connected.

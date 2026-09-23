@@ -9,6 +9,8 @@ defmodule Ithibati.Schema.UserTest do
   """
   use Ithibati.DataCase, async: true
 
+  import ExUnit.CaptureIO, only: [with_io: 2]
+
   alias Ithibati.Schema
 
   # Every account schema the suite carries, with the field it is identified by and the fields it
@@ -245,6 +247,92 @@ defmodule Ithibati.Schema.UserTest do
 
       # `TestUser` takes the library's email format, which accepts what the attribute's refuses.
       assert %{valid?: true} = TestUser.changeset(%TestUser{}, %{email: "ada@elsewhere.test"})
+    end
+  end
+
+  # An application whose identifier is a name in one deployment and an address in another cannot
+  # answer at compile time. Asked for by name, the library goes on doing the validating — with
+  # its message, and with the `valid?` guards that depend on the changeset already being invalid.
+  describe "a format the library asks for while it runs" do
+    setup do: Ithibati.TestShape.choose(:username)
+
+    test "is whichever the instance is configured for, and follows it when it changes" do
+      body = """
+      use Ithibati.Schema.User,
+        identifier: :email,
+        format: {Ithibati.TestShape, :format},
+        format_message: {Ithibati.TestShape, :message}
+      """
+
+      module = probe("AskedUser", body, inside: "ithibati_account()")
+
+      assert %{valid?: true} = module.identifier_changeset(struct(module), %{email: "ada"})
+      assert ["must be a name"] = errors_for(module, :email, "ada@example.test")
+
+      # The same compiled module, a different instance.
+      Ithibati.TestShape.choose(:email)
+
+      assert %{valid?: true} =
+               module.identifier_changeset(struct(module), %{email: "ada@example.test"})
+
+      assert ["must be an address"] = errors_for(module, :email, "ada")
+    end
+
+    # The pair is checked for its shape where it is written, but what it answers with can only be
+    # seen when it answers. A string slips through `validate_format/4` as `String.contains?/2`,
+    # which is wrong in both directions — so it is refused rather than quietly applied.
+    test "and a pair that answers with something else is refused when it answers" do
+      body = """
+      use Ithibati.Schema.User,
+        identifier: :email,
+        format: {Ithibati.TestShape, :not_a_pattern}
+      """
+
+      module = probe("AskedBadly", body, inside: "ithibati_account()")
+
+      # The sentence names the function that answered and what it should have answered with. The
+      # value did not come from the `use` line, so a refusal phrased against that line would send
+      # whoever reads it to the wrong file.
+      message =
+        assert_raise ArgumentError, fn ->
+          module.identifier_changeset(struct(module), %{email: "ada"})
+        end
+
+      assert message.message ==
+               ~s|`format: {Ithibati.TestShape, :not_a_pattern}` must answer with | <>
+                 ~s|a regular expression, got: "~r/looks like one/"|
+    end
+
+    # `{@shape, :format}` where the attribute is misspelled. Elixir warns and carries on, so what
+    # reaches this library is a pair whose shape is right and whose module is `nil`. Refused where
+    # it is written: `apply(nil, :format, [])` otherwise raises at somebody's first registration,
+    # naming `nil` and nothing that would lead back to the `use` line.
+    test "and a pair whose module is a misspelled attribute is refused where it is written" do
+      {message, warning} =
+        with_io(:stderr, fn ->
+          assert_raise ArgumentError, fn ->
+            probe(
+              "AskedNil",
+              "use Ithibati.Schema.User, identifier: :email, format: {@shape, :format}",
+              inside: "ithibati_account()"
+            )
+          end
+        end)
+
+      # The premise, in the compiler's own words: this is a warning and not an error, so the
+      # module would have gone on to compile had the library not looked.
+      assert warning =~ "undefined module attribute @shape"
+
+      assert message.message =~ "got: {nil, :format}"
+      assert message.message =~ "a misspelled module attribute is `nil`"
+    end
+
+    test "and something that is neither a pattern nor a pair is refused where it is written" do
+      assert_raise ArgumentError, ~r/format/, fn ->
+        probe("AskedWrongly", ~s|use Ithibati.Schema.User, identifier: :email, format: "nope"|,
+          inside: "ithibati_account()"
+        )
+      end
     end
   end
 

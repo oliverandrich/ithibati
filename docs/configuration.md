@@ -138,6 +138,39 @@ use User, identifier: :handle, format: @handle,
 Define module attributes before `use`. An explicitly supplied `format: nil` raises.
 `format_message:` requires `format:`. The identifier itself must be a literal atom.
 
+### A format chosen while the instance runs
+
+An application whose identifier is a name in one deployment and an address in another cannot
+answer when its schema compiles. Name who to ask instead:
+
+```elixir
+use User, identifier: :username,
+  format: {MyApp.Identity, :format},
+  format_message: {MyApp.Identity, :format_message}
+```
+
+Ithibati calls the function on every changeset, so the answer may change between one and the
+next. It must answer with a regex, or with a non-empty string for the message; anything else is
+refused when it answers, because a string applied as a pattern matches by containment and is
+wrong in both directions.
+
+A pair rather than `&MyApp.Identity.format/0`: the option is escaped into the generated
+changeset, and only a pair survives that unchanged.
+
+Whether the function exists is not checked when the schema compiles, and cannot be: the module
+named here is usually compiled after the schema that names it, so asking then would refuse a
+spelling that is right. A wrong one raises `UndefinedFunctionError` at the first registration.
+Cover it with a test that builds one changeset through the schema.
+
+> #### What stays fixed at compile time {: .info}
+>
+> `identifier:` names a column, so it is a literal atom and cannot be asked for — a deployment
+> cannot choose a column name. `users_key_type` and `table_prefix` are read with
+> `Application.compile_env/3` for the same reason: they define fields and table names.
+>
+> The format is the exception because it validates a value rather than defining a schema. An
+> application with two modes keeps one column and lets its shape decide what may go in it.
+
 To distinguish an identifier collision from other validation failures after an insert, use
 `Ithibati.Schema.User.identifier_taken?/1` on the returned changeset.
 
