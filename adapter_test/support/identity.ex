@@ -68,6 +68,32 @@ if Application.compile_env!(:ithibati, :probe_adapter) in [
     def down, do: Ithibati.Migration.down(from: 2, version: 3)
   end
 
+  # This harness models an application that stepped through the versions, so its invitation table
+  # was created before version 4 and the inviter column arrives in a migration of its own — the
+  # same shape `docs/invitations.md` gives a real one. The `alter` goes above the `up/1` call
+  # deliberately: `up/1` flushes before it checks the table, so a column queued above it is there
+  # to be found and the same column queued below it is not.
+  defmodule Ithibati.AdapterInviterMigration do
+    @moduledoc false
+    use Ecto.Migration
+
+    def up do
+      alter table(:app_invitations) do
+        Ithibati.Migration.invitation_inviter_column(version: 4)
+      end
+
+      Ithibati.Migration.up(from: 3, version: 4)
+    end
+
+    def down do
+      Ithibati.Migration.down(from: 3, version: 4)
+
+      alter table(:app_invitations) do
+        remove(:invited_by_id)
+      end
+    end
+  end
+
   defmodule Ithibati.AdapterLaterInvitationMigration do
     @moduledoc false
     use Ecto.Migration
