@@ -8,6 +8,8 @@ Releases that change the database schema state the new schema version and the re
 migration. Add a migration calling `Ithibati.Migration.up(from: <old>, version: <new>)` when
 upgrading to one of those releases.
 
+## [Unreleased]
+
 ## [0.6.2] - 2026-09-23
 
 Versions 0.6.0 and 0.6.1 were tagged and never published. 0.6.0's commit failed the MySQL and
