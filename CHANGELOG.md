@@ -8,7 +8,7 @@ Releases that change the database schema state the new schema version and the re
 migration. Add a migration calling `Ithibati.Migration.up(from: <old>, version: <new>)` when
 upgrading to one of those releases.
 
-## [Unreleased]
+## [0.6.0] - 2026-09-23
 
 ### Upgrading from 0.5.0
 
@@ -39,20 +39,19 @@ do. See [Upgrading the database schema](docs/configuration.md#upgrading-the-data
   changesets. The literal form is unchanged. `identifier:` stays a literal atom: it names a
   column, and a deployment cannot choose one. See
   [Configuration](docs/configuration.md#a-format-chosen-while-the-instance-runs).
-
 - `invited_by_id` on the invitation schema, set by the caller with `put_change/3` rather than
   cast — who is inviting is known to the caller and to nobody else, least of all to a form — and
   `Ithibati.Migration.invitation_inviter_column/1` for a table that predates it. The column and
   not the association: declaring `belongs_to` in the macro would pin `user_schema` to compile
   time and would stop compiling for an application that had already written it by hand. See
-  [Invitations](docs/invitations.md#showing-and-withdrawing-pending-invitations).
+  [Invitations](docs/invitations.md#2-configure-and-migrate).
 - `Ithibati.Identity.Invitations.pending_query/0`, `pending/0` and `withdraw/1`. The module could
   open an invitation and accept it, but an application could not see what was outstanding or take
   one back, so every consumer wrote the same three queries against a schema this library
   declares. `pending_query/0` hands over the predicate `fetch/1` uses, for the application to
   scope, order and preload; `withdraw/1` rechecks the acceptance inside its delete, so a
-  withdrawal cannot remove an invitation that is being redeemed at that moment.
-
+  withdrawal cannot remove an invitation that is being redeemed at that moment. See
+  [Invitations](docs/invitations.md#showing-and-withdrawing-pending-invitations).
 - `mix ithibati.doctor` asks whether the invitation table has the inviter column, and whether its
   type matches `users_key_type`. This is the one version 4 failure no migration can catch: the
   migration that built the table has already run and will not run again, so an installation that
@@ -294,6 +293,7 @@ the application.
   receives the account and any replacement code batch to display.
 - Three optional Credo checks for consuming applications.
 
+[0.6.0]: https://github.com/oliverandrich/ithibati/releases/tag/v0.6.0
 [0.5.0]: https://github.com/oliverandrich/ithibati/releases/tag/v0.5.0
 [0.4.0]: https://github.com/oliverandrich/ithibati/releases/tag/v0.4.0
 [0.3.0]: https://github.com/oliverandrich/ithibati/releases/tag/v0.3.0
