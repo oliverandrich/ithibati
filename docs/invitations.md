@@ -94,14 +94,32 @@ $ mix ecto.migrate
 The plaintext token is virtual and is not stored. Pin the version the way `up/1` is pinned: a
 migration written today says `version: 4`, and one written before that goes on producing what it
 produced then. For a table created before version 4, add the inviter with
-`invitation_inviter_column/1` rather than editing the migration that made it.
+`invitation_inviter_column/1` rather than editing the migration that made it:
+
+```elixir
+def up do
+  alter table(:invitations) do
+    Ithibati.Migration.invitation_inviter_column(version: 4)
+  end
+
+  Ithibati.Migration.up(from: 3, version: 4)
+end
+```
+
+The order in that migration is not free. `up/1` flushes the queued statements before it checks the
+table, so an `alter` written above it has already run; the same `alter` written below it has not,
+and `up/1` refuses a table whose inviter column is still missing.
+
+`mix ithibati.doctor` asks the same question of a database nobody is migrating. An installation
+that lifted the library and wrote no new migration compiles, migrates and starts; the column it
+lacks is first missed at an invitation.
 
 For an existing table, supply the same columns and required index. Most applications can keep `:string`: both changesets trim and
 lowercase identifiers. If you deliberately use PostgreSQL `citext`, for example to handle
 writes outside the changesets, select it explicitly:
 
 ```elixir
-Ithibati.Migration.invitation_columns(version: 1, type: :citext)
+Ithibati.Migration.invitation_columns(version: 4, type: :citext)
 ```
 
 Install the `citext` extension before this migration; the helper does not create it. The

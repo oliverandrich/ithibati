@@ -33,6 +33,13 @@ do. See [Upgrading the database schema](docs/configuration.md#upgrading-the-data
 
 ### Added
 
+- `format:` and `format_message:` accept `{module, function}` as well as a literal. Ithibati asks
+  on every changeset, so an application whose identifier is a name in one deployment and an
+  address in another can leave the validating here instead of writing it again in its own
+  changesets. The literal form is unchanged. `identifier:` stays a literal atom: it names a
+  column, and a deployment cannot choose one. See
+  [Configuration](docs/configuration.md#a-format-chosen-while-the-instance-runs).
+
 - `invited_by_id` on the invitation schema, set by the caller with `put_change/3` rather than
   cast — who is inviting is known to the caller and to nobody else, least of all to a form — and
   `Ithibati.Migration.invitation_inviter_column/1` for a table that predates it. The column and
@@ -45,6 +52,12 @@ do. See [Upgrading the database schema](docs/configuration.md#upgrading-the-data
   declares. `pending_query/0` hands over the predicate `fetch/1` uses, for the application to
   scope, order and preload; `withdraw/1` rechecks the acceptance inside its delete, so a
   withdrawal cannot remove an invitation that is being redeemed at that moment.
+
+- `mix ithibati.doctor` asks whether the invitation table has the inviter column, and whether its
+  type matches `users_key_type`. This is the one version 4 failure no migration can catch: the
+  migration that built the table has already run and will not run again, so an installation that
+  lifts the library and writes nothing new compiles, migrates and starts, and misses the column
+  at its first invitation.
 
 ### Changed
 

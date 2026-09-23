@@ -117,12 +117,12 @@ In `*_add_ithibati.exs`, create Ithibati's tables and the unique index on `users
 defmodule MyApp.Repo.Migrations.AddIthibati do
   use Ecto.Migration
 
-  def up, do: Ithibati.Migration.up(version: 3)
-  def down, do: Ithibati.Migration.down(version: 3)
+  def up, do: Ithibati.Migration.up(version: 4)
+  def down, do: Ithibati.Migration.down(version: 4)
 end
 ```
 
-Keep `version: 3` pinned. The account table must exist before this migration runs.
+Keep `version: 4` pinned. The account table must exist before this migration runs.
 Ithibati checks its identifier and primary-key columns before creating its own tables.
 
 ```console

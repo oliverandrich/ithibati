@@ -125,7 +125,11 @@ defmodule Ithibati.Migration do
     # Only from version 4. An application's older migration file has to go on producing the table
     # it produced then: a database rebuilt from every migration replays it before the newer one,
     # and a column added to both would collide.
-    if inviter?, do: add(:invited_by_id, reference_type(Config.users_key_type()))
+    # `key_type/0`, which is what every other account foreign key in this file uses. It reads the
+    # accounts table rather than the configured Ecto type, because MySQL's `bigint unsigned` is a
+    # different column type from `bigint` and an application adding its own foreign key later gets
+    # errno 150 when the two do not match.
+    if inviter?, do: add(:invited_by_id, key_type())
   end
 
   @doc """
@@ -159,7 +163,7 @@ defmodule Ithibati.Migration do
 
     Logger.info("ithibati: adding invited_by_id")
 
-    add(:invited_by_id, reference_type(Config.users_key_type()))
+    add(:invited_by_id, key_type())
   end
 
   @doc """
@@ -492,7 +496,7 @@ defmodule Ithibati.Migration do
           raise ArgumentError,
                 "#{inspect(schema)} declares #{qualified(table)}.#{column}, and the table has " <>
                   "no such column. `ithibati_invitation/0` declares it and this is one of " <>
-                  "them; the table is yours to create."
+                  "them; " <> remedy(column)
 
         {type, _unique?} ->
           type in accepted ||
@@ -503,6 +507,18 @@ defmodule Ithibati.Migration do
       end
     end)
   end
+
+  # The inviter arrived at version 4, so a table that is otherwise right can be missing only this
+  # one, and the advice that fits every other column does not fit it. Naming the order as well: the
+  # check runs after `flush/0`, so an `alter` queued above the `up/1` call has already run and the
+  # same `alter` written below it has not.
+  defp remedy(:invited_by_id) do
+    "this column arrived at version 4, so a table created before it is missing only this one. " <>
+      "Add it with `Ithibati.Migration.invitation_inviter_column(version: 4)` in an `alter` " <>
+      "block, before the call to `up/1` in the same migration or in an earlier one of your own."
+  end
+
+  defp remedy(_column), do: "the table is yours to create."
 
   defp confirm_account_key!(opts) do
     oid = table_ref!(opts.users_table)

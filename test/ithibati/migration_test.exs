@@ -599,9 +599,20 @@ defmodule Ithibati.MigrationTest do
     as_invitation_table(:from_the_library)
     migrate(:up)
 
-    assert_raise ArgumentError, ~r/invited_by_id/, fn ->
-      Ecto.Migrator.up(TestRepo, @version + 3, ToVersionFour, prefix: @schema, log: false)
-    end
+    # The refusal has to say what to do. "The table is yours to create" is the right sentence for a
+    # column that was always part of the shape and the wrong one here: the table is right, it
+    # predates version 4, and one helper adds what it is missing. The order matters too, and only
+    # in one direction — `up/1` flushes before it looks, so an `alter` queued above it has already
+    # run, and the same `alter` written below it has not.
+    message =
+      assert_raise ArgumentError, fn ->
+        Ecto.Migrator.up(TestRepo, @version + 3, ToVersionFour, prefix: @schema, log: false)
+      end
+
+    assert message.message =~ "invited_by_id"
+    assert message.message =~ "invitation_inviter_column"
+    assert message.message =~ "before the call to `up/1`"
+    refute message.message =~ "the table is yours to create"
   end
 
   describe "invitation_columns/1" do

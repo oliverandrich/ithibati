@@ -172,7 +172,34 @@ defmodule Ithibati.Doctor do
            "`Ithibati.Migration.invitation_index/1` in one of your own."}
 
       {_type, true} ->
-        {:ok, "#{table}.token_hash carries a unique index"}
+        invitation_inviter(repo, prefix, table, oid)
+    end
+  end
+
+  # The one failure no migration can catch. `ithibati_invitation/0` declares this column, so every
+  # invitation query selects it — but the migration that built the table has already run and will
+  # not run again, so an installation that lifts the library and writes no new migration stays
+  # green through compilation, through `mix ecto.migrate`, and through every check but this one.
+  defp invitation_inviter(repo, prefix, table, oid) do
+    accepted = Catalogue.types(repo, Config.users_key_type())
+
+    case Catalogue.column(repo, oid, :invited_by_id) do
+      nil ->
+        {:error,
+         "#{Catalogue.qualified(prefix, table)} has no invited_by_id column. " <>
+           "`ithibati_invitation/0` declares it, so every invitation query asks for it. A table " <>
+           "created before version 4 needs `Ithibati.Migration.invitation_inviter_column/1` in " <>
+           "a new migration of your own."}
+
+      {type, _unique?} ->
+        if type in accepted do
+          {:ok, "#{table}.token_hash carries a unique index, and the inviter column is there"}
+        else
+          {:error,
+           "#{table}.invited_by_id is #{type}, and this library reads it as " <>
+             "#{Enum.join(accepted, " or ")}. It holds an account key, so it has to match " <>
+             "`config :ithibati, users_key_type:`."}
+        end
     end
   end
 

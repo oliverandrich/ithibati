@@ -96,6 +96,31 @@ defmodule Ithibati.DoctorTest do
       assert detail =~ "invitation_index"
     end
 
+    # The one failure no migration can catch. `ithibati_invitation/0` declares the column, so
+    # every invitation query selects it; the migration that built the table has already run and
+    # will not run again, so an installation that lifts the library and writes no new migration
+    # is green everywhere until its first `fetch/1`.
+    test "an invitation table that never got the inviter column" do
+      SQL.query!(Ithibati.TestRepo, "ALTER TABLE invitations DROP COLUMN invited_by_id", [])
+
+      results = Doctor.examine(:ithibati)
+
+      assert "the invitation table" in subjects(results, :error)
+      detail = detail(results, "the invitation table")
+      assert detail =~ "no invited_by_id column"
+      assert detail =~ "invitation_inviter_column"
+    end
+
+    test "an invitation table whose inviter column is the wrong type" do
+      SQL.query!(
+        Ithibati.TestRepo,
+        "ALTER TABLE invitations ALTER COLUMN invited_by_id TYPE text USING invited_by_id::text",
+        []
+      )
+
+      assert detail(Doctor.examine(:ithibati), "the invitation table") =~ "invited_by_id is text"
+    end
+
     test "an invitation table that is configured and not there" do
       SQL.query!(Ithibati.TestRepo, "DROP TABLE invitations CASCADE", [])
 
