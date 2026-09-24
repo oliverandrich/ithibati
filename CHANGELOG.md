@@ -10,6 +10,15 @@ upgrading to one of those releases.
 
 ## [Unreleased]
 
+### Added
+
+- `Ithibati.Identity.Invitations.expired_query/0`, the predicate `expired/0` and
+  `delete_expired/0` already used. Only the list was public, so an application with sites, roles
+  or an order of its own had to write the `where` again — and a second copy of it is a second
+  opinion about when an invitation has run out, while the one that deletes rows is the other one.
+  `pending_query/0` has handed over its half since 0.6.0; this is the same arrangement for the
+  other. The two list functions are unchanged.
+
 ## [0.6.2] - 2026-09-23
 
 Versions 0.6.0 and 0.6.1 were tagged and never published. 0.6.0's commit failed the MySQL and

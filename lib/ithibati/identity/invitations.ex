@@ -125,7 +125,12 @@ defmodule Ithibati.Identity.Invitations do
       where: i.expires_at > ^DateTime.utc_now()
   end
 
-  @doc "Returns every pending invitation. See `pending_query/0` to narrow the list first."
+  @doc """
+  Returns every pending invitation, in whatever order the database gives.
+
+  An application that wants a site's, or an order, or a preload, narrows `pending_query/0`
+  instead — which is what every one written so far has wanted.
+  """
   def pending, do: Config.repo().all(pending_query())
 
   @doc """
@@ -165,11 +170,27 @@ defmodule Ithibati.Identity.Invitations do
   end
 
   @doc """
-  Returns expired invitations that have not been accepted.
+  Returns the query behind `expired/0` and `delete_expired/0`, for an application to narrow.
 
-  Ithibati schedules no cleanup. Use this list to inspect pending deletions, or call
-  `delete_expired/0` to remove them. Expired invitations are refused by `fetch/1` regardless of
-  whether their rows remain in the database.
+  The predicate rather than the rows, the way `pending_query/0` hands over the other one. An
+  application with sites, roles or an order of its own scopes this instead of writing the `where`
+  again — and a second copy of it would be a second opinion about when an invitation has run out,
+  which is the word `delete_expired/0` deletes by.
+  """
+  def expired_query do
+    from i in Config.invitation_schema!(),
+      where: is_nil(i.accepted_at),
+      where: i.expires_at <= ^DateTime.utc_now()
+  end
+
+  @doc """
+  Returns every expired invitation nobody accepted.
+
+  Ithibati schedules no cleanup. Use this list to look before `delete_expired/0` removes them.
+  Expired invitations are refused by `fetch/1` whether or not their rows are still there.
+
+  Every one of them, in whatever order the database gives. An application that wants a site's, or
+  an order, or a preload, narrows `expired_query/0` instead.
   """
   def expired do
     Config.repo().all(expired_query())
@@ -196,11 +217,5 @@ defmodule Ithibati.Identity.Invitations do
       |> where(^Ecto.primary_key!(invitation))
 
     Mutations.update_one(repo, query, [set: [accepted_at: now]], :invalid_invitation)
-  end
-
-  defp expired_query do
-    from i in Config.invitation_schema!(),
-      where: is_nil(i.accepted_at),
-      where: i.expires_at <= ^DateTime.utc_now()
   end
 end

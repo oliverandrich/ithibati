@@ -493,6 +493,19 @@ consistent order throughout the application and its fixtures to avoid deadlocks.
 deletes them and returns the count. Ithibati schedules no cleanup job; expired links are refused
 whether or not the rows have been removed.
 
+`Invitations.expired_query/0` is the predicate both of those use, for an application with sites,
+roles or an order of its own to narrow — the same arrangement as `pending_query/0` below. Reach
+for the query rather than the list whenever the answer has to be scoped: a `where` written again
+here is a second opinion about when an invitation has run out, and the one that deletes rows is
+the other one.
+
+```elixir
+import Ecto.Query
+
+from(i in Ithibati.Identity.Invitations.expired_query(), where: i.site_id == ^site.id)
+|> MyApp.Repo.all()
+```
+
 ## Showing and withdrawing pending invitations
 
 `Invitations.pending_query/0` returns the query that finds unaccepted, unexpired invitations —

@@ -165,6 +165,32 @@ defmodule Ithibati.Identity.InvitationsTest do
       assert Enum.map(Invitations.expired(), & &1.id) == [stale.id]
     end
 
+    # The pair `pending_query/0` makes: an application scopes, orders or preloads, and `expired/0`
+    # is the unscoped case of the same predicate. Without it the only way to look at one site's
+    # expired invitations is to write the `where` again, and then it drifts from the one
+    # `delete_expired/0` deletes by — two opinions about the same word.
+    test "and expired_query/0 is something the application can narrow" do
+      invite("first@example.test", days: -1)
+      wanted = invite("second@example.test", days: -1)
+
+      narrowed =
+        from(i in Invitations.expired_query(), where: i.email == ^"second@example.test")
+
+      assert Enum.map(TestRepo.all(narrowed), & &1.id) == [wanted.id]
+    end
+
+    # The two have to mean the same thing, or looking before deleting says nothing about what
+    # will go.
+    test "and it is the predicate delete_expired/0 deletes by" do
+      invite("gone@example.test", days: -1)
+      invite("kept@example.test")
+
+      doomed = Enum.map(TestRepo.all(Invitations.expired_query()), & &1.id)
+
+      assert Invitations.delete_expired() == length(doomed)
+      refute Enum.any?(TestRepo.all(TestInvitation), &(&1.id in doomed))
+    end
+
     test "and delete_expired/0 removes exactly those" do
       invite("gone1@example.test", days: -1)
       invite("gone2@example.test", days: -1)
