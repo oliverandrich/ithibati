@@ -374,18 +374,49 @@ defmodule Ithibati.Identity.Passkeys do
   """
   def authentication_challenge(rp_id, origin, opts \\ [])
       when is_binary(rp_id) and (is_binary(origin) or (is_list(origin) and origin != [])) do
-    if Config.repo().exists?(UserKey) do
-      {:ok,
-       Wax.new_authentication_challenge(
-         rp_id: rp_id,
-         origin: origin,
-         user_verification: user_verification!(opts),
-         timeout: seconds!(opts),
-         silent_authentication_enabled: false
-       )}
-    else
-      {:error, :no_credentials}
-    end
+    if Config.repo().exists?(UserKey),
+      do: {:ok, new_authentication_challenge(rp_id, origin, opts)},
+      else: {:error, :no_credentials}
+  end
+
+  defp new_authentication_challenge(rp_id, origin, opts) do
+    Wax.new_authentication_challenge(
+      rp_id: rp_id,
+      origin: origin,
+      user_verification: user_verification!(opts),
+      timeout: seconds!(opts),
+      silent_authentication_enabled: false
+    )
+  end
+
+  @doc """
+  Returns what a transport retains of a challenge: its type, bytes, issue time, relying-party ID
+  and origin.
+
+  A `Wax.Challenge` also carries every `wax_` default and is several times larger. That matters
+  where the challenge waits in a session cookie, which holds at most 4096 bytes. Rebuild the
+  challenge with `restore_challenge/2`.
+  """
+  def retain_challenge(%Wax.Challenge{} = challenge),
+    do: Map.take(challenge, [:type, :bytes, :issued_at, :rp_id, :origin])
+
+  @doc """
+  Rebuilds a challenge retained with `retain_challenge/1`.
+
+  Pass the options the challenge was issued with. The rebuilt challenge keeps the original bytes
+  and issue time, so it expires when the original would have.
+  """
+  def restore_challenge(
+        %{type: type, bytes: bytes, issued_at: issued_at, rp_id: rp_id, origin: origin},
+        opts
+      ) do
+    challenge =
+      case type do
+        :attestation -> registration_challenge(rp_id, origin, opts)
+        :authentication -> new_authentication_challenge(rp_id, origin, opts)
+      end
+
+    %{challenge | bytes: bytes, issued_at: issued_at}
   end
 
   @doc """

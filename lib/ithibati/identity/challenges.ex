@@ -26,9 +26,11 @@ defmodule Ithibati.Identity.Challenges do
   @doc """
   Atomically consumes an unexpired challenge, returning `:ok` or `{:error, :no_challenge}`.
 
+  Accepts a `Wax.Challenge` or the form `Ithibati.Identity.Passkeys.retain_challenge/1` returns.
+
   Raises `ArgumentError` inside a transaction: a later rollback must not restore consumption.
   """
-  def consume(%Wax.Challenge{bytes: bytes}) do
+  def consume(%{bytes: bytes}) when is_binary(bytes) do
     Config.repo().in_transaction?() &&
       raise ArgumentError, "consume a challenge outside an application transaction"
 

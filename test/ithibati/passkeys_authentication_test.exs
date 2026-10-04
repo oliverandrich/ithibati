@@ -25,6 +25,17 @@ defmodule Ithibati.Identity.PasskeysAuthenticationTest do
     %{user: user, credential: credential, key: key, challenge: challenge}
   end
 
+  describe "retain_challenge/1 and restore_challenge/2" do
+    test "an authentication challenge comes back as it was issued" do
+      opts = [user_verification: "discouraged", seconds: 30]
+
+      {:ok, issued} =
+        Passkeys.authentication_challenge(@rp_id, [@origin, "https://other.test"], opts)
+
+      assert issued |> Passkeys.retain_challenge() |> Passkeys.restore_challenge(opts) == issued
+    end
+  end
+
   describe "authentication_challenge/3" do
     test "carries the relying party it was given", ctx do
       assert ctx.challenge.rp_id == @rp_id

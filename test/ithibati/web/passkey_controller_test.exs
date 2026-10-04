@@ -182,11 +182,8 @@ if Code.ensure_loaded?(Phoenix.Component) do
         relaxed = request("/auth/authentication/challenge", %{})
         strict = request("/strict/authentication/challenge", %{})
 
-        assert challenge(relaxed, :ithibati_authentication_challenge).user_verification ==
-                 "preferred"
-
-        assert challenge(strict, :ithibati_authentication_challenge).user_verification ==
-                 "required"
+        assert Jason.decode!(relaxed.resp_body)["userVerification"] == "preferred"
+        assert Jason.decode!(strict.resp_body)["userVerification"] == "required"
       end
 
       # Two mounts may answer to different relying parties and different handlers. With one slot for
@@ -289,6 +286,52 @@ if Code.ensure_loaded?(Phoenix.Component) do
         code = List.first(RecoveryCodes.regenerate(user_fixture()))
 
         assert_raise WithClauseError, fn -> request("/sloppy/recovery", %{"code" => code}) end
+      end
+    end
+
+    # A consumer's session may be a cookie, and a cookie holds at most 4096 bytes. Both ceremonies
+    # can be open at once: a sign-in prompt that found no passkey leaves its challenge unspent.
+    describe "the session a ceremony keeps" do
+      setup :a_key_on_file
+
+      test "a challenge to add a passkey to an account stays small", ctx do
+        started = request("/auth/registration/challenge", %{"account" => to_string(ctx.user.id)})
+        assert started.status == 200
+
+        entry = Plug.Conn.get_session(started, :ithibati_registration_challenge)
+        assert byte_size(:erlang.term_to_binary(entry)) < 512
+      end
+
+      test "a sign-in challenge stays small" do
+        started = request("/auth/authentication/challenge", %{})
+        assert started.status == 200
+
+        entry = Plug.Conn.get_session(started, :ithibati_authentication_challenge)
+        assert byte_size(:erlang.term_to_binary(entry)) < 512
+      end
+
+      test "the handler is given the account as it stands when the passkey is verified", ctx do
+        started = request("/auth/registration/challenge", %{"account" => to_string(ctx.user.id)})
+        {challenge, _subject} = challenge(started, :ithibati_registration_challenge)
+        attestation = TestCredentials.attestation(TestCredentials.credential(), challenge)
+
+        registered = request("/auth/registration", %{"credential" => attestation}, started)
+
+        assert registered.status == 200
+        assert %Ithibati.TestUser{} = registered.assigns.subject
+        assert registered.assigns.subject.id == ctx.user.id
+      end
+
+      test "an account removed before the passkey is verified is refused", ctx do
+        started = request("/auth/registration/challenge", %{"account" => to_string(ctx.user.id)})
+        {challenge, _subject} = challenge(started, :ithibati_registration_challenge)
+        attestation = TestCredentials.attestation(TestCredentials.credential(), challenge)
+        Ithibati.TestRepo.delete!(ctx.user)
+
+        refused = request("/auth/registration", %{"credential" => attestation}, started)
+
+        assert refused.status == 422
+        assert Jason.decode!(refused.resp_body) == %{"error" => "unknown_account"}
       end
     end
 

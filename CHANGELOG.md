@@ -18,6 +18,21 @@ upgrading to one of those releases.
   opinion about when an invitation has run out, while the one that deletes rows is the other one.
   `pending_query/0` has handed over its half since 0.6.0; this is the same arrangement for the
   other. The two list functions are unchanged.
+- `Ithibati.Identity.Passkeys.retain_challenge/1` and `restore_challenge/2`. A transport keeps
+  the compact form and rebuilds the challenge with the options it was issued with.
+  `Ithibati.Identity.Challenges.consume/1` accepts that form as well.
+
+### Fixed
+
+- A ceremony's session entry fits a cookie. The routes kept the whole `Wax.Challenge` and, when
+  adding a passkey, the whole account struct; together that was about 1.9 KB. A sign-in prompt
+  that found no passkey left another 0.8 KB behind, and Phoenix's 4096-byte cookie limit then
+  failed the next request with `Plug.Conn.CookieOverflowError`. An entry now holds the retained
+  challenge and the account's id, a few hundred bytes. Verification loads the account again and
+  refuses one removed meanwhile with `unknown_account`.
+
+  A registration challenge issued before the upgrade cannot be completed after it; the browser
+  starts a new one.
 
 ## [0.6.2] - 2026-09-23
 

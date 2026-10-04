@@ -8,6 +8,10 @@ if Code.ensure_loaded?(Phoenix.Component) do
     @impl true
     def registration_subject(_conn, %{"identifier" => identifier}), do: {:ok, identifier}
 
+    # Adding a passkey to an account that exists, as a signed-in member does.
+    def registration_subject(_conn, %{"account" => id}),
+      do: {:ok, Ithibati.TestRepo.get!(Ithibati.TestUser, id)}
+
     def registration_subject(_conn, _params), do: {:error, :no_identifier}
 
     @impl true

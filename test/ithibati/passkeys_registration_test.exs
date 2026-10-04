@@ -14,6 +14,17 @@ defmodule Ithibati.Identity.PasskeysRegistrationTest do
   @origin "http://localhost:4000"
   @rp_name "A Consuming Application"
 
+  # A transport keeps the retained form, which a session cookie has room for. What it verifies
+  # against must be the challenge that was issued, options and all.
+  describe "retain_challenge/1 and restore_challenge/2" do
+    test "a registration challenge comes back as it was issued" do
+      opts = [user_verification: "required", seconds: 120]
+      issued = Passkeys.registration_challenge(@rp_id, @origin, opts)
+
+      assert issued |> Passkeys.retain_challenge() |> Passkeys.restore_challenge(opts) == issued
+    end
+  end
+
   describe "registration_challenge/2" do
     test "carries the relying party it was given" do
       challenge = Passkeys.registration_challenge(@rp_id, @origin)

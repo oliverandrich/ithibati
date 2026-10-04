@@ -7,6 +7,9 @@ if Code.ensure_loaded?(Phoenix.Component) do
     Registration and authentication each use a challenge request followed by verification.
     Challenges occupy separate session entries, and each carries its mount settings. Registration
     also retains the subject approved by `c:Ithibati.Web.Handler.registration_subject/2`.
+    The session may be a cookie of at most 4096 bytes, so an entry keeps the retained form of its
+    challenge and an approved account's id. Verification rebuilds the challenge from the mount's
+    ceremony options and loads the account again; an account removed meanwhile is refused.
     Verification removes the session entry and atomically consumes its database record before
     checking it. Old cookies and concurrent requests cannot reuse that record, even after failure.
 
@@ -20,6 +23,7 @@ if Code.ensure_loaded?(Phoenix.Component) do
     """
     use Phoenix.Controller, formats: [:json]
 
+    alias Ithibati.Config
     alias Ithibati.Identity.Challenges
     alias Ithibati.Identity.Passkeys
     alias Ithibati.Identity.RecoveryCodes
@@ -103,7 +107,7 @@ if Code.ensure_loaded?(Phoenix.Component) do
     defp keep(conn, key, held) do
       consume(get_session(conn, key))
       Challenges.store(challenge(held))
-      put_session(conn, key, {settings(conn), held})
+      put_session(conn, key, {settings(conn), retain(held)})
     end
 
     defp challenge({challenge, _subject}), do: challenge
@@ -125,8 +129,31 @@ if Code.ensure_loaded?(Phoenix.Component) do
     # contract errors after the code had already been spent.
     def recovery(conn, _params), do: refuse(conn, :invalid_code)
 
-    defp taken({settings, held}, settings), do: {:ok, held}
+    defp taken({settings, held}, settings), do: restore(held, settings.ceremony)
     defp taken(_held, _settings), do: {:error, :no_challenge}
+
+    # What a session keeps of a challenge and the subject it was approved for. An account is kept
+    # by its id and loaded again at verification, so the handler sees it as it stands then.
+    defp retain({challenge, subject}), do: {Passkeys.retain_challenge(challenge), retain(subject)}
+    defp retain(%Wax.Challenge{} = challenge), do: Passkeys.retain_challenge(challenge)
+    defp retain(%_{} = account), do: {:account, Config.account!(account).id}
+    defp retain(identifier) when is_binary(identifier), do: identifier
+
+    defp restore({challenge, subject}, ceremony) do
+      with {:ok, subject} <- subject(subject),
+           do: {:ok, {Passkeys.restore_challenge(challenge, ceremony), subject}}
+    end
+
+    defp restore(challenge, ceremony), do: {:ok, Passkeys.restore_challenge(challenge, ceremony)}
+
+    defp subject({:account, id}) do
+      case Config.repo().get(Config.user_schema(), id) do
+        nil -> {:error, :unknown_account}
+        account -> {:ok, account}
+      end
+    end
+
+    defp subject(identifier) when is_binary(identifier), do: {:ok, identifier}
 
     defp settings(conn), do: conn.private.ithibati
     defp handler(conn), do: settings(conn).handler
