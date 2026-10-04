@@ -10,6 +10,8 @@ upgrading to one of those releases.
 
 ## [Unreleased]
 
+## [0.6.3] - 2026-10-04
+
 ### Added
 
 - `Ithibati.Identity.Invitations.expired_query/0`, the predicate `expired/0` and
@@ -326,6 +328,7 @@ the application.
   receives the account and any replacement code batch to display.
 - Three optional Credo checks for consuming applications.
 
+[0.6.3]: https://github.com/oliverandrich/ithibati/releases/tag/v0.6.3
 [0.6.2]: https://github.com/oliverandrich/ithibati/releases/tag/v0.6.2
 [0.5.0]: https://github.com/oliverandrich/ithibati/releases/tag/v0.5.0
 [0.4.0]: https://github.com/oliverandrich/ithibati/releases/tag/v0.4.0
