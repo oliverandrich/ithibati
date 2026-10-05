@@ -1,6 +1,8 @@
 defmodule IthibatiInvitesWeb.Endpoint do
   use Phoenix.Endpoint, otp_app: :ithibati_invites
 
+  alias Ithibati.Identity.Sessions
+
   # The session will be stored in the cookie and signed,
   # this means its contents can be read but not tampered with.
   # Set :encryption_salt if you would also like to encrypt it.
@@ -50,6 +52,14 @@ defmodule IthibatiInvitesWeb.Endpoint do
 
   plug Plug.MethodOverride
   plug Plug.Head
-  plug Plug.Session, @session_options
+  plug :session
   plug IthibatiInvitesWeb.Router
+
+  # The cookie lasts as long as the session it carries, read when the request arrives so that
+  # `session_validity` may be set in `config/runtime.exs`. Without it the browser drops the cookie
+  # when it closes.
+  defp session(conn, _opts) do
+    options = Keyword.put(@session_options, :max_age, Sessions.max_age())
+    Plug.Session.call(conn, Plug.Session.init(options))
+  end
 end

@@ -45,6 +45,22 @@ defmodule Ithibati.Identity.SessionsValidityTest do
            |> Sessions.get_user_by_session_token()
   end
 
+  # A browser keeps the session cookie only as long as it is told to. This is what to tell it, so
+  # the cookie and the session end together.
+  test "the validity reads as a cookie's max age in seconds" do
+    delete_env(:ithibati, :session_validity)
+    assert Sessions.max_age() == 60 * 86_400
+
+    put_env(:ithibati, session_validity: {2, :week})
+    assert Sessions.max_age() == 2 * 7 * 86_400
+
+    put_env(:ithibati, session_validity: {90, :minute})
+    assert Sessions.max_age() == 5400
+
+    put_env(:ithibati, session_validity: {0, :day})
+    assert_raise ArgumentError, ~r/session_validity/, fn -> Sessions.max_age() end
+  end
+
   test "cleanup uses the configured validity", %{user: user} do
     put_env(:ithibati, session_validity: {1, :hour})
     user |> Sessions.generate_session_token() |> backdated(7200)

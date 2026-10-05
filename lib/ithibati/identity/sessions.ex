@@ -5,7 +5,8 @@ defmodule Ithibati.Identity.Sessions do
   `generate_session_token/1` returns a plaintext token while storage keeps its SHA-256 digest.
   `get_user_by_session_token/1` returns the account only while that session remains valid.
   `delete_session_token/1` revokes one token; `revoke_all/1` revokes an account's sessions.
-  `delete_expired/0` removes expired rows.
+  `delete_expired/0` removes expired rows. `max_age/0` tells a browser how long to keep the
+  cookie that carries a session.
 
   `Ithibati.Web.Gate` connects these calls to a browser session and LiveView sockets. Direct calls
   here do not update cookies or broadcast socket disconnections. API tokens with scopes or
@@ -25,7 +26,7 @@ defmodule Ithibati.Identity.Sessions do
 
   # `:month` and `:year` are missing on purpose: neither has a fixed length, and a validity that
   # moves with the calendar is not what anyone means by ninety days. The arithmetic itself is
-  # `DateTime.shift/2`'s, not ours.
+  # `DateTime.shift/2`'s and `to_timeout/1`'s, not ours.
   @units [:second, :minute, :hour, :day, :week]
 
   @doc """
@@ -140,6 +141,22 @@ defmodule Ithibati.Identity.Sessions do
     {count, unit} = configured_validity!()
 
     DateTime.shift(DateTime.utc_now(), [{unit, -count}])
+  end
+
+  @doc """
+  Returns the configured session validity in seconds, for the session cookie's `:max_age`.
+
+  Without a `:max_age` a browser drops the cookie when it closes, while the server keeps the
+  session for its full validity. The cookie is written whenever the session changes, so with this
+  age it lasts at least as long as the session; an expired session is refused by the server.
+  Invalid validity raises `ArgumentError`, so an endpoint that calls this on every request fails
+  every request until the setting is fixed.
+
+  See [Keeping the session cookie](getting_started.md#keeping-the-session-cookie).
+  """
+  def max_age do
+    {count, unit} = configured_validity!()
+    div(to_timeout([{unit, count}]), 1000)
   end
 
   # Its own function because that is the question `Ithibati.Doctor` asks: is this setting readable.

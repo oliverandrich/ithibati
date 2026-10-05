@@ -10,6 +10,20 @@ upgrading to one of those releases.
 
 ## [Unreleased]
 
+### Added
+
+- `Ithibati.Identity.Sessions.max_age/0`, the configured `session_validity` in seconds, for the
+  session cookie's `:max_age`.
+
+### Fixed
+
+- A member stayed signed in only until the browser closed. The documented endpoint and the
+  examples set no `:max_age` on the session cookie, so the browser dropped it with its own session
+  while the server kept the session for sixty days. Getting started now builds the session plug
+  with the validity as its max age, and the examples do the same. Applications built from the
+  guide should make the same change to their endpoint. Members already signed in keep their old
+  cookie until their session next changes, for instance when they sign in again.
+
 ## [0.6.3] - 2026-10-04
 
 ### Added

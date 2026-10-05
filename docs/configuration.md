@@ -34,7 +34,10 @@ requires recompilation and a database layout that matches the new value.
 
 Session validity accepts a positive integer and one of `:second`, `:minute`, `:hour`, `:day`
 or `:week`. It measures age from session creation, rather than extending the session on each
-request. Invalid values raise when a session is issued or looked up.
+request. Invalid values raise when a session is issued or looked up, and when
+`Ithibati.Identity.Sessions.max_age/0` reads them. That function returns the validity in seconds
+for the session cookie; an endpoint that calls it fails every request on an invalid value. See
+[Keeping the session cookie](getting_started.md#keeping-the-session-cookie).
 
 The relying-party ID and origin are passed to ceremonies, not configured here. See
 [The relying party](ceremonies.md#the-relying-party).

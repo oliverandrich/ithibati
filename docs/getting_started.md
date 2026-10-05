@@ -48,6 +48,33 @@ config :ithibati,
 see [Configuration and schemas](configuration.md#primary-keys-and-table-names).
 `users_key_type` and `table_prefix` are compile-time settings and belong in `config/config.exs`.
 
+### Keeping the session cookie
+
+A session lasts `session_validity`, sixty days unless configured. The browser keeps the cookie
+that carries it only as long as the cookie's max age says; without one it drops the cookie when it
+closes. In `lib/my_app_web/endpoint.ex`, replace `plug Plug.Session, @session_options` with a
+function plug that adds the session's validity:
+
+```elixir
+plug :session
+
+defp session(conn, _opts) do
+  options = Keyword.put(@session_options, :max_age, Ithibati.Identity.Sessions.max_age())
+  Plug.Session.call(conn, Plug.Session.init(options))
+end
+```
+
+The plug reads the validity per request, so `session_validity` may also be set in
+`config/runtime.exs`. The cookie is written whenever the session changes, so it lasts at least as
+long as the session; once the session expires, the server refuses it. A cookie keeps the age it
+was written with: after raising `session_validity`, older cookies still end at their shorter age.
+The LiveView socket keeps `@session_options`: the max age concerns writing the cookie, not reading
+it.
+
+An application that adds this later leaves members who are already signed in with a cookie
+without a max age. It gains one the next time their session changes, for instance when they sign
+in again.
+
 ## 3. The account schema
 
 Create `lib/my_app/accounts/user.ex`:
