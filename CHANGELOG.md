@@ -10,6 +10,8 @@ upgrading to one of those releases.
 
 ## [Unreleased]
 
+## [0.7.1] - 2026-10-06
+
 ### Added
 
 - `Ithibati.Web.Gate.expire/1` deletes expired sessions and disconnects their LiveViews.
@@ -351,6 +353,7 @@ the application.
   receives the account and any replacement code batch to display.
 - Three optional Credo checks for consuming applications.
 
+[0.7.1]: https://github.com/oliverandrich/ithibati/releases/tag/v0.7.1
 [0.7.0]: https://github.com/oliverandrich/ithibati/releases/tag/v0.7.0
 [0.6.3]: https://github.com/oliverandrich/ithibati/releases/tag/v0.6.3
 [0.6.2]: https://github.com/oliverandrich/ithibati/releases/tag/v0.6.2
