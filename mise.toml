@@ -80,10 +80,10 @@ set -eu
 
 fail() { echo "$1" >&2; exit 1; }
 
-# Piped through `tail`, because `mix run` compiles first and says so on stdout. The shape is
-# checked rather than trusted: a pipeline reports the last command's status, so a failing
-# `mix run` would otherwise hand over an empty string.
-version=$(mix run --no-start -e 'IO.puts(Mix.Project.config()[:version])' | tail -n1)
+# The version lives in mix.exs, so nothing is compiled to read it. A cold compile cost the release
+# `tag` job up to a minute. With these flags Mix needs neither Hex nor fetched dependencies, so a
+# fresh runner gets no install prompt either. The shape is still checked rather than trusted.
+version=$(mix run --no-start --no-compile --no-deps-check -e 'IO.puts(Mix.Project.config()[:version])')
 
 case "$version" in
   [0-9]*.[0-9]*.[0-9]*) ;;

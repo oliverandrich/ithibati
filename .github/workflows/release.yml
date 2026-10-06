@@ -43,16 +43,7 @@ jobs:
           version: 2026.9.5
           cache: false
 
-      # `release-check` reads the version with `mix run`, which needs Hex and the dependencies
-      # resolved. Without them Mix asks whether to install Hex, `release-check` reads the question
-      # as the version, and refuses it for not being one — correctly, and eight seconds into a
-      # release that has already spent its tag.
-      - name: Fetch dependencies
-        run: |
-          mix local.hex 2.5.1 --force
-          mix local.rebar --force
-          mix deps.get
-
+      # No dependency fetch: `release-check` reads the version without Hex or deps.
       - name: Check the tag against the version
         run: mise run release-check
 
