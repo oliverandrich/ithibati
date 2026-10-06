@@ -148,6 +148,19 @@ defmodule Ithibati.Identity.SessionsTest do
     assert Sessions.delete_expired() == 0
   end
 
+  test "expire removes expired rows across accounts and returns their digests", %{user: user} do
+    expired = user |> Sessions.generate_session_token() |> backdated(days(61))
+    other = user_fixture() |> Sessions.generate_session_token() |> backdated(days(90))
+    valid = Sessions.generate_session_token(user)
+
+    assert Enum.sort(Sessions.expire()) ==
+             Enum.sort(Enum.map([expired, other], &Secrets.digest/1))
+
+    assert [row] = TestRepo.all(Session)
+    assert row.token_hash == Secrets.digest(valid)
+    assert Sessions.expire() == []
+  end
+
   # Shaped like a token this library would mint, belonging to nothing. `Secrets.token/0` is what
   # mints the real ones, so a change to their shape reaches this too.
   defp stranger, do: Secrets.token()

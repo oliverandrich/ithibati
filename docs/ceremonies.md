@@ -277,10 +277,13 @@ still stored in the database can be reached through this operation.
 number deleted. It uses the configured `session_validity`; invalid settings raise before deletion.
 Run it from an application-owned scheduled job or maintenance task. Ithibati starts no scheduler.
 
-Expiry is already enforced during lookup, so cleanup is storage maintenance. It does not disconnect
-LiveViews that are already connected. After cleanup those sessions no longer have stored digests
-for a later logout broadcast; applications requiring a hard time limit on connected LiveViews must
-also enforce expiry while connected.
+Expiry is already enforced during lookup. A connected LiveView never looks its session up again.
+`Gate.expire(endpoint)` deletes the same rows and broadcasts `"disconnect"` to each of their
+sockets after the commit. Schedule it instead of `delete_expired/0` when the endpoint has PubSub.
+A socket that received the session through `connect_info` then outlives it by at most the
+schedule's interval. `Sessions.expire()` returns
+the deleted digests without broadcasting. Like `log_out_all/1`, `Gate.expire/1` raises inside a
+transaction.
 
 ### Challenge storage
 

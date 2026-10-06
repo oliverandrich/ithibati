@@ -128,12 +128,37 @@ if Code.ensure_loaded?(Phoenix.Component) do
              Sessions.get_user_by_session_token(get_session(conn, @session)) do
         digests = Sessions.revoke_all(account)
 
-        if endpoint = pubsub_endpoint(conn) do
-          Enum.each(digests, &endpoint.broadcast(socket_topic(&1), "disconnect", %{}))
-        end
+        if endpoint = pubsub_endpoint(conn), do: disconnect(endpoint, digests)
       end
 
       renew_session(conn)
+    end
+
+    @doc """
+    Deletes expired sessions and disconnects their LiveViews, returning the number deleted.
+
+    Schedule this instead of `Ithibati.Identity.Sessions.delete_expired/0` to close sockets
+    that outlive their session. With PubSub on `endpoint`, broadcasts `"disconnect"` to each
+    deleted session's topic after the database commits. Sockets must receive the session through
+    `connect_info`, as for `log_out/1`. A delivery failure does not restore the deleted sessions.
+    Raises `ArgumentError` inside a transaction, as `log_out_all/1` does. An endpoint that was
+    never started raises before anything is deleted.
+    """
+    def expire(endpoint) do
+      if Config.repo().in_transaction?() do
+        raise ArgumentError, "call expire outside a database transaction"
+      end
+
+      # Asked before deleting: an endpoint that was never started raises here, and rows deleted
+      # first would leave their sockets connected with nothing left to find them by.
+      pubsub? = endpoint.config(:pubsub_server)
+      digests = Sessions.expire()
+      if pubsub?, do: disconnect(endpoint, digests)
+      length(digests)
+    end
+
+    defp disconnect(endpoint, digests) do
+      Enum.each(digests, &endpoint.broadcast(socket_topic(&1), "disconnect", %{}))
     end
 
     defp socket_topic(digest), do: "ithibati_sessions:" <> Secrets.url64(digest)

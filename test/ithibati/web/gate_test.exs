@@ -13,6 +13,7 @@ if Code.ensure_loaded?(Phoenix.Component) do
 
     import Phoenix.ConnTest
 
+    alias Ithibati.Identity.Secrets
     alias Ithibati.Identity.Sessions
     alias Ithibati.Web.Gate
 
@@ -315,6 +316,56 @@ if Code.ensure_loaded?(Phoenix.Component) do
 
         refute_receive %Phoenix.Socket.Broadcast{event: "disconnect"}
       end
+    end
+
+    describe "expire/1" do
+      test "deletes expired sessions and disconnects only their sockets", ctx do
+        expired = ctx.account |> Sessions.generate_session_token() |> backdated(days(61))
+        other = user_fixture() |> Sessions.generate_session_token() |> backdated(days(90))
+        valid = Sessions.generate_session_token(ctx.account)
+        topics = Enum.map([expired, other], &Gate.live_socket_id/1)
+        Enum.each([Gate.live_socket_id(valid) | topics], &@endpoint.subscribe/1)
+
+        assert Gate.expire(@endpoint) == 2
+
+        Enum.each(topics, fn topic ->
+          assert_receive %Phoenix.Socket.Broadcast{event: "disconnect", topic: ^topic}
+        end)
+
+        refute_receive %Phoenix.Socket.Broadcast{event: "disconnect"}
+        assert Sessions.get_user_by_session_token(valid)
+        assert Gate.expire(@endpoint) == 0
+      end
+
+      test "deletes expired sessions without PubSub", ctx do
+        ctx.account |> Sessions.generate_session_token() |> backdated(days(61))
+
+        assert Gate.expire(Ithibati.TestEndpointWithoutPubSub) == 1
+      end
+
+      # A release task or `bin/app eval` has the endpoint module but never started it.
+      test "an endpoint that cannot answer leaves the expired sessions in place", ctx do
+        expired = ctx.account |> Sessions.generate_session_token() |> backdated(days(61))
+
+        assert_raise RuntimeError, fn -> Gate.expire(__MODULE__.UnstartedEndpoint) end
+        assert Sessions.expire() == [Secrets.digest(expired)]
+      end
+
+      test "refuses an outer transaction before deleting or broadcasting", ctx do
+        expired = ctx.account |> Sessions.generate_session_token() |> backdated(days(61))
+        @endpoint.subscribe(Gate.live_socket_id(expired))
+
+        TestRepo.transaction(fn ->
+          assert_raise ArgumentError, ~r/outside.*transaction/, fn -> Gate.expire(@endpoint) end
+        end)
+
+        refute_receive %Phoenix.Socket.Broadcast{event: "disconnect"}
+        assert Sessions.expire() == [Secrets.digest(expired)]
+      end
+    end
+
+    defmodule UnstartedEndpoint do
+      def config(_key), do: raise("could not find ets table for #{inspect(__MODULE__)}")
     end
 
     # The *response*, not a request built from it: recycling it gives a fresh connection carrying the

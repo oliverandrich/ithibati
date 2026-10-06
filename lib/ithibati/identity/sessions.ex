@@ -5,8 +5,8 @@ defmodule Ithibati.Identity.Sessions do
   `generate_session_token/1` returns a plaintext token while storage keeps its SHA-256 digest.
   `get_user_by_session_token/1` returns the account only while that session remains valid.
   `delete_session_token/1` revokes one token; `revoke_all/1` revokes an account's sessions.
-  `delete_expired/0` removes expired rows. `max_age/0` tells a browser how long to keep the
-  cookie that carries a session.
+  `delete_expired/0` removes expired rows, and `expire/0` also returns their digests.
+  `max_age/0` tells a browser how long to keep the cookie that carries a session.
 
   `Ithibati.Web.Gate` connects these calls to a browser session and LiveView sockets. Direct calls
   here do not update cookies or broadcast socket disconnections. API tokens with scopes or
@@ -129,12 +129,35 @@ defmodule Ithibati.Identity.Sessions do
 
   Uses the same `session_validity` setting as lookup, measured from creation. Invalid validity
   raises `ArgumentError` before deletion. Applications choose when to run this maintenance;
-  Ithibati starts no scheduler. Cleanup does not broadcast LiveView disconnections.
+  Ithibati starts no scheduler. Cleanup does not broadcast LiveView disconnections;
+  `Ithibati.Web.Gate.expire/1` does.
   """
   def delete_expired do
     cutoff = cutoff()
     {count, _} = Config.repo().delete_all(from(s in Session, where: s.inserted_at <= ^cutoff))
     count
+  end
+
+  @doc """
+  Deletes expired sessions across all accounts and returns their stored token digests.
+
+  Locks the expired rows like `revoke_all/1`, so only digests of rows this call deleted are
+  returned. This call does not broadcast disconnections. `Ithibati.Web.Gate.expire/1` does.
+  """
+  def expire do
+    repo = Config.repo()
+    expired = from(s in Session, where: s.inserted_at <= ^cutoff())
+
+    {:ok, digests} =
+      Concurrency.transaction(repo, fn ->
+        digests = expired |> select([s], s.token_hash) |> Concurrency.lock_rows() |> repo.all()
+        # By the cutoff, not by digest: SQLite and MySQL bind each listed digest separately and
+        # refuse a long backlog. No row can expire between the two statements under one cutoff.
+        repo.delete_all(expired)
+        digests
+      end)
+
+    digests
   end
 
   defp cutoff do

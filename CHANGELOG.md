@@ -10,6 +10,13 @@ upgrading to one of those releases.
 
 ## [Unreleased]
 
+### Added
+
+- `Ithibati.Web.Gate.expire/1` deletes expired sessions and disconnects their LiveViews.
+  `Sessions.delete_expired/0` left those sockets acting for their account until they reconnected.
+  Schedule `expire/1` in its place.
+- `Ithibati.Identity.Sessions.expire/0` deletes expired sessions and returns their digests.
+
 ## [0.7.0] - 2026-10-05
 
 ### Added
