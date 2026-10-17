@@ -10,6 +10,8 @@ upgrading to one of those releases.
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-10-17
+
 Schema version 5. An application with an invitation table created before it adds a migration
 calling `Ithibati.Migration.open_invitations(version: 5)`, then `up(from: 4, version: 5)`.
 
@@ -374,6 +376,7 @@ the application.
   receives the account and any replacement code batch to display.
 - Three optional Credo checks for consuming applications.
 
+[0.8.0]: https://github.com/oliverandrich/ithibati/releases/tag/v0.8.0
 [0.7.1]: https://github.com/oliverandrich/ithibati/releases/tag/v0.7.1
 [0.7.0]: https://github.com/oliverandrich/ithibati/releases/tag/v0.7.0
 [0.6.3]: https://github.com/oliverandrich/ithibati/releases/tag/v0.6.3
