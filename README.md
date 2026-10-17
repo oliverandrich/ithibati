@@ -52,7 +52,7 @@ limiting for registration, sign-in and recovery is the application's responsibil
 Add the dependency:
 
 ```elixir
-{:ithibati, "~> 0.1"}
+{:ithibati, "~> 0.8"}
 ```
 
 Then follow [Getting started](https://hexdocs.pm/ithibati/getting_started.html). It walks a fresh

@@ -24,7 +24,7 @@ application to compare against, see the
 Add Ithibati to the existing dependency list in `mix.exs`:
 
 ```elixir
-{:ithibati, "~> 0.1"}
+{:ithibati, "~> 0.8"}
 ```
 
 Then fetch it:
