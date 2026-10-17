@@ -24,7 +24,9 @@ defmodule Ithibati.Migration do
   Keep versions pinned in applied migrations. `current_version/0` reports the newest version
   this release supports. `down/1` removes the changes covered by the matching range.
 
-  Version 3 adds the operator-code digest table used by protected first claims.
+  Version 3 adds the operator-code digest table used by protected first claims. Versions 4 and 5
+  change only the application's invitation table; see `invitation_inviter_column/1` and
+  `open_invitations/1`.
   Table names and account foreign-key types come from the configured schemas. `up/1` verifies
   required columns, key types and unique indexes before creating its tables. The application
   continues to own its account and invitation tables.
@@ -42,12 +44,13 @@ defmodule Ithibati.Migration do
   alias Ithibati.Catalogue.SQLite
   alias Ithibati.Challenge
   alias Ithibati.Config
+  alias Ithibati.Migration.SQLiteRebuild
   alias Ithibati.RecoveryCode
   alias Ithibati.Session
   alias Ithibati.SetupCode
   alias Ithibati.UserKey
 
-  @current_version 4
+  @current_version 5
 
   # Ordered as they are created; `down` reverses it, so a table added to one clause cannot be
   # forgotten in the other.
@@ -93,7 +96,8 @@ defmodule Ithibati.Migration do
 
   The helper adds:
 
-    * the identifier, `:string` by default, `null: false`
+    * the identifier, `:string` by default, `null: false` before version 5 and nullable from it
+    * `:note`, `:text`, nullable, from version 5
     * `:token_hash`, `:binary`, `null: false`
     * `:expires_at`, `:utc_datetime_usec`, `null: false`
     * `:accepted_at`, `:utc_datetime_usec`, nullable for pending invitations
@@ -111,13 +115,18 @@ defmodule Ithibati.Migration do
     pinned!(opts, "invitation_columns/1")
 
     identifier = identifier(Config.invitation_schema!())
-    inviter? = Keyword.fetch!(opts, :version) >= 4
+    version = Keyword.fetch!(opts, :version)
+    inviter? = version >= 4
+    open? = version >= 5
     named = if inviter?, do: ", invited_by_id", else: ""
+    noted = if open?, do: ", note", else: ""
 
     # Include the columns because Ecto logs only the enclosing table operation.
-    Logger.info("ithibati: adding #{identifier}, token_hash, expires_at, accepted_at#{named}")
+    Logger.info(
+      "ithibati: adding #{identifier}, token_hash, expires_at, accepted_at#{named}#{noted}"
+    )
 
-    add(identifier, Keyword.get(opts, :type, :string), null: false)
+    add(identifier, Keyword.get(opts, :type, :string), null: open?)
     add(:token_hash, :binary, binary_options(32))
     add(:expires_at, :utc_datetime_usec, null: false)
     add(:accepted_at, :utc_datetime_usec)
@@ -130,6 +139,109 @@ defmodule Ithibati.Migration do
     # different column type from `bigint` and an application adding its own foreign key later gets
     # errno 150 when the two do not match.
     if inviter?, do: add(:invited_by_id, key_type())
+    if open?, do: add(:note, :text)
+  end
+
+  @doc """
+  Lets an invitation table created before version 5 hold open invitations.
+
+  Adds the nullable `:note` column and lets the identifier be `nil`. Call it from both halves of
+  an explicit migration, before `up/1` when the same migration calls that:
+
+      defmodule MyApp.Repo.Migrations.OpenInvitations do
+        use Ecto.Migration
+
+        def up, do: Ithibati.Migration.open_invitations(version: 5)
+        def down, do: Ithibati.Migration.open_invitations(version: 5)
+      end
+
+  It reads the direction from the migration and runs where the migration queues it. A table that
+  is already open stays as it is. Going down fails while an open invitation exists.
+
+  SQLite cannot change a column's NOT NULL in place, so this rebuilds the table there. It keeps
+  every column, constraint, index and trigger. When other tables reference the invitation table,
+  the rebuild needs foreign keys off, which SQLite ignores in a transaction. Such a migration
+  needs `@disable_ddl_transaction true`; the call says so otherwise.
+
+  MySQL restates the identifier column with its type and collation. A DEFAULT or COMMENT on it
+  does not carry over.
+  """
+  def open_invitations(opts) do
+    pinned!(opts, "open_invitations/1")
+
+    version = Keyword.fetch!(opts, :version)
+
+    version >= 5 ||
+      raise ArgumentError,
+            "open_invitations/1 changes a version 5 table, got: #{inspect(version)}"
+
+    schema = Config.invitation_schema!()
+    table = source(schema)
+    column = identifier(schema)
+    open? = direction() == :up
+
+    Logger.info(
+      if open?,
+        do: "ithibati: adding note to #{table} and letting #{column} be empty",
+        else: "ithibati: removing note from #{table} and requiring #{column}"
+    )
+
+    # Deferred, so it runs in the order the migration wrote it, after the statements queued above.
+    execute(fn -> open!(table, column, open?) end)
+  end
+
+  defp open!(table, column, true) do
+    identifier_nullable(table, column, true)
+    unless note?(table), do: alter!(table, "ADD COLUMN #{quote_name("note")} TEXT")
+  end
+
+  defp open!(table, column, false) do
+    if note?(table), do: alter!(table, "DROP COLUMN #{quote_name("note")}")
+    identifier_nullable(table, column, false)
+  end
+
+  defp note?(table), do: Catalogue.column(repo(), table_ref!(table), :note) != nil
+
+  defp alter!(table, change),
+    do: repo().query!("ALTER TABLE #{quote_table(table)} #{change}", [], log: false)
+
+  defp identifier_nullable(table, column, nullable?) do
+    case repo().__adapter__() do
+      Ecto.Adapters.SQLite3 ->
+        SQLiteRebuild.nullable(repo(), table, column, nullable?)
+
+      Ecto.Adapters.MyXQL ->
+        [[type, collation]] =
+          repo().query!(
+            "SELECT COLUMN_TYPE, COLLATION_NAME FROM information_schema.COLUMNS " <>
+              "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?",
+            [table, to_string(column)],
+            log: false
+          ).rows
+
+        collate = if collation, do: " COLLATE #{collation}", else: ""
+        null = if nullable?, do: "NULL", else: "NOT NULL"
+
+        alter!(table, "MODIFY #{quote_name(column)} #{type}#{collate} #{null}")
+
+      _postgres ->
+        change = if nullable?, do: "DROP NOT NULL", else: "SET NOT NULL"
+
+        alter!(table, "ALTER COLUMN #{quote_name(column)} #{change}")
+    end
+  end
+
+  defp quote_table(table) do
+    case schema_prefix() do
+      nil -> quote_name(table)
+      prefix -> quote_name(prefix) <> "." <> quote_name(table)
+    end
+  end
+
+  defp quote_name(name) do
+    if repo().__adapter__() == Ecto.Adapters.MyXQL,
+      do: "`#{String.replace(to_string(name), "`", "``")}`",
+      else: ~s("#{String.replace(to_string(name), "\"", "\"\"")}")
   end
 
   @doc """
@@ -243,10 +355,11 @@ defmodule Ithibati.Migration do
       raise(ArgumentError, "#{name} must be #{described}, got: #{inspect(value)}")
   end
 
-  # Version 4 changed only the invitation table, which the application owns and adds to with
-  # `invitation_columns/1` or `invitation_inviter_column/1`. Nothing here moves — but an operator
-  # stepping to it writes `up(from: 3, version: 4)` by reflex, and that has to answer.
-  defp step(4, _direction, _opts), do: :ok
+  # Versions 4 and 5 changed only the invitation table, which the application owns and changes with
+  # `invitation_columns/1`, `invitation_inviter_column/1` or `open_invitations/1`. Nothing here
+  # moves — but an operator stepping to one writes `up(from: 3, version: 4)` by reflex, and that
+  # has to answer.
+  defp step(version, _direction, _opts) when version in [4, 5], do: :ok
 
   defp step(3, :up, _opts) do
     create table(source(SetupCode), primary_key: false) do
@@ -484,9 +597,9 @@ defmodule Ithibati.Migration do
     # Left unchecked, an installation that migrated without adding the column passes here and
     # fails at its first `fetch/1` — which is the failure this whole check exists to come first.
     expected =
-      if opts.version >= 4,
-        do: @invitation_columns ++ [{:invited_by_id, Config.users_key_type()}],
-        else: @invitation_columns
+      @invitation_columns ++
+        if(opts.version >= 4, do: [{:invited_by_id, Config.users_key_type()}], else: []) ++
+        if opts.version >= 5, do: [{:note, :text}], else: []
 
     Enum.each(expected, fn {column, storage_type} ->
       accepted = Catalogue.types(repo(), storage_type)
@@ -506,7 +619,21 @@ defmodule Ithibati.Migration do
                     "the column your migration adds has to match."
       end
     end)
+
+    confirm_open!(opts, schema, table, oid)
   end
+
+  # An open invitation stores no identifier. A NOT NULL column refuses it at the first insert.
+  defp confirm_open!(%{version: version}, schema, table, oid) when version >= 5 do
+    column = identifier(schema)
+
+    Catalogue.nullable?(repo(), oid, column) ||
+      raise ArgumentError,
+            "#{qualified(table)}.#{column} is NOT NULL, and from version 5 an open invitation " <>
+              "leaves it empty; " <> remedy(:open)
+  end
+
+  defp confirm_open!(_opts, _schema, _table, _oid), do: :ok
 
   # The inviter arrived at version 4, so a table that is otherwise right can be missing only this
   # one, and the advice that fits every other column does not fit it. Naming the order as well: the
@@ -518,7 +645,17 @@ defmodule Ithibati.Migration do
       "block, before the call to `up/1` in the same migration or in an earlier one of your own."
   end
 
+  defp remedy(:note),
+    do: "this arrived at version 5, so a table created before it lacks it. " <> opens()
+
+  defp remedy(:open), do: "a table created before version 5 keeps it NOT NULL. " <> opens()
+
   defp remedy(_column), do: "the table is yours to create."
+
+  defp opens do
+    "Change it with `Ithibati.Migration.open_invitations(version: 5)`, before the call to " <>
+      "`up/1` in the same migration or in an earlier one of your own."
+  end
 
   defp confirm_account_key!(opts) do
     oid = table_ref!(opts.users_table)

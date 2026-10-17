@@ -45,6 +45,9 @@ defmodule Ithibati.Catalogue do
   """
   def column(repo, reference, column), do: adapter(repo).column(repo, reference, column)
 
+  @doc "Returns whether an existing column accepts NULL."
+  def nullable?(repo, reference, column), do: adapter(repo).nullable?(repo, reference, column)
+
   @doc "Returns the table name, qualified with `prefix` when one is supplied, for diagnostic text."
   def qualified(nil, table), do: table
   def qualified(prefix, table), do: "#{prefix}.#{table}"

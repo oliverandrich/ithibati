@@ -94,6 +94,23 @@ if Application.compile_env!(:ithibati, :probe_adapter) in [
     end
   end
 
+  # Version 5 the way an existing installation reaches it: the table opens first, then `up/1`
+  # checks it.
+  defmodule Ithibati.AdapterOpenInvitationMigration do
+    @moduledoc false
+    use Ecto.Migration
+
+    def up do
+      Ithibati.Migration.open_invitations(version: 5)
+      Ithibati.Migration.up(from: 4, version: 5)
+    end
+
+    def down do
+      Ithibati.Migration.down(from: 4, version: 5)
+      Ithibati.Migration.open_invitations(version: 5)
+    end
+  end
+
   defmodule Ithibati.AdapterLaterInvitationMigration do
     @moduledoc false
     use Ecto.Migration

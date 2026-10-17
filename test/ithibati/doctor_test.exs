@@ -121,6 +121,34 @@ defmodule Ithibati.DoctorTest do
       assert detail(Doctor.examine(:ithibati), "the invitation table") =~ "invited_by_id is text"
     end
 
+    # Version 5 again changed only the application's table, which no library migration revisits.
+    test "an invitation table that never got the note column" do
+      SQL.query!(Ithibati.TestRepo, "ALTER TABLE invitations DROP COLUMN note", [])
+
+      detail = detail(Doctor.examine(:ithibati), "the invitation table")
+      assert detail =~ "no note column"
+      assert detail =~ "open_invitations"
+    end
+
+    test "an invitation table whose note column is the wrong type" do
+      SQL.query!(
+        Ithibati.TestRepo,
+        "ALTER TABLE invitations ALTER COLUMN note TYPE varchar(80)",
+        []
+      )
+
+      assert detail(Doctor.examine(:ithibati), "the invitation table") =~
+               "note is character varying(80)"
+    end
+
+    test "an invitation table whose identifier cannot be empty" do
+      SQL.query!(Ithibati.TestRepo, "ALTER TABLE invitations ALTER COLUMN email SET NOT NULL", [])
+
+      detail = detail(Doctor.examine(:ithibati), "the invitation table")
+      assert detail =~ "invitations.email is NOT NULL"
+      assert detail =~ "open_invitations"
+    end
+
     test "an invitation table that is configured and not there" do
       SQL.query!(Ithibati.TestRepo, "DROP TABLE invitations CASCADE", [])
 

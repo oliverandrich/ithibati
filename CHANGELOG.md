@@ -10,6 +10,27 @@ upgrading to one of those releases.
 
 ## [Unreleased]
 
+Schema version 5. An application with an invitation table created before it adds a migration
+calling `Ithibati.Migration.open_invitations(version: 5)`, then `up(from: 4, version: 5)`.
+
+### Added
+
+- Open invitations. `invitation_changeset/3` takes `addressed: false` and leaves the identifier
+  to the invitee, who chooses it on acceptance. `Invitations.open?/1` tells the kinds apart.
+- `note` on every invitation, a free text for the members who manage invitations.
+- `Ithibati.Migration.open_invitations/1` adds `note` to an existing invitation table and lets its
+  identifier be empty. On SQLite it rebuilds the table.
+- `mix ithibati.doctor` and `up/1` refuse a version 5 invitation table without `note` or with a
+  NOT NULL identifier.
+
+### Changed
+
+- `ithibati_invitation/0` declares `note`, so every invitation query selects it. An existing
+  table needs the version 5 migration before this release serves requests.
+- `Invitations.accept/3` accepts any identifier for an open invitation. `account_attrs/1` returns
+  an empty map for one.
+- `invitation_columns(version: 5)` creates a nullable identifier and `note`.
+
 ## [0.7.1] - 2026-10-06
 
 ### Added

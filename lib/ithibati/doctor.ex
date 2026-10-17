@@ -193,13 +193,46 @@ defmodule Ithibati.Doctor do
 
       {type, _unique?} ->
         if type in accepted do
-          {:ok, "#{table}.token_hash carries a unique index, and the inviter column is there"}
+          invitation_open(repo, prefix, table, oid)
         else
           {:error,
            "#{table}.invited_by_id is #{type}, and this library reads it as " <>
              "#{Enum.join(accepted, " or ")}. It holds an account key, so it has to match " <>
              "`config :ithibati, users_key_type:`."}
         end
+    end
+  end
+
+  # Version 5 changed the application's table as well. An open invitation stores no identifier and
+  # every invitation query selects the note, so either gap fails at runtime.
+  defp invitation_open(repo, prefix, table, oid) do
+    column = Config.invitation_schema().__ithibati_invitation__(:identifier)
+
+    accepted = Catalogue.types(repo, :text)
+
+    remedy =
+      "A table created before version 5 needs `Ithibati.Migration.open_invitations/1` in a new " <>
+        "migration of your own."
+
+    {type, _unique?} = Catalogue.column(repo, oid, :note) || {nil, false}
+
+    cond do
+      type == nil ->
+        {:error,
+         "#{Catalogue.qualified(prefix, table)} has no note column. `ithibati_invitation/0` " <>
+           "declares it, so every invitation query asks for it. " <> remedy}
+
+      type not in accepted ->
+        {:error,
+         "#{table}.note is #{type}, and this library reads it as #{Enum.join(accepted, " or ")}."}
+
+      not Catalogue.nullable?(repo, oid, column) ->
+        {:error,
+         "#{table}.#{column} is NOT NULL, and an open invitation leaves it empty. " <> remedy}
+
+      true ->
+        {:ok,
+         "#{table}.token_hash carries a unique index, and the inviter and note columns are there"}
     end
   end
 

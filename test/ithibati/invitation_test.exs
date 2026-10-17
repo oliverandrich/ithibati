@@ -59,7 +59,7 @@ defmodule Ithibati.Schema.InvitationTest do
     test "the invitee's identifier, the digest, the two timestamps and the virtual token" do
       fields = TestInvitation.__schema__(:fields)
 
-      for field <- [:email, :token_hash, :expires_at, :accepted_at, :invited_by_id],
+      for field <- [:email, :note, :token_hash, :expires_at, :accepted_at, :invited_by_id],
           do: assert(field in fields)
 
       # The column, not the association. Declaring `belongs_to` here would need the account
@@ -213,6 +213,64 @@ defmodule Ithibati.Schema.InvitationTest do
 
       assert {"already has an account", opts} = changeset.errors[:email]
       assert opts[:validation] == :unclaimed
+    end
+  end
+
+  describe "an open invitation" do
+    # The invitee chooses the identifier on acceptance. The note is for whoever manages invitations.
+    test "leaves the identifier to the invitee and keeps a note for the inviters" do
+      changeset =
+        TestInvitation.changeset(
+          %TestInvitation{},
+          %{email: "chosen@example.test", note: "  Grace, from the meetup ", role: :author},
+          addressed: false
+        )
+
+      assert changeset.valid?
+      assert get_change(changeset, :note) == "Grace, from the meetup"
+
+      assert {:ok, invitation} = TestRepo.insert(changeset)
+      assert invitation.email == nil
+      assert invitation.token_hash == Secrets.digest(invitation.token)
+    end
+
+    test "stays open when its note changes, and the note can be cleared" do
+      invitation =
+        TestRepo.insert!(
+          TestInvitation.changeset(%TestInvitation{}, %{note: "Grace", role: :author},
+            addressed: false
+          )
+        )
+
+      assert TestInvitation.changeset(invitation, %{note: "Grace Hopper"}).valid?
+
+      assert {:ok, %{note: nil}} =
+               TestRepo.update(TestInvitation.changeset(invitation, %{note: ""}))
+    end
+
+    test "and an addressed one still needs its identifier" do
+      changeset = TestInvitation.changeset(%TestInvitation{}, %{note: "Grace", role: :author})
+
+      assert %{email: ["can't be blank"]} = errors_on(changeset)
+    end
+
+    test "a blank note is no note, and a long one is refused" do
+      blank =
+        TestInvitation.changeset(%TestInvitation{}, %{note: "   ", role: :author},
+          addressed: false
+        )
+
+      assert blank.valid?
+      assert get_change(blank, :note) == nil
+
+      long =
+        TestInvitation.changeset(
+          %TestInvitation{},
+          %{note: String.duplicate("a", 501), role: :author},
+          addressed: false
+        )
+
+      assert %{note: ["should be at most 500 character(s)"]} = errors_on(long)
     end
   end
 

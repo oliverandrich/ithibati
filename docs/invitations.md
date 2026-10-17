@@ -32,8 +32,8 @@ defmodule MyApp.Accounts.Invitation do
 end
 ```
 
-The macro adds the identifier, `token_hash`, `expires_at`, `accepted_at` and a virtual `token`.
-The identifier field must match the account schema's identifier. Add your own fields for a
+The macro adds the identifier, `note`, `token_hash`, `expires_at`, `accepted_at` and a virtual
+`token`. The identifier field must match the account schema's identifier. Add your own fields for a
 role, team or other grant, together with their changeset handling and migration columns.
 
 A new invitation lasts seven days by default. `invitation_changeset/3` accepts `days:`; using
@@ -64,11 +64,11 @@ defmodule MyApp.Repo.Migrations.CreateInvitations do
 
   def change do
     create table(:invitations) do
-      Ithibati.Migration.invitation_columns(version: 4)
+      Ithibati.Migration.invitation_columns(version: 5)
       timestamps(type: :utc_datetime_usec)
     end
 
-    Ithibati.Migration.invitation_index(version: 4)
+    Ithibati.Migration.invitation_index(version: 5)
   end
 end
 ```
@@ -85,14 +85,15 @@ $ mix ecto.migrate
 
 | Column | Type | Nullable |
 | --- | --- | --- |
-| Your configured identifier | `:string` by default; override with `type:` | No |
+| Your configured identifier | `:string` by default; override with `type:` | From version 5 |
+| `note` | `:text`, from version 5 | Yes |
 | `token_hash` | `:binary` | No |
 | `expires_at` | `:utc_datetime_usec` | No |
 | `accepted_at` | `:utc_datetime_usec` | Yes |
 | `invited_by_id` | Your account key, from version 4 | Yes |
 
 The plaintext token is virtual and is not stored. Pin the version the way `up/1` is pinned: a
-migration written today says `version: 4`, and one written before that goes on producing what it
+migration written today says `version: 5`, and one written before that goes on producing what it
 produced then. For a table created before version 4, add the inviter with
 `invitation_inviter_column/1` rather than editing the migration that made it:
 
@@ -110,6 +111,10 @@ The order in that migration is not free. `up/1` flushes the queued statements be
 table, so an `alter` written above it has already run; the same `alter` written below it has not,
 and `up/1` refuses a table whose inviter column is still missing.
 
+For a table created before version 5, add `note` and let the identifier be empty with
+`open_invitations/1`, as [Upgrading the database schema](configuration.md#upgrading-the-database-schema)
+shows. On SQLite that call rebuilds the table.
+
 `mix ithibati.doctor` asks the same question of a database nobody is migrating. An installation
 that lifted the library and wrote no new migration compiles, migrates and starts; the column it
 lacks is first missed at an invitation.
@@ -119,7 +124,7 @@ lowercase identifiers. If you deliberately use PostgreSQL `citext`, for example 
 writes outside the changesets, select it explicitly:
 
 ```elixir
-Ithibati.Migration.invitation_columns(version: 4, type: :citext)
+Ithibati.Migration.invitation_columns(version: 5, type: :citext)
 ```
 
 Install the `citext` extension before this migration; the helper does not create it. The
@@ -470,6 +475,52 @@ Run `mix ithibati.doctor`, then try this on a fresh development instance:
 The bootstrap claim survives deletion of the account that made it. Use a fresh development
 database for another first-claim walkthrough; deleting an account is not a setup reset.
 
+## Open invitations
+
+An open invitation names nobody. The invitee chooses the identifier when accepting it, and the
+`note` tells the members who manage invitations whom it was meant for. Build one with
+`addressed: false`:
+
+```elixir
+%MyApp.Accounts.Invitation{}
+|> MyApp.Accounts.Invitation.changeset(%{"note" => "Grace, from the meetup"}, addressed: false)
+|> MyApp.Repo.insert()
+```
+
+The changeset then ignores any identifier in the attributes. `Invitations.open?/1` tells the two
+kinds apart. `Invitations.accept/3` compares identifiers only for an addressed invitation, and
+`Invitations.account_attrs/1` returns an empty map for an open one. The account table's unique
+index keeps a chosen identifier unique.
+
+The invitation page sends the chosen identifier with the token:
+
+```elixir
+push_event(socket, "ithibati:register", %{token: token, username: username})
+```
+
+The handler approves it at the challenge step, through the same changeset as the first account:
+
+```elixir
+defp invited(%{"token" => token} = params) do
+  case Invitations.fetch(token) do
+    nil -> {:error, :invitation_unknown}
+    invitation ->
+      if Invitations.open?(invitation),
+        do: first_account(params),
+        else: {:ok, invitation.username}
+  end
+end
+
+defp invited(_params), do: {:error, :invitation_unknown}
+```
+
+Call it with the whole `params` in `registration_subject/2`. `register/4` stays as it is: it
+builds the account from the approved `username`, and `accept/3` spends whichever pending
+invitation the final request names.
+
+Keep invitations addressed when delivery proves something. In an application keyed by email, an
+open invitation lets its holder choose any address, so the link no longer verifies one.
+
 ## Composing additional application steps
 
 The account insertion comes before `Instance.claim/2`, `Invitations.accept/3` or
@@ -481,7 +532,7 @@ grant. A failed `Ecto.Multi` result can contain earlier step results, including 
 recovery codes, so do not log the whole tuple.
 
 For acceptance outside a WebAuthn ceremony, `Invitations.account_attrs/1` supplies the
-invitation's identifier for account creation. In a ceremony, continue using the approved subject
+invitation's identifier for account creation, or an empty map for an open invitation. In a ceremony, continue using the approved subject
 as the handler above does.
 
 If your transaction also updates another singleton row, acquire it and the bootstrap row in a

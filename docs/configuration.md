@@ -225,8 +225,8 @@ tables and, by default, the identifier's unique index:
 defmodule MyApp.Repo.Migrations.AddIthibati do
   use Ecto.Migration
 
-  def up, do: Ithibati.Migration.up(version: 4)
-  def down, do: Ithibati.Migration.down(version: 4)
+  def up, do: Ithibati.Migration.up(version: 5)
+  def down, do: Ithibati.Migration.down(version: 5)
 end
 ```
 
@@ -263,7 +263,7 @@ changes who creates the index, not the uniqueness Ithibati requires.
 ### Upgrading the database schema
 
 Keep existing migrations pinned to their original version. `Ithibati.Migration.current_version/0`
-returns the version supported by the installed library. This checkout uses version 4.
+returns the version supported by the installed library. This checkout uses version 5.
 
 Existing calls to `Ithibati.Migration.up(version: 1)` and
 `Ithibati.Migration.down(version: 1)` must remain pinned to version 1.
@@ -296,10 +296,34 @@ end
 
 An application without invitations has nothing to do for version 4.
 
-Fresh installations use `up(version: 4)`. Rolling back only version 2 removes outstanding
-challenges; rolling back version 3 removes any pending operator code. Version 4 changes nothing
-in Ithibati's own tables — it adds the inviter to the invitation table the application owns — so
-stepping to it or back builds nothing here. Neither rollback removes
+Version 5 adds `note` to the invitation table and lets its identifier be empty, for
+[open invitations](invitations.md#open-invitations). An application with an invitation table
+created earlier opens it when upgrading from version 4. The call is not part of an `alter` block
+and reads the migration's direction:
+
+```elixir
+def up do
+  Ithibati.Migration.open_invitations(version: 5)
+  Ithibati.Migration.up(from: 4, version: 5)
+end
+
+def down do
+  Ithibati.Migration.down(from: 4, version: 5)
+  Ithibati.Migration.open_invitations(version: 5)
+end
+```
+
+SQLite cannot drop a NOT NULL constraint in place, so the call rebuilds the table there. It keeps
+the table's columns, constraints, indexes and triggers. When another table references the
+invitations, the rebuild needs foreign keys off, and SQLite ignores that setting inside a
+transaction. Add `@disable_ddl_transaction true` to such a migration; the call refuses with that
+advice otherwise. Rolling back fails while an open invitation exists. An application without
+invitations has nothing to do for version 5.
+
+Fresh installations use `up(version: 5)`. Rolling back only version 2 removes outstanding
+challenges; rolling back version 3 removes any pending operator code. Versions 4 and 5 change
+nothing in Ithibati's own tables — they change the invitation table the application owns — so
+stepping to them or back builds nothing here. Neither rollback removes
 accounts, passkeys, recovery codes or sessions. Deploy code compatible with the remaining schema
 when rolling back. An application that enables `initial_claim: :operator_code` must apply version 3
 before issuing codes or serving setup requests. Keep the mode enabled while the instance is

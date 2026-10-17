@@ -47,6 +47,7 @@ defmodule Ithibati.Schema.Invitation do
   import Ecto.Query
 
   @default_days 7
+  @note_max 500
 
   alias Ithibati.Config
   alias Ithibati.Identity.Secrets
@@ -55,9 +56,12 @@ defmodule Ithibati.Schema.Invitation do
   @doc """
   Declares invitation fields inside the application's schema block.
 
-  Adds the configured identifier as `:string`, `:token_hash` as `:binary`, and
+  Adds the configured identifier and `:note` as `:string`, `:token_hash` as `:binary`, and
   `:expires_at` and `:accepted_at` as `:utc_datetime_usec`. It also adds a virtual `:token`
   string for the plaintext token returned when a valid new invitation is built.
+
+  The identifier is `nil` on an open invitation. The note is for the members who manage
+  invitations; the invitee does not need to see it.
 
   Only the digest is stored. Retain the plaintext token to deliver the invitation link;
   reloading the row does not recover it.
@@ -73,6 +77,7 @@ defmodule Ithibati.Schema.Invitation do
       @ithibati_declared @ithibati_given.identifier
 
       field @ithibati_declared, :string
+      field :note, :string
 
       # Not stored, and the only way the secret leaves: a changeset cannot answer with a second
       # value, and a caller who has to mint the token himself is a caller who will forget to.
@@ -138,6 +143,10 @@ defmodule Ithibati.Schema.Invitation do
       identifier is checked against existing accounts; a match adds a `:unclaimed` validation error.
       That lookup is advisory: the account's unique index remains the final guarantee.
 
+      `addressed: false` builds an open invitation. It does not cast the identifier, so the invitee
+      chooses one on acceptance. A stored open invitation stays open without the option. Both
+      kinds cast `:note`, trimmed, blank as `nil`, at most 500 graphemes.
+
       For a valid new invitation without a stored token digest, the changeset receives a plaintext
       `:token` and its `:token_hash`. Updating an invitation with a stored digest preserves its token.
 
@@ -161,13 +170,36 @@ defmodule Ithibati.Schema.Invitation do
 
   @doc false
   def __changeset__(invitation_or_changeset, attrs, opts, given) do
-    invitation_or_changeset
-    |> Identifier.steps(attrs, given.identifier, given.format, given.format_message)
-    |> validate_unclaimed(given.identifier)
+    changeset =
+      invitation_or_changeset
+      |> cast(attrs, [:note])
+      |> update_change(:note, &trim/1)
+      |> validate_length(:note, max: @note_max)
+
+    changeset
+    |> addressee(attrs, addressed?(changeset, opts, given.identifier), given)
     |> put_token()
     |> put_expiry(opts)
     |> unique_constraint(:token_hash, Identifier.unique_opts(given.constraint))
   end
+
+  defp trim(nil), do: nil
+  defp trim(note), do: String.trim(note)
+
+  # A stored invitation without an identifier is open, so a later change keeps it open.
+  defp addressed?(%{data: data}, opts, field) do
+    Keyword.get_lazy(opts, :addressed, fn ->
+      Ecto.get_meta(data, :state) != :loaded or Map.fetch!(data, field) != nil
+    end)
+  end
+
+  defp addressee(changeset, attrs, true, given) do
+    changeset
+    |> Identifier.steps(attrs, given.identifier, given.format, given.format_message)
+    |> validate_unclaimed(given.identifier)
+  end
+
+  defp addressee(changeset, _attrs, false, _given), do: changeset
 
   # A query from a schema module, which is otherwise `Ithibati.Identity.*`'s job, and the exception
   # Ecto itself makes: `unsafe_validate_unique/4` takes a repo for exactly this shape of advisory

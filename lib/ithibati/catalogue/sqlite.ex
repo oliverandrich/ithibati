@@ -10,6 +10,7 @@ defmodule Ithibati.Catalogue.SQLite do
 
   def types(:id), do: ["integer", "bigint", "smallint", "int"]
   def types(:binary), do: ["blob"]
+  def types(:text), do: ["text"]
   def types(:utc_datetime_usec), do: ["text"]
 
   def validate!(repo) do
@@ -35,6 +36,17 @@ defmodule Ithibati.Catalogue.SQLite do
 
   def table(_repo, _prefix, _table),
     do: raise(ArgumentError, "SQLite supports only the unprefixed main database")
+
+  def nullable?(repo, {:sqlite, table}, column) do
+    %{rows: rows} =
+      repo.query!(
+        ~s|SELECT "notnull" FROM pragma_table_info(?) WHERE name = ?|,
+        [table, to_string(column)],
+        log: false
+      )
+
+    rows == [[0]]
+  end
 
   def column(repo, {:sqlite, table}, column) do
     column = to_string(column)

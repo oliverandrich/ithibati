@@ -4,6 +4,7 @@ defmodule Ithibati.Catalogue.Postgres do
   @key_columns %{binary_id: ["uuid"], id: ["smallint", "integer", "bigint"]}
 
   def types(:binary), do: ["bytea"]
+  def types(:text), do: ["text"]
 
   def types(:utc_datetime_usec),
     do: ["timestamp without time zone", "timestamp(6) without time zone"]
@@ -19,6 +20,17 @@ defmodule Ithibati.Catalogue.Postgres do
       )
 
     oid
+  end
+
+  def nullable?(repo, oid, column) do
+    %{rows: [[nullable?]]} =
+      repo.query!(
+        "SELECT NOT attnotnull FROM pg_attribute WHERE attrelid = $1::oid AND attname = $2",
+        [oid, to_string(column)],
+        log: false
+      )
+
+    nullable?
   end
 
   def column(repo, oid, column) do

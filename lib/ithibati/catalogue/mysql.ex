@@ -4,6 +4,7 @@ defmodule Ithibati.Catalogue.MySQL do
   def types(:binary_id), do: ["binary(16)"]
   def types(:id), do: ["bigint", "bigint unsigned"]
   def types(:binary), do: ["varbinary(32)"]
+  def types(:text), do: ["text"]
   def types(:utc_datetime_usec), do: ["datetime(6)"]
 
   def validate!(repo) do
@@ -51,6 +52,14 @@ defmodule Ithibati.Catalogue.MySQL do
       [[type]] -> {String.downcase(type), unique?(repo, table, to_string(column))}
       [] -> nil
     end
+  end
+
+  def nullable?(repo, {:mysql, table}, column) do
+    repo.query!(
+      "SELECT IS_NULLABLE FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?",
+      [table, to_string(column)],
+      log: false
+    ).rows == [["YES"]]
   end
 
   def index?(repo, table, name) do

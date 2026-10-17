@@ -29,7 +29,7 @@ defmodule Ithibati.DocumentedMigrationTest do
       |> Enum.uniq()
       |> Enum.sort()
 
-    assert names -- ["down", "invitation_inviter_column", "up"] == [],
+    assert names -- ["down", "invitation_inviter_column", "open_invitations", "up"] == [],
            "a call the guides do not describe as a migration step: #{inspect(calls)}"
 
     assert "up" in names and "down" in names,

@@ -59,8 +59,15 @@ defmodule Ithibati.Identity.Invitations do
   def account_attrs(invitation) do
     field = addressed_by(invitation)
 
-    %{field => Map.fetch!(invitation, field)}
+    if open?(invitation), do: %{}, else: %{field => Map.fetch!(invitation, field)}
   end
+
+  @doc """
+  Returns whether the invitation is open: it names no identifier, so the invitee chooses one.
+
+  `invitation_changeset/3` builds one with `addressed: false`.
+  """
+  def open?(invitation), do: Map.fetch!(invitation, addressed_by(invitation)) == nil
 
   # Read metadata from this invitation's schema, rather than assuming the configured module.
   defp addressed_by(%module{}), do: module.__ithibati_invitation__(:identifier)
@@ -71,9 +78,10 @@ defmodule Ithibati.Identity.Invitations do
   Pass an invitation struct, not `nil`; handle a failed `fetch/1` lookup before composing this
   step. The `:account` option names an earlier account step and defaults to `:account`.
 
-  When the account step exists, acceptance checks that its identifier matches the invitation.
-  A mismatch fails with `:identifier_mismatch`. If no account step exists, that comparison is
-  skipped, allowing acceptance to be composed independently.
+  When the account step exists, acceptance checks that its identifier matches an addressed
+  invitation. A mismatch fails with `:identifier_mismatch`. An open invitation accepts any
+  identifier; the account's unique index keeps it unique. If no account step exists, the
+  comparison is skipped, allowing acceptance to be composed independently.
 
   The write rechecks expiry and acceptance state. If the invitation is no longer available,
   the step fails with `:invalid_invitation`. Concurrent attempts cannot both accept the same row.
@@ -101,6 +109,8 @@ defmodule Ithibati.Identity.Invitations do
         compare(Map.get(account, field), Map.fetch!(invitation, field))
     end
   end
+
+  defp compare(_account, nil), do: :ok
 
   defp compare(same, same), do: :ok
   defp compare(_account, _invitation), do: {:error, :identifier_mismatch}

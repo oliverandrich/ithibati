@@ -51,6 +51,31 @@ defmodule Ithibati.Identity.InvitationsTest do
     assert Invitations.account_attrs(invitation) == %{email: "attrs@example.test"}
   end
 
+  describe "an open invitation" do
+    test "is one without an identifier" do
+      assert Invitations.open?(invite_open())
+      refute Invitations.open?(invite("addressed@example.test"))
+    end
+
+    test "gives the account nothing to start from" do
+      assert Invitations.account_attrs(invite_open()) == %{}
+    end
+
+    # The invitee chose the identifier. The account's unique index keeps it unique.
+    test "is accepted by an account under any identifier" do
+      invitation = invite_open()
+
+      assert {:ok, changes} =
+               Multi.new()
+               |> Multi.insert(:account, user_changeset(%{email: "chosen@example.test"}))
+               |> Invitations.accept(invitation)
+               |> TestRepo.transaction()
+
+      assert changes.invitation.accepted_at
+      assert changes.account.email == "chosen@example.test"
+    end
+  end
+
   describe "accept/2, composed into the caller's transaction" do
     test "marks the invitation and lets the application's own step see it" do
       invitation = invite("compose@example.test")
@@ -265,6 +290,14 @@ defmodule Ithibati.Identity.InvitationsTest do
   defp invite(email, opts \\ []) do
     TestRepo.insert!(
       TestInvitation.changeset(%TestInvitation{}, %{email: email, role: :author}, opts)
+    )
+  end
+
+  defp invite_open do
+    TestRepo.insert!(
+      TestInvitation.changeset(%TestInvitation{}, %{note: "Grace", role: :author},
+        addressed: false
+      )
     )
   end
 

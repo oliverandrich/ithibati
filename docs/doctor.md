@@ -62,7 +62,7 @@ identifier. Restore the unique index required by the account schema. If you chos
 ### Invitations enabled after initial setup
 
 Ithibati's original migration is already recorded as applied. Creating the invitation table
-later must also create its token index. Use `Ithibati.Migration.invitation_index(version: 4)`
+later must also create its token index. Use `Ithibati.Migration.invitation_index(version: 5)`
 in that migration, as shown in the [invitation guide](invitations.md#2-configure-and-migrate).
 
 ### Invitation table without the inviter column
@@ -73,6 +73,13 @@ already run. Add the column in a new migration with
 `Ithibati.Migration.invitation_inviter_column(version: 4)`, as the
 [invitation guide](invitations.md#2-configure-and-migrate) shows. The same check refuses a column
 whose type does not match `config :ithibati, users_key_type:`.
+
+### Invitation table that cannot hold an open invitation
+
+`ithibati_invitation/0` declares `note` from version 5, and an open invitation stores no
+identifier. A table created before then lacks the column and keeps its identifier NOT NULL. Change
+both in a new migration with `Ithibati.Migration.open_invitations(version: 5)`, as the
+[invitation guide](invitations.md#2-configure-and-migrate) shows.
 
 ### Missing handler callback
 

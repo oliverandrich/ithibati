@@ -105,6 +105,22 @@ defmodule Ithibati.MigrationTest do
       end
     end
 
+    defp create_invitations(:from_the_library_v5) do
+      create table(:invitations, primary_key: false) do
+        add :id, :binary_id, primary_key: true
+        Ithibati.Migration.invitation_columns(version: 5)
+      end
+    end
+
+    # The note added by hand and the identifier left NOT NULL: half of what version 5 needs.
+    defp create_invitations(:from_the_library_v4_with_note) do
+      create_invitations(:from_the_library_v4)
+
+      alter table(:invitations) do
+        add :note, :text
+      end
+    end
+
     # The application that turned invitations on before version 4 and adds the column afterwards,
     # which is every existing installation.
     defp create_invitations(:from_the_library_then_inviter) do
@@ -257,6 +273,20 @@ defmodule Ithibati.MigrationTest do
     use Ecto.Migration
 
     def change, do: Ithibati.Migration.invitation_index(version: 1)
+  end
+
+  defmodule ToVersionFive do
+    use Ecto.Migration
+
+    def up, do: Ithibati.Migration.up(from: 4, version: 5)
+    def down, do: Ithibati.Migration.down(from: 4, version: 5)
+  end
+
+  defmodule OpenInvitations do
+    use Ecto.Migration
+
+    def up, do: Ithibati.Migration.open_invitations(version: 5)
+    def down, do: Ithibati.Migration.open_invitations(version: 5)
   end
 
   defmodule ToVersionFour do
@@ -615,6 +645,81 @@ defmodule Ithibati.MigrationTest do
     refute message.message =~ "the table is yours to create"
   end
 
+  describe "open invitations, from version 5" do
+    test "a new table gets a nullable identifier and a note" do
+      as_invitation_table(:from_the_library_v5)
+
+      assert :ok = migrate(:up)
+      assert invitation_nullability()["email"] == "YES"
+      assert invitation_nullability()["note"] == "YES"
+    end
+
+    test "an older table is opened with its rows, and closed again" do
+      as_invitation_table(:from_the_library_v4)
+      migrate(:up)
+
+      query(
+        "INSERT INTO #{@schema}.invitations (id, email, token_hash, expires_at) " <>
+          "VALUES (gen_random_uuid(), 'kept@example.test', '\\x01', now())",
+        []
+      )
+
+      assert :ok =
+               Ecto.Migrator.up(TestRepo, @version + 4, OpenInvitations,
+                 prefix: @schema,
+                 log: false
+               )
+
+      assert invitation_nullability()["email"] == "YES"
+      assert invitation_nullability()["note"] == "YES"
+
+      assert %{rows: [["kept@example.test"]]} =
+               query("SELECT email FROM #{@schema}.invitations", [])
+
+      assert :ok =
+               Ecto.Migrator.up(TestRepo, @version + 5, ToVersionFive,
+                 prefix: @schema,
+                 log: false
+               )
+
+      assert :ok =
+               Ecto.Migrator.down(TestRepo, @version + 4, OpenInvitations,
+                 prefix: @schema,
+                 log: false
+               )
+
+      assert invitation_nullability()["email"] == "NO"
+      refute Map.has_key?(invitation_nullability(), "note")
+    end
+
+    test "a version five migration refuses a table that is not open, and says what opens it" do
+      as_invitation_table(:from_the_library_v4)
+      migrate(:up)
+
+      message =
+        assert_raise ArgumentError, fn ->
+          Ecto.Migrator.up(TestRepo, @version + 5, ToVersionFive, prefix: @schema, log: false)
+        end
+
+      assert message.message =~ "open_invitations(version: 5)"
+      assert message.message =~ "before the call to `up/1`"
+    end
+
+    test "and refuses one whose identifier still cannot be empty" do
+      as_invitation_table(:from_the_library_v4_with_note)
+      migrate(:up)
+
+      message =
+        assert_raise ArgumentError, fn ->
+          Ecto.Migrator.up(TestRepo, @version + 5, ToVersionFive, prefix: @schema, log: false)
+        end
+
+      assert message.message =~ "invitations.email is NOT NULL"
+      assert message.message =~ "open_invitations(version: 5)"
+      refute message.message =~ "lacks"
+    end
+  end
+
   describe "invitation_columns/1" do
     test "builds a table the migration then accepts" do
       as_invitation_table(:from_the_library)
@@ -831,6 +936,19 @@ defmodule Ithibati.MigrationTest do
       )
 
     List.flatten(rows)
+  end
+
+  defp invitation_nullability do
+    %{rows: rows} =
+      query(
+        """
+        SELECT column_name, is_nullable FROM information_schema.columns
+        WHERE table_schema = $1 AND table_name = 'invitations'
+        """,
+        [@schema]
+      )
+
+    Map.new(rows, fn [name, nullable] -> {name, nullable} end)
   end
 
   defp as_invitation_table(shape), do: as_env(:test_invitation_table, shape)

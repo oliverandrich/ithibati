@@ -39,6 +39,7 @@ if Application.compile_env!(:ithibati, :probe_adapter) in [
       Ecto.Migrator.up(Repo, 14, Ithibati.AdapterChallengeMigration, log: false)
       Ecto.Migrator.up(Repo, 15, Ithibati.AdapterSetupCodeMigration, log: false)
       Ecto.Migrator.up(Repo, 16, Ithibati.AdapterInviterMigration, log: false)
+      Ecto.Migrator.up(Repo, 17, Ithibati.AdapterOpenInvitationMigration, log: false)
       clear()
       on_exit(&clear/0)
       :ok
