@@ -80,10 +80,9 @@ set -eu
 
 fail() { echo "$1" >&2; exit 1; }
 
-# The version lives in mix.exs, so nothing is compiled to read it. A cold compile cost the release
-# `tag` job up to a minute. With these flags Mix needs neither Hex nor fetched dependencies, so a
-# fresh runner gets no install prompt either. The shape is still checked rather than trusted.
-version=$(mix run --no-start --no-compile --no-deps-check -e 'IO.puts(Mix.Project.config()[:version])')
+# Read from mix.exs as text. Loading the project through Mix needs Hex to resolve the dependency
+# list, and a fresh runner has none. The shape is still checked rather than trusted.
+version=$(sed -n 's/^  @version "\([^"]*\)"$/\1/p' mix.exs)
 
 case "$version" in
   [0-9]*.[0-9]*.[0-9]*) ;;
