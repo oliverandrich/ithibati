@@ -270,6 +270,24 @@ The controller removes the temporary session entry when it renders the codes. Th
 stores only their digests, so the application cannot retrieve the batch later. This is an HTTP
 controller because it must update the session cookie.
 
+Until this page renders, the codes travel in the session cookie. Phoenix signs that cookie but
+does not encrypt it, so anyone holding a copy can read them. Recovery codes stay valid after a
+session is revoked. Add an `encryption_salt` to `@session_options` in
+`lib/my_app_web/endpoint.ex`:
+
+```elixir
+@session_options [
+  store: :cookie,
+  key: "_my_app_key",
+  signing_salt: "...",
+  encryption_salt: "...",
+  same_site: "Lax"
+]
+```
+
+`mix phx.gen.secret 8` generates a salt. Adding it invalidates existing signed
+cookies, so people who are signed in have to sign in again.
+
 Create its HTML module at `lib/my_app_web/controllers/session_html.ex`:
 
 ```elixir

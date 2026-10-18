@@ -3,13 +3,12 @@ defmodule IthibatiOpenWeb.Endpoint do
 
   alias Ithibati.Identity.Sessions
 
-  # The session will be stored in the cookie and signed,
-  # this means its contents can be read but not tampered with.
-  # Set :encryption_salt if you would also like to encrypt it.
+  # Encrypted, not only signed: the session holds recovery codes until their page shows them.
   @session_options [
     store: :cookie,
     key: "_ithibati_open_key",
     signing_salt: "BJ4/B92x",
+    encryption_salt: "sDwJRioj",
     same_site: "Lax"
   ]
 

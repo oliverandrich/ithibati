@@ -12,4 +12,28 @@ defmodule IthibatiInvitesWeb.SessionCookieTest do
     assert %{max_age: max_age} = conn.resp_cookies["_ithibati_invites_key"]
     assert max_age == Sessions.max_age()
   end
+
+  # Recovery codes wait in the session until their page shows them. A signed cookie is only
+  # Base64, so a copy of it would reveal codes that outlive the session.
+  test "the session cookie does not reveal what the session holds", %{conn: conn} do
+    code = "plaintext-recovery-code"
+
+    conn =
+      conn
+      |> bypass_through(IthibatiInvitesWeb.Router, :browser)
+      |> get(~p"/")
+      |> put_session(:recovery_codes, [code])
+      |> send_resp(200, "")
+
+    %{value: cookie} = conn.resp_cookies["_ithibati_invites_key"]
+
+    refute cookie |> String.split(".") |> Enum.any?(&reveals?(&1, code))
+  end
+
+  defp reveals?(part, secret) do
+    case Base.url_decode64(part, padding: false) do
+      {:ok, decoded} -> String.contains?(decoded, secret)
+      :error -> false
+    end
+  end
 end

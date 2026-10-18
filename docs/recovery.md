@@ -24,6 +24,7 @@ Account creation normally issues the first batch through
 `Ithibati.Identity.Grant.with_key_and_codes/3`. Retrieve `:recovery_codes` from the successful
 transaction and show them to the person. [Getting started](getting_started.md#6-showing-the-recovery-codes)
 provides a controller and template that clear the temporary session entry when rendering them.
+The session cookie must be encrypted while it carries the codes; that section shows the setting.
 
 To replace a batch later, call `regenerate/2` from an authenticated account-management flow:
 
