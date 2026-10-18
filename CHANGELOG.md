@@ -10,6 +10,8 @@ upgrading to one of those releases.
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-10-18
+
 ### Added
 
 - `Ithibati.Web.Gate.disconnect_sessions/2` disconnects the LiveViews of sessions revoked with
@@ -384,6 +386,7 @@ the application.
   receives the account and any replacement code batch to display.
 - Three optional Credo checks for consuming applications.
 
+[0.9.0]: https://github.com/oliverandrich/ithibati/releases/tag/v0.9.0
 [0.8.1]: https://github.com/oliverandrich/ithibati/releases/tag/v0.8.1
 [0.7.1]: https://github.com/oliverandrich/ithibati/releases/tag/v0.7.1
 [0.7.0]: https://github.com/oliverandrich/ithibati/releases/tag/v0.7.0
