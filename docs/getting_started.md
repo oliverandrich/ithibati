@@ -539,6 +539,17 @@ Before deploying, set the endpoint's public URL as described in
 [The relying party](ceremonies.md#the-relying-party), and add application-level rate limiting
 to sign-in and recovery requests.
 
+Force HTTPS in `config/prod.exs`, so the session cookie is never sent over plain HTTP:
+
+```elixir
+config :my_app, MyAppWeb.Endpoint,
+  force_ssl: [hsts: true, rewrite_on: [:x_forwarded_proto]]
+```
+
+`rewrite_on` is for a proxy that terminates TLS. Plug then trusts the proxy's
+`X-Forwarded-Proto` header, so the application must be reachable only through the proxy.
+Behind HTTPS, Plug marks the session cookie `Secure`.
+
 ## Where to go next
 
 - [Configuration and schemas](configuration.md): identifiers, indexes, table names and migration upgrades.

@@ -90,12 +90,4 @@ if config_env() == :prod do
   # and cert in disk or a relative path inside priv, for example
   # "priv/ssl/server.key". For all supported SSL configuration
   # options, see https://hexdocs.pm/plug/Plug.SSL.html#configure/1
-  #
-  # We also recommend setting `force_ssl` in your config/prod.exs,
-  # ensuring no data is ever sent via http, always redirecting to https:
-  #
-  #     config :ithibati_email, IthibatiEmailWeb.Endpoint,
-  #       force_ssl: [hsts: true]
-  #
-  # Check `Plug.SSL` for all available options in `force_ssl`.
 end
