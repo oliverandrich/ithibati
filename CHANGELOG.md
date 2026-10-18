@@ -10,6 +10,11 @@ upgrading to one of those releases.
 
 ## [Unreleased]
 
+### Added
+
+- `Ithibati.Web.Gate.disconnect_sessions/2` disconnects the LiveViews of sessions revoked with
+  `Sessions.revoke_all/1`. An application that deletes an account calls it after the commit.
+
 ## [0.8.1] - 2026-10-17
 
 Version 0.8.0 was tagged and never published. Its release job read the version through Mix, which

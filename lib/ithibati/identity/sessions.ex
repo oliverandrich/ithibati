@@ -107,7 +107,8 @@ defmodule Ithibati.Identity.Sessions do
   as for other identity transactions.
 
   This call does not broadcast disconnections. For browser logout, use
-  `Ithibati.Web.Gate.log_out_all/1`.
+  `Ithibati.Web.Gate.log_out_all/1`. After the transaction commits,
+  `Ithibati.Web.Gate.disconnect_sessions/2` disconnects the returned digests.
   """
   def revoke_all(account) do
     %{id: user_id} = Config.account!(account)

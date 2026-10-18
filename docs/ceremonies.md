@@ -265,6 +265,23 @@ For application-owned revocation, `Sessions.revoke_all(account)` returns the sto
 of the deleted sessions, including expired ones, or `[]` when there are none. It joins a caller's
 transaction and does not broadcast. Defer external notifications until that transaction commits.
 Do not pass these digests to `Gate.live_socket_id/1`, which expects a plaintext token.
+`Gate.disconnect_sessions(endpoint, digests)` broadcasts `"disconnect"` to their sockets. It
+raises inside a transaction, so call it after the commit:
+
+```elixir
+{:ok, digests} =
+  Repo.transaction(fn ->
+    digests = Ithibati.Identity.Sessions.revoke_all(account)
+    Repo.delete!(account)
+    digests
+  end)
+
+Ithibati.Web.Gate.disconnect_sessions(MyAppWeb.Endpoint, digests)
+```
+
+A session created between `revoke_all/1` and the account's deletion goes with the account, but
+its socket stays connected. Deleting in the same transaction narrows that window to the
+transaction itself.
 
 Revocation does not disable an account: it can sign in again, and concurrently created sessions
 may survive. Database errors propagate without retries. PubSub delivery and database commit are

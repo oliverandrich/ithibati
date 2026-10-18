@@ -157,6 +157,23 @@ if Code.ensure_loaded?(Phoenix.Component) do
       length(digests)
     end
 
+    @doc """
+    Disconnects the LiveViews of sessions the application revoked, given their stored digests.
+
+    Pass the digests `Ithibati.Identity.Sessions.revoke_all/1` returned, after the transaction that
+    revoked them commits. With PubSub on `endpoint`, broadcasts `"disconnect"` to each session's
+    topic. Without PubSub it does nothing. Returns `:ok`. Raises `ArgumentError` inside a
+    transaction, as `log_out_all/1` does. A delivery failure does not restore anything.
+    """
+    def disconnect_sessions(endpoint, digests) do
+      if Config.repo().in_transaction?() do
+        raise ArgumentError, "call disconnect_sessions outside a database transaction"
+      end
+
+      if endpoint.config(:pubsub_server), do: disconnect(endpoint, digests)
+      :ok
+    end
+
     defp disconnect(endpoint, digests) do
       Enum.each(digests, &endpoint.broadcast(socket_topic(&1), "disconnect", %{}))
     end

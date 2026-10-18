@@ -364,6 +364,44 @@ if Code.ensure_loaded?(Phoenix.Component) do
       end
     end
 
+    # An application that deletes an account revokes its sessions in the same transaction and
+    # disconnects their sockets after the commit.
+    describe "disconnect_sessions/2" do
+      test "disconnects the sockets of revoked sessions only", ctx do
+        revoked = Sessions.generate_session_token(ctx.account)
+        kept = Sessions.generate_session_token(user_fixture())
+        topic = Gate.live_socket_id(revoked)
+        Enum.each([topic, Gate.live_socket_id(kept)], &@endpoint.subscribe/1)
+
+        digests = Sessions.revoke_all(ctx.account)
+        assert Gate.disconnect_sessions(@endpoint, digests) == :ok
+
+        assert_receive %Phoenix.Socket.Broadcast{event: "disconnect", topic: ^topic}
+        refute_receive %Phoenix.Socket.Broadcast{event: "disconnect"}
+      end
+
+      test "does nothing without PubSub", ctx do
+        digests = ctx.account |> tap(&Sessions.generate_session_token/1) |> Sessions.revoke_all()
+
+        assert Gate.disconnect_sessions(Ithibati.TestEndpointWithoutPubSub, digests) == :ok
+      end
+
+      test "refuses an outer transaction before broadcasting", ctx do
+        token = Sessions.generate_session_token(ctx.account)
+        @endpoint.subscribe(Gate.live_socket_id(token))
+
+        TestRepo.transaction(fn ->
+          digests = Sessions.revoke_all(ctx.account)
+
+          assert_raise ArgumentError, ~r/outside.*transaction/, fn ->
+            Gate.disconnect_sessions(@endpoint, digests)
+          end
+        end)
+
+        refute_receive %Phoenix.Socket.Broadcast{event: "disconnect"}
+      end
+    end
+
     defmodule UnstartedEndpoint do
       def config(_key), do: raise("could not find ets table for #{inspect(__MODULE__)}")
     end
