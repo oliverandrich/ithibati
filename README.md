@@ -135,6 +135,7 @@ The [documentation](https://hexdocs.pm/ithibati) includes guides for:
 - [Invitations and the first account](https://hexdocs.pm/ithibati/invitations.html).
 - [Checking your setup with `ithibati.doctor`](https://hexdocs.pm/ithibati/doctor.html).
 - [Credo checks for consuming applications](https://hexdocs.pm/ithibati/credo.html).
+- [Browser tests with a virtual passkey authenticator](https://hexdocs.pm/ithibati/testing.html).
 
 [CHANGELOG.md](CHANGELOG.md) records changes between releases.
 

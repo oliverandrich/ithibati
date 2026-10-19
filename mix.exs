@@ -180,7 +180,10 @@ defmodule Ithibati.MixProject do
         # check that reports the same thing later and worse.
         {:phoenix, "~> 1.8", optional: true},
         {:phoenix_live_view, "~> 1.1", optional: true},
-        {:plug, "~> 1.16", optional: true}
+        {:plug, "~> 1.16", optional: true},
+        # `Ithibati.Testing` drives a consumer's browser tests through it. Pinned to the patch
+        # line, because `Ithibati.Testing.Passkeys` sends protocol messages playwright_ex does not wrap.
+        {:phoenix_test_playwright, "~> 0.19.0", optional: true}
       ]
     end
   end
@@ -228,7 +231,7 @@ defmodule Ithibati.MixProject do
   # without erroring.
   @guides ~w(docs/overview.md docs/getting_started.md docs/configuration.md docs/databases.md docs/ceremonies.md docs/passkeys.md
              docs/invitations.md docs/recovery.md)
-  @tooling ~w(docs/doctor.md docs/credo.md)
+  @tooling ~w(docs/doctor.md docs/credo.md docs/testing.md)
   @about ["CHANGELOG.md", "LICENSE"]
 
   # hexdocs redirects `hexdocs.pm/ithibati/…` to this subdomain with a 301, and a scraper
@@ -298,7 +301,8 @@ defmodule Ithibati.MixProject do
           Ithibati.Migration,
           Mix.Tasks.Ithibati.Doctor
         ],
-        "Credo checks": [~r/^Ithibati\.Credo\./]
+        "Credo checks": [~r/^Ithibati\.Credo\./],
+        Testing: [~r/^Ithibati\.Testing\./]
       ]
     ]
   end

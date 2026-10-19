@@ -10,6 +10,12 @@ upgrading to one of those releases.
 
 ## [Unreleased]
 
+### Added
+
+- `Ithibati.Testing.Passkeys` and `Ithibati.Testing.Sessions` for browser tests with
+  `phoenix_test_playwright`, an optional dependency. [Browser tests](docs/testing.md) shows the
+  setup.
+
 ## [0.9.0] - 2026-10-18
 
 ### Added

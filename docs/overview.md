@@ -51,6 +51,7 @@ Ithibati supplies the token and acceptance step.
 | Restrict registration to invitations | [Invitations and the first account](invitations.md) |
 | Diagnose an installation | [Setup checks](doctor.md) |
 | Check integration code automatically | [Credo checks](credo.md) |
+| Test ceremonies in a browser | [Browser tests](testing.md) |
 
 The repository includes complete [open-registration](https://github.com/oliverandrich/ithibati/tree/main/examples/open_registration),
 [invitation-only](https://github.com/oliverandrich/ithibati/tree/main/examples/invitation_only),

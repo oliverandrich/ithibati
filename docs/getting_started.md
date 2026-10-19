@@ -534,6 +534,7 @@ Open `http://localhost:4000` and try the complete flow:
 
 The doctor checks setup; this browser pass checks the pages, assets and redirects as well.
 See [Setup checks](doctor.md) if configuration or migrations fail.
+[Browser tests](testing.md) shows how to run this flow as automated tests.
 
 Before deploying, set the endpoint's public URL as described in
 [The relying party](ceremonies.md#the-relying-party), and add application-level rate limiting
