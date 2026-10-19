@@ -67,10 +67,10 @@ mise exec -- mix precommit
 ```
 
 The gate compiles, checks lockfile hygiene and formatting, refuses compile-connected dependencies,
-builds assets, checks the test schema with `mix ithibati.doctor`, and runs unit, LiveView and real
-Chrome tests. The test database is `ithibati_email_test`; the browser server uses port 4103.
-Chrome and its matching chromedriver are required, just as for the other examples. A missing or
-mismatched driver fails the suite with setup instructions.
+builds assets, checks the test schema with `mix ithibati.doctor`, and runs unit, LiveView and
+browser tests. The test database is `ithibati_email_test`; the browser server uses port 4103.
+The browser tests run in Playwright's Chrome for Testing on node, which must be on your `PATH`.
+`mise run example-browsers` from the repository root installs the browser. A missing browser fails the suite with setup instructions.
 
 The root `mise run check` includes this example in Credo and migration checks. Root CI runs its
 own example matrix entry. Run `mise run audit-email-example` from the repository root for the

@@ -28,19 +28,18 @@ that is what open means. `mix ecto.reset` starts over.
 
 ## The browser tests
 
-`test/features/` drives these pages in a real Chrome, through the JavaScript the library ships —
-`mix test` runs them like anything else.
+`test/features/` drives these pages in Playwright's Chrome for Testing, through the JavaScript the
+library ships. `mix test` runs them like anything else.
 
-They need a chromedriver matching *your* Chrome, because a driver refuses a browser from another
-major version. That version is therefore not pinned in the tracked `mise.toml`; run `mix test`
-once and it will print the exact line, something like:
+No installed Chrome is needed, but Playwright runs on node, so node must be on your `PATH`.
+Install Playwright and its browser once, from the repository root:
 
 ```
-mise use --path ../../mise.local.toml chromedriver@150
+mise run example-browsers
 ```
 
-CI uses the runner's own driver instead. There is no way to skip these tests quietly — a missing
-driver fails the run and says what to do.
+A missing browser fails the run and says what to do. `PW_SCREENSHOT=true mix test --failed`
+reruns the failed features and keeps a screenshot of each in `screenshots/`.
 
 ## What to read, in this order
 

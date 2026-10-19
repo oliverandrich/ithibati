@@ -1,5 +1,5 @@
 defmodule IthibatiEmailWeb.RegistrationFeatureTest do
-  use IthibatiEmailWeb.FeatureCase
+  use IthibatiEmailWeb.PlaywrightCase
 
   import Swoosh.TestAssertions
 
@@ -7,47 +7,47 @@ defmodule IthibatiEmailWeb.RegistrationFeatureTest do
 
   setup :set_swoosh_global
 
-  feature "email request, mailed link, passkey, sign-out and sign-in", %{session: session} do
-    authenticator = virtual_authenticator(session)
+  test "email request, mailed link, passkey, sign-out and sign-in", %{conn: conn} do
+    authenticator = virtual_authenticator(conn)
 
-    session
+    conn
     |> open("/")
-    |> refute_has(css("input[name=username]"))
-    |> refute_has(button("Claim this instance"))
-    |> fill_in(css("input[name=email]"), with: "ada@example.test")
-    |> click(button("Email me a registration link"))
-    |> assert_has(css("#flash-info", text: "If registration is available for this email"))
+    |> refute_has("input[name=username]")
+    |> refute_has("button", text: "Claim this instance")
+    |> fill_in("Email address", with: "ada@example.test")
+    |> click_button("Email me a registration link")
+    |> assert_has("#flash-info", text: "If registration is available for this email")
 
     assert Repo.aggregate(User, :count) == 0
-    assert credentials(session, authenticator) == []
+    assert credentials(conn, authenticator) == []
     assert_receive {:email, email}
     assert email.to == [{"", "ada@example.test"}]
     [url] = Regex.run(~r{https?://[^\s]+/invite/[A-Za-z0-9_-]+}, email.text_body)
 
-    session
+    conn
     |> open(url)
-    |> assert_has(css("strong", text: "ada@example.test"))
-    |> click(button("Accept with a passkey"))
-    |> landed_on("/recovery-codes")
-    |> assert_has(css("h1", text: "Your recovery codes"))
+    |> assert_has("strong", text: "ada@example.test")
+    |> click_button("Accept with a passkey")
+    |> assert_path("/recovery-codes")
+    |> assert_has("h1", text: "Your recovery codes")
 
     assert Repo.get_by(User, email: "ada@example.test")
     assert Repo.one!(Invitation).accepted_at
 
-    session
+    conn
     |> open("/inside")
-    |> assert_has(css("p", text: "Signed in as ada@example.test."))
-    |> click(link("sign out"))
-    |> landed_on("/")
+    |> assert_has("p", text: "Signed in as ada@example.test.")
+    |> click_link("sign out")
+    |> assert_path("/")
     |> connected()
-    |> refute_has(css(".alert-success", text: "Signed in as"))
-    |> click(button("Sign in with a passkey"))
-    |> through_navigation(css(".alert-success", text: "ada@example.test"))
+    |> refute_has(".alert-success", text: "Signed in as")
+    |> click_button("Sign in with a passkey")
+    |> assert_has(".alert-success", text: "ada@example.test")
 
-    session
+    conn
     |> clear_cookies()
     |> open(url)
-    |> assert_has(css(".alert-error", text: "has been used already, or it has expired"))
-    |> refute_has(button("Accept with a passkey"))
+    |> assert_has(".alert-error", text: "has been used already, or it has expired")
+    |> refute_has("button", text: "Accept with a passkey")
   end
 end

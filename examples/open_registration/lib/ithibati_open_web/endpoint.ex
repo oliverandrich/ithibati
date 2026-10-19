@@ -16,6 +16,9 @@ defmodule IthibatiOpenWeb.Endpoint do
     websocket: [connect_info: [session: @session_options]],
     longpoll: [connect_info: [session: @session_options]]
 
+  @doc "The options this endpoint passes to `Plug.Session`, for tests that set its cookie."
+  def session_options, do: @session_options
+
   # Serve at "/" the static files from "priv/static" directory.
   #
   # When code reloading is disabled (e.g., in production),

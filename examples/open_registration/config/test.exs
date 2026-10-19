@@ -13,26 +13,24 @@ config :ithibati_open, IthibatiOpen.Repo,
   pool: Ecto.Adapters.SQL.Sandbox,
   pool_size: System.schedulers_online() * 2
 
-# The browser tests drive a real Chrome, so the server is up during `mix test` — which also means
-# this port is bound, where it used to be inert. The two examples therefore default to different
-# ones, so their suites can run at the same time; `PORT` still overrides, the way `config/dev.exs`
-# already allows.
+# The browser tests drive a real browser, so the server is up during `mix test`.
+# `PORT` overrides the default port, as in `config/dev.exs`.
 config :ithibati_open, IthibatiOpenWeb.Endpoint,
   http: [ip: {127, 0, 0, 1}, port: String.to_integer(System.get_env("PORT") || "4102")],
   secret_key_base: "Kz1lE93UVKHyWrBnppQR9okfS9k0H3N94SFFKFQLIW/OT8tstSHkzq8X/riVCJ7X",
-  # Wallaby drives a real browser, so the server has to be up.
+  # Playwright drives a real browser, so the server has to be up.
   server: true
 
-# The driver's path is worked out at run time in `test/test_helper.exs`: its version has to match
-# the Chrome on this machine, so it is not pinned anywhere tracked, and CI has one of its own.
-config :wallaby,
+# The browser features run in Playwright's Chrome for Testing, installed by `npm ci` and
+# `npx playwright install chromium` in `assets/`.
+config :phoenix_test,
   otp_app: :ithibati_open,
-  driver: Wallaby.Chrome,
-  # LiveView is chatty on the console and Wallaby echoes all of it into the test output.
-  js_logger: nil,
-  # A red browser test is otherwise unreadable: the message names a selector and nothing about the
-  # page it failed against.
-  screenshot_on_failure: true
+  endpoint: IthibatiOpenWeb.Endpoint,
+  playwright: [
+    timeout: 3_000,
+    # A rerun with PW_SCREENSHOT=true keeps a screenshot of each feature in `screenshots/`.
+    screenshot: System.get_env("PW_SCREENSHOT", "false") in ~w(t true)
+  ]
 
 config :ithibati_open, :sql_sandbox, true
 

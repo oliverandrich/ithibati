@@ -16,6 +16,11 @@ upgrading to one of those releases.
   `phoenix_test_playwright`, an optional dependency. [Browser tests](docs/testing.md) shows the
   setup.
 
+### Changed
+
+- The examples' browser tests run in Playwright's Chrome for Testing instead of Wallaby and
+  chromedriver. `mise run example-browsers` installs the browser; no installed Chrome is needed.
+
 ## [0.9.0] - 2026-10-18
 
 ### Added

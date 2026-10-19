@@ -43,10 +43,9 @@ defmodule IthibatiOpen.MixProject do
       {:ithibati, path: "../.."},
       {:phoenix, "~> 1.8.1"},
       {:phoenix_ecto, "~> 4.5"},
-      # Pinned to the patch line, not the minor: the virtual authenticator goes through
-      # `Wallaby.HTTPClient`, which is `@moduledoc false`, so an internal change would land in
-      # every feature test at once looking like a browser problem.
-      {:wallaby, "~> 0.31.0", runtime: false, only: :test},
+      # Pinned to the patch line, not the minor. `Ithibati.Testing.Passkeys` sends protocol messages
+      # that playwright_ex does not wrap, so an internal change would break every feature at once.
+      {:phoenix_test_playwright, "~> 0.19.0", runtime: false, only: :test},
       {:ecto_sql, "~> 3.13"},
       {:postgrex, ">= 0.0.0"},
       {:phoenix_html, "~> 4.1"},

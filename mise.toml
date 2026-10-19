@@ -6,13 +6,6 @@ erlang = "29"
 # Dependabot does not read this file. The two move by hand, together.
 zizmor = "1.30.0"
 
-# No chromedriver here on purpose, though mise can install one. The version has to match the Chrome
-# on *this* machine — a driver refuses a browser from another major, and Chrome updates itself
-# while a tracked pin does not — so a number written here would be right for whoever added it and
-# wrong for everybody else a month later. The examples' `test_helper.exs` works out which major you
-# need and prints the `mise use` line; CI uses the runner's own driver through `CHROMEWEBDRIVER`.
-# Keeping it out of `[tools]` also stops every unrelated CI job from downloading one.
-
 [tasks.check]
 description = "Everything that has to be green before a change is done"
 # Named so that CI can run the task instead of a second copy of what it contains.
@@ -141,6 +134,21 @@ run = ["mix deps.audit", "mix hex.audit"]
 [tasks.beans]
 description = "List the live backlog (everything not completed or scrapped)"
 run = "beans list --no-status completed --no-status scrapped"
+
+# Each example pins playwright in its own `assets/package-lock.json`, so each installs its browser.
+# A browser lands in Playwright's shared cache, one copy per Playwright version.
+# Node is a tool of this task alone, so the other CI jobs do not download it.
+[tasks.example-browsers]
+description = "Install Playwright and its headless Chrome for the examples' browser tests"
+tools = { node = "26" }
+run = [
+  "npm ci --prefix examples/open_registration/assets --no-audit --no-fund",
+  "npm exec --prefix examples/open_registration/assets -- playwright install chromium --only-shell",
+  "npm ci --prefix examples/invitation_only/assets --no-audit --no-fund",
+  "npm exec --prefix examples/invitation_only/assets -- playwright install chromium --only-shell",
+  "npm ci --prefix examples/email_registration/assets --no-audit --no-fund",
+  "npm exec --prefix examples/email_registration/assets -- playwright install chromium --only-shell",
+]
 
 [tasks.audit-email-example]
 description = "Audit the email registration example's independent dependency lock"

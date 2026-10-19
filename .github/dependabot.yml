@@ -32,6 +32,22 @@ updates:
           - minor
           - patch
 
+  # The examples pin playwright for their browser tests.
+  - package-ecosystem: npm
+    directories:
+      - /examples/open_registration/assets
+      - /examples/invitation_only/assets
+      - /examples/email_registration/assets
+    cooldown:
+      default-days: 7
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 3
+    groups:
+      playwright:
+        patterns:
+          - playwright
+
   - package-ecosystem: mix
     directory: /examples/email_registration
     cooldown:

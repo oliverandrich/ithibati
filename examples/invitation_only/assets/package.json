@@ -1,5 +1,8 @@
 {
   "name": "ithibati_invites_assets",
   "private": true,
-  "type": "commonjs"
+  "type": "commonjs",
+  "devDependencies": {
+    "playwright": "1.64.1"
+  }
 }

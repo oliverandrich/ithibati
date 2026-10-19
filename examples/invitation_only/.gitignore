@@ -35,5 +35,5 @@ ithibati_invites-*.tar
 npm-debug.log
 /assets/node_modules/
 
-# Wallaby writes these when a browser test fails.
+# A rerun with PW_SCREENSHOT=true writes these.
 /screenshots/

@@ -114,10 +114,11 @@ Replace the Postgrex dependency and repo adapter with the selected driver/adapte
 [Configuration](docs/configuration.md#databases), and apply that guide's connection settings in
 the copy's `config/test.exs`. Use a dedicated database and retain `Ecto.Adapters.SQL.Sandbox`.
 
-Run `mix deps.get`, `MIX_ENV=test mix assets.setup`, `MIX_ENV=test mix assets.build`, then
+Run `mix deps.get`, `npm ci --prefix assets`, `npm exec --prefix assets -- playwright install
+chromium --only-shell`, `MIX_ENV=test mix assets.setup`, `MIX_ENV=test mix assets.build`, then
 `mix test --max-cases 1`. Serial execution also works with SQLite's single writer. These tests
-exercise first-account setup, invitation acceptance and refusal of reused links through real
-Chrome and the shipped JavaScript. The migrations must run unchanged. A passing adapter suite
+exercise first-account setup, invitation acceptance and refusal of reused links through
+Playwright's Chrome for Testing and the shipped JavaScript. The migrations must run unchanged. A passing adapter suite
 alone does not replace this consumer check.
 
 ## Architecture

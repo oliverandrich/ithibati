@@ -3,92 +3,93 @@ defmodule IthibatiInvitesWeb.InvitationTest do
   The flow this example exists to show, in a browser.
 
   Every test here is about a row an instance can hold exactly once — the claim, an invitation that
-  is spent by being accepted. Nothing has to clean up between them: Wallaby shares the test's
+  is spent by being accepted. Nothing has to clean up between them: the browser shares the test's
   sandboxed connection, so each starts from an empty database and rolls back when it ends.
   """
-  use IthibatiInvitesWeb.FeatureCase
+  use IthibatiInvitesWeb.PlaywrightCase
 
   alias Ithibati.Identity.Instance
   alias IthibatiInvites.Accounts.Invitation
 
   # The two preludes the first test walks through with its own assertions, so that the tests about
   # something else can reach their subject in a line.
-  defp enter_operator_code(session) do
+  defp enter_operator_code(conn) do
     {:ok, code} = Instance.issue_code()
 
-    session
+    conn
     |> open("/")
-    |> fill_in(css("input[name=setup_code]"), with: code)
-    |> click(button("Continue to first account"))
-    |> through_navigation(css("input[name=username]"))
+    |> fill_in("Operator code", with: code)
+    |> click_button("Continue to first account")
+    |> connected()
   end
 
-  defp claim(session, username) do
-    session
+  defp claim(conn, username) do
+    conn
     |> enter_operator_code()
-    |> fill_in(css("input[name=username]"), with: username)
-    |> click(button("Claim this instance"))
-    |> landed_on("/recovery-codes")
-    |> assert_has(css("h1", text: "Your recovery codes"))
+    |> fill_in("Username", with: username)
+    |> click_button("Claim this instance")
+    |> assert_path("/recovery-codes")
+    |> assert_has("h1", text: "Your recovery codes")
   end
 
   # The link is shown once and never again — the row holds the token's digest — so it is read here
   # or not at all.
-  defp invite_link(session, username) do
-    session
+  defp invite_link(conn, username) do
+    conn
     |> open("/inside")
-    |> fill_in(css("input[name=username]"), with: username)
-    |> click(button("Create a link"))
-    |> find(css("code"))
-    |> Element.text()
-    |> String.trim()
+    |> fill_in("Their username", with: username)
+    |> click_button("Create a link")
+    |> assert_has("code")
+    |> value_of("() => document.querySelector('code').textContent.trim()")
   end
 
-  defp main_text(session), do: session |> find(css("main")) |> Element.text()
+  defp main_text(conn) do
+    conn |> assert_has("main") |> value_of("() => document.querySelector('main').innerText")
+  end
 
-  feature "the first account claims the instance, and everyone after it arrives on a link", %{
-    session: session
+  test "the first account claims the instance, and everyone after it arrives on a link", %{
+    conn: conn
   } do
-    virtual_authenticator(session)
+    virtual_authenticator(conn)
 
     {:ok, code} = Instance.issue_code()
 
-    session
+    conn
     |> open("/")
-    |> assert_has(css("p", text: "Nobody has claimed this instance yet"))
-    |> refute_has(css("input[name=username]"))
-    |> fill_in(css("input[name=setup_code]"), with: code)
-    |> click(button("Continue to first account"))
-    |> through_navigation(css("input[name=username]"))
-    |> fill_in(css("input[name=username]"), with: "ada")
-    |> click(button("Claim this instance"))
-    |> landed_on("/recovery-codes")
-    |> assert_has(css("h1", text: "Your recovery codes"))
+    |> assert_has("p", text: "Nobody has claimed this instance yet")
+    |> refute_has("input[name=username]")
+    |> fill_in("Operator code", with: code)
+    |> click_button("Continue to first account")
+    |> connected()
+    |> fill_in("Username", with: "ada")
+    |> click_button("Claim this instance")
+    |> assert_path("/recovery-codes")
+    |> assert_has("h1", text: "Your recovery codes")
 
-    link = invite_link(session, "grace")
+    link = invite_link(conn, "grace")
     assert link =~ "/invite/"
 
-    # A fresh session, because an invitation is for somebody who is not signed in — and checked
-    # here rather than after the fact: accepting signs you in as the invitee either way, so an
-    # assertion further down holds whether or not this line did anything.
-    session
+    # A fresh session, because an invitation is for somebody who is not signed in.
+    # It is checked here, not later: accepting signs the invitee in either way.
+    # An assertion further down would hold whether or not this line did anything.
+    conn
     |> clear_cookies()
     |> open("/")
-    |> refute_has(css(".alert-success", text: "Signed in as"))
+    |> refute_has(".alert-success", text: "Signed in as")
 
-    session
+    conn
     |> open(link)
     # The page names the account it will create and offers no field to change it — the refusal
     # `Invitations.accept/2` would give is turned into an interface that cannot ask for it.
-    |> assert_has(css("p", text: "The account will be called"))
-    |> refute_has(css("main input"))
-    |> click(button("Accept with a passkey"))
-    |> landed_on("/recovery-codes")
-    |> assert_has(css("h1", text: "Your recovery codes"))
+    |> assert_has("p", text: "The account will be called")
+    |> refute_has("main input")
+    |> click_button("Accept with a passkey")
+    |> assert_path("/recovery-codes")
+    |> assert_has("h1", text: "Your recovery codes")
 
-    session
+    conn
     |> open("/inside")
-    |> assert_has(css("p", text: "Signed in as grace."))
+    |> assert_has("p", text: "Signed in as grace.")
 
     assert Repo.get_by(User, username: "grace")
     assert Repo.one(Invitation).accepted_at
@@ -96,35 +97,35 @@ defmodule IthibatiInvitesWeb.InvitationTest do
 
   # A used link, an expired one and one nobody ever held are one answer on purpose: anything else
   # tells a guesser which of their guesses was once real.
-  feature "a spent link and an invented one are answered exactly alike", %{session: session} do
-    virtual_authenticator(session)
+  test "a spent link and an invented one are answered exactly alike", %{conn: conn} do
+    virtual_authenticator(conn)
 
-    claim(session, "ada")
-    link = invite_link(session, "grace")
+    claim(conn, "ada")
+    link = invite_link(conn, "grace")
 
-    session
+    conn
     |> clear_cookies()
     |> open(link)
-    |> click(button("Accept with a passkey"))
-    |> landed_on("/recovery-codes")
-    |> assert_has(css("h1", text: "Your recovery codes"))
+    |> click_button("Accept with a passkey")
+    |> assert_path("/recovery-codes")
+    |> assert_has("h1", text: "Your recovery codes")
 
-    spent = session |> clear_cookies() |> open(link) |> main_text()
-    invented = session |> open("/invite/a-token-nobody-ever-held") |> main_text()
+    spent = conn |> clear_cookies() |> open(link) |> main_text()
+    invented = conn |> open("/invite/a-token-nobody-ever-held") |> main_text()
 
     # Word for word, because anything else is a signal.
     assert spent == invented
     assert spent =~ "has been used already, or it has expired"
   end
 
-  feature "the instance can be claimed once, and the form does not come back", %{session: session} do
-    virtual_authenticator(session)
+  test "the instance can be claimed once, and the form does not come back", %{conn: conn} do
+    virtual_authenticator(conn)
 
-    claim(session, "ada")
+    claim(conn, "ada")
 
-    session
+    conn
     |> open("/")
-    |> assert_has(css("p", text: "Registration is by invitation"))
-    |> refute_has(css("main input"))
+    |> assert_has("p", text: "Registration is by invitation")
+    |> refute_has("main input")
   end
 end

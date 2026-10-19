@@ -310,6 +310,10 @@ jobs:
         with:
           persist-credentials: false
 
+      # Node for this job alone: Playwright runs on it. A file, as the toolchain pin above uses.
+      - name: Add node to this job's toolchain
+        run: printf '[tools]\nnode = "26"\n' > mise.local.toml
+
       - uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4.3.0
         with:
           version: 2026.9.5
@@ -325,18 +329,20 @@ jobs:
           key: ${{ runner.os }}-example-${{ matrix.example }}-${{ hashFiles(format('examples/{0}/mix.lock', matrix.example)) }}
           restore-keys: ${{ runner.os }}-example-${{ matrix.example }}-
 
-      # The runner images ship a Chrome and a matching chromedriver and point `CHROMEWEBDRIVER` at
-      # the second; `test_helper.exs` prefers it over a locally installed one precisely so that the
-      # pair cannot drift apart here. Named rather than assumed — if it ever stops being set, this
-      # says so instead of the suite failing to spawn a session.
-      - name: Check the runner brought a browser
+      # The lockfile pins playwright, and each playwright version pins its browser build.
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        if: ${{ !inputs.hardened }}
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-playwright-${{ hashFiles(format('examples/{0}/assets/package-lock.json', matrix.example)) }}
+
+      # The browser tests run in Playwright's Chrome for Testing. `--with-deps` adds the system
+      # libraries it needs, which the runner image does not promise.
+      - name: Install Playwright and its browser
+        working-directory: examples/${{ matrix.example }}/assets
         run: |
-          test -x "$CHROMEWEBDRIVER/chromedriver" || {
-            echo "CHROMEWEBDRIVER=$CHROMEWEBDRIVER has no chromedriver in it"
-            exit 1
-          }
-          "$CHROMEWEBDRIVER/chromedriver" --version
-          google-chrome --version
+          npm ci --no-audit --no-fund
+          npx playwright install --with-deps chromium --only-shell
 
       # `mix precommit` rather than a second copy of it, the way mise.toml puts it for this
       # repository: following the example's own alias locally then means following the gate. It
@@ -352,7 +358,11 @@ jobs:
           # `app.config`, which compiles, so leaving it in `dev` builds the example, the library and
           # every dependency once in each environment. The binaries land in `_build/` either way.
           MIX_ENV='test' mix assets.setup
-          mix precommit
+          if ! mix precommit; then
+            # Reruns the failed features with a screenshot of each, for the artifact below.
+            PW_SCREENSHOT=true mix test --failed || true
+            exit 1
+          fi
 
       # A failed feature test names a selector and nothing about the page it failed against.
       - name: Keep the screenshots when a browser test fails
