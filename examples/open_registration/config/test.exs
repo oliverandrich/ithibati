@@ -28,6 +28,8 @@ config :phoenix_test,
   endpoint: IthibatiOpenWeb.Endpoint,
   playwright: [
     timeout: 3_000,
+    # A cold CI runner took longer than the default four seconds to start the browser.
+    browser_launch_timeout: 30_000,
     # A rerun with PW_SCREENSHOT=true keeps a screenshot of each feature in `screenshots/`.
     screenshot: System.get_env("PW_SCREENSHOT", "false") in ~w(t true)
   ]
