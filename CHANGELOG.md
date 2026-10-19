@@ -10,6 +10,8 @@ upgrading to one of those releases.
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-10-19
+
 ### Added
 
 - `Ithibati.Testing.Passkeys` and `Ithibati.Testing.Sessions` for browser tests with
@@ -397,6 +399,7 @@ the application.
   receives the account and any replacement code batch to display.
 - Three optional Credo checks for consuming applications.
 
+[0.10.0]: https://github.com/oliverandrich/ithibati/releases/tag/v0.10.0
 [0.9.0]: https://github.com/oliverandrich/ithibati/releases/tag/v0.9.0
 [0.8.1]: https://github.com/oliverandrich/ithibati/releases/tag/v0.8.1
 [0.7.1]: https://github.com/oliverandrich/ithibati/releases/tag/v0.7.1
