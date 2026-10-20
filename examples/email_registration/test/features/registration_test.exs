@@ -8,7 +8,7 @@ defmodule IthibatiEmailWeb.RegistrationFeatureTest do
   setup :set_swoosh_global
 
   test "email request, mailed link, passkey, sign-out and sign-in", %{conn: conn} do
-    authenticator = virtual_authenticator(conn)
+    virtual_authenticator(conn)
 
     conn
     |> open("/")
@@ -19,7 +19,7 @@ defmodule IthibatiEmailWeb.RegistrationFeatureTest do
     |> assert_has("#flash-info", text: "If registration is available for this email")
 
     assert Repo.aggregate(User, :count) == 0
-    assert credentials(conn, authenticator) == []
+    assert credentials(conn) == []
     assert_receive {:email, email}
     assert email.to == [{"", "ada@example.test"}]
     [url] = Regex.run(~r{https?://[^\s]+/invite/[A-Za-z0-9_-]+}, email.text_body)

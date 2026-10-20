@@ -7,7 +7,7 @@ Ithibati ships two helpers for browser tests with
 
 | Module | Does |
 | --- | --- |
-| `Ithibati.Testing.Passkeys` | Adds a virtual authenticator to the page, removes it and lists its credentials |
+| `Ithibati.Testing.Passkeys` | Adds a virtual authenticator to the page, lists its credentials and deletes them |
 | `Ithibati.Testing.Sessions` | Signs the browser in by session cookie, without a ceremony |
 
 Both modules exist only when `phoenix_test_playwright` is a dependency.
@@ -50,7 +50,7 @@ defmodule MyAppWeb.RegistrationTest do
   import Ithibati.Testing.Passkeys
 
   test "a passkey is made", %{conn: conn} do
-    authenticator = virtual_authenticator(conn)
+    virtual_authenticator(conn)
 
     conn
     |> visit("/")
@@ -60,9 +60,19 @@ defmodule MyAppWeb.RegistrationTest do
     |> click_button("Register")
     |> assert_path("/recovery-codes")
 
-    assert length(credentials(conn, authenticator)) == 1
+    assert length(credentials(conn)) == 1
   end
 end
+```
+
+`forget_credentials/1` deletes the passkeys the authenticator holds. A later sign-in then runs
+like one on a device that never registered a passkey:
+
+```elixir
+conn
+|> forget_credentials()
+|> click_button("Sign in with a passkey")
+|> assert_has(".alert-error")
 ```
 
 `Ithibati.Testing.Sessions.sign_in/3` takes the account and the options the endpoint passes to

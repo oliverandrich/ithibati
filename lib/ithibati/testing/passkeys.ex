@@ -7,13 +7,17 @@ if Code.ensure_loaded?(PhoenixTest.Playwright) do
     WebAuthn domain of the Chrome DevTools Protocol. This module reaches it over a CDP session on
     the test's page. It works with Playwright's Chromium only.
 
-    Playwright's own `credentials` API cannot serve this library. Its synthetic credential returns
-    an empty `toJSON()`, and the shipped JavaScript serialises credentials with `toJSON()`.
+    Playwright's own `credentials` API replaces `navigator.credentials` with a script. In
+    Playwright 1.64 that script returns no extension results and does not check the relying party
+    id against the origin. The CDP authenticator runs behind Chrome's WebAuthn client.
+
+    The authenticator id and the CDP session are kept in the test process. Call these functions
+    from that process.
 
         test "a passkey signs back in", %{conn: conn} do
-          authenticator = virtual_authenticator(conn)
+          virtual_authenticator(conn)
           # ... register through the page ...
-          assert length(credentials(conn, authenticator)) == 1
+          assert length(credentials(conn)) == 1
         end
 
     The module exists only when `phoenix_test_playwright` is a dependency.
@@ -23,67 +27,73 @@ if Code.ensure_loaded?(PhoenixTest.Playwright) do
     alias PlaywrightEx.Connection
 
     @doc """
-    Adds a virtual platform authenticator to the page and returns its id.
+    Adds a virtual platform authenticator to the page and returns `conn`.
 
     The authenticator holds discoverable credentials, verifies the user and answers every prompt
-    by itself. No credential is seeded, so each test registers its own passkey.
+    by itself. No credential is seeded, so each test registers its own passkey. A second call on
+    the same page does nothing.
     """
-    def virtual_authenticator(conn) do
-      command(conn, "WebAuthn.enable", %{})
+    def virtual_authenticator(%{context_id: context, page_id: page} = conn) do
+      with nil <- Process.get({__MODULE__, page}) do
+        # A virtual authenticator lives only as long as the CDP session that added it.
+        # So the session is kept in the test process with the authenticator's id.
+        # playwright_ex has no wrapper for `newCDPSession`, so the method is sent by its protocol name.
+        %{session: %{guid: session}} = send!(context, "newCDPSession", %{page: %{guid: page}})
+        command(session, "WebAuthn.enable", %{})
+
+        %{authenticator_id: id} =
+          command(session, "WebAuthn.addVirtualAuthenticator", %{
+            options: %{
+              protocol: "ctap2",
+              # A platform authenticator such as Touch ID or Windows Hello holds web passkeys.
+              transport: "internal",
+              hasResidentKey: true,
+              hasUserVerification: true,
+              isUserVerified: true,
+              automaticPresenceSimulation: true
+            }
+          })
+
+        Process.put({__MODULE__, page}, %{session: session, id: id})
+      end
 
       conn
-      |> command("WebAuthn.addVirtualAuthenticator", %{
-        options: %{
-          protocol: "ctap2",
-          # A platform authenticator such as Touch ID or Windows Hello holds web passkeys.
-          transport: "internal",
-          hasResidentKey: true,
-          hasUserVerification: true,
-          isUserVerified: true,
-          automaticPresenceSimulation: true
-        }
-      })
-      |> Map.fetch!(:authenticator_id)
     end
 
     @doc """
-    Removes the authenticator `id` from the page and returns `conn`.
-
-    Chrome keeps one platform authenticator per page. Removing it lets a new one model a second
-    device.
-    """
-    def remove_authenticator(conn, id) do
-      command(conn, "WebAuthn.removeVirtualAuthenticator", %{authenticatorId: id})
-      conn
-    end
-
-    @doc """
-    Returns the credentials the authenticator `id` holds.
+    Returns the credentials the page's authenticator holds.
 
     A ceremony that reached `navigator.credentials.create` leaves one here.
     """
-    def credentials(conn, id) do
-      conn
+    def credentials(conn) do
+      %{session: session, id: id} = authenticator!(conn)
+
+      session
       |> command("WebAuthn.getCredentials", %{authenticatorId: id})
       |> Map.fetch!(:credentials)
     end
 
-    # A virtual authenticator lives only as long as the CDP session that added it.
-    # So the session is opened once per page and kept in the test process.
-    # playwright_ex has no wrapper for `newCDPSession`, so the method is sent by its protocol name.
-    # playwright_ex turns a reply key into an atom only when that atom exists.
-    # The keys read here exist, because this module names them as literals.
-    defp command(conn, method, params) do
-      %{result: result} = send!(cdp_session(conn), :send, %{method: method, params: params})
-      result
+    @doc """
+    Deletes every credential the page's authenticator holds and returns `conn`.
+
+    The authenticator then holds no passkey, like a device that never registered one.
+    """
+    def forget_credentials(conn) do
+      %{session: session, id: id} = authenticator!(conn)
+      command(session, "WebAuthn.clearCredentials", %{authenticatorId: id})
+      conn
     end
 
-    defp cdp_session(%{context_id: context, page_id: page}) do
-      with nil <- Process.get({__MODULE__, page}) do
-        %{session: %{guid: session}} = send!(context, "newCDPSession", %{page: %{guid: page}})
-        Process.put({__MODULE__, page}, session)
-        session
-      end
+    defp authenticator!(%{page_id: page}) do
+      Process.get({__MODULE__, page}) ||
+        raise "no virtual authenticator on this page; call virtual_authenticator/1 first"
+    end
+
+    # playwright_ex turns a reply key into an atom only when that atom exists.
+    # The keys read here exist, because this module names them as literals.
+    defp command(session, method, params) do
+      %{result: result} = send!(session, :send, %{method: method, params: params})
+      result
     end
 
     defp send!(guid, method, params) do

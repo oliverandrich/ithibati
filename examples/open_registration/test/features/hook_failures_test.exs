@@ -123,7 +123,7 @@ defmodule IthibatiOpenWeb.HookFailuresTest do
   end
 
   test "a dismissed prompt is reported as cancelled, and no account is left behind", %{conn: conn} do
-    authenticator = virtual_authenticator(conn)
+    virtual_authenticator(conn)
 
     conn
     |> open("/")
@@ -135,7 +135,7 @@ defmodule IthibatiOpenWeb.HookFailuresTest do
     |> click_button("Register")
     |> assert_has(".alert-error", text: "The passkey prompt was dismissed.")
 
-    assert credentials(conn, authenticator) == []
+    assert credentials(conn) == []
     assert Repo.aggregate(User, :count) == 0
   end
 

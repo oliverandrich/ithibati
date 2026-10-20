@@ -10,7 +10,7 @@ defmodule IthibatiOpenWeb.RegistrationTest do
   test "a passkey is made, the codes are shown once, and the same passkey signs back in", %{
     conn: conn
   } do
-    authenticator = virtual_authenticator(conn)
+    virtual_authenticator(conn)
 
     conn
     |> open("/")
@@ -31,7 +31,7 @@ defmodule IthibatiOpenWeb.RegistrationTest do
 
     # And the authenticator kept what the *page* registered, which is how we know the ceremony
     # reached `navigator.credentials.create` rather than being simulated around it.
-    assert length(credentials(conn, authenticator)) == 1
+    assert length(credentials(conn)) == 1
 
     conn
     |> open("/inside")
@@ -74,16 +74,15 @@ defmodule IthibatiOpenWeb.RegistrationTest do
     refute_has(conn, "p", text: "Only ada sees this.")
   end
 
-  # A new authenticator models a device that never held the passkey.
-  test "a passkey leaves with the authenticator that held it", %{conn: conn} do
-    authenticator = virtual_authenticator(conn)
+  # An emptied authenticator models a device that never held the passkey.
+  test "an authenticator without the passkey cannot sign in", %{conn: conn} do
+    virtual_authenticator(conn)
     register(conn, "ada")
 
     conn
     |> open("/")
     |> sign_out("/session")
-    |> remove_authenticator(authenticator)
-    |> tap(&virtual_authenticator/1)
+    |> forget_credentials()
     |> click_button("Sign in with a passkey")
     |> assert_has(".alert-error")
     |> refute_has(".alert-success", text: "Signed in as ada")
@@ -168,7 +167,7 @@ defmodule IthibatiOpenWeb.RegistrationTest do
   # with, so the browser refuses everything the server would. What this proves is that the derived
   # attribute reached the DOM and is doing its job, which no Elixir test can see.
   test "a name the server would refuse never leaves the browser", %{conn: conn} do
-    authenticator = virtual_authenticator(conn)
+    virtual_authenticator(conn)
 
     conn
     |> open("/")
@@ -181,7 +180,7 @@ defmodule IthibatiOpenWeb.RegistrationTest do
     # Nothing was minted and nobody is left holding a passkey for an account that does not exist.
     # Asserted against the database and the authenticator rather than against the page, because a
     # page that has not navigated yet looks the same either way.
-    assert credentials(conn, authenticator) == []
+    assert credentials(conn) == []
     assert Repo.aggregate(User, :count) == 0
   end
 

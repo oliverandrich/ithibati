@@ -10,6 +10,23 @@ upgrading to one of those releases.
 
 ## [Unreleased]
 
+### Added
+
+- `Ithibati.Testing.Passkeys.forget_credentials/1` deletes every credential the page's
+  authenticator holds.
+
+### Changed
+
+- `Ithibati.Testing.Passkeys.virtual_authenticator/1` returns `conn` instead of an authenticator
+  id. It keeps the id per page. A second call on the same page does nothing.
+
+### Removed
+
+- `credentials/2` of `Ithibati.Testing.Passkeys`. Call `credentials/1`.
+- `remove_authenticator/2` of `Ithibati.Testing.Passkeys`. Replace
+  `remove_authenticator(conn, id)` followed by `virtual_authenticator(conn)` with
+  `forget_credentials(conn)`.
+
 ## [0.10.0] - 2026-10-19
 
 ### Added
