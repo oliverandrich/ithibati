@@ -143,7 +143,7 @@ defmodule Ithibati.MixProject do
       {:wax_, "~> 0.7"},
       {:postgrex, "~> 0.19", only: [:dev, :test]},
       {:myxql, "~> 0.9.0", only: [:dev, :test]},
-      {:ecto_sqlite3, "~> 0.24.1", only: [:dev, :test]},
+      {:ecto_sqlite3, "~> 0.25.0", only: [:dev, :test]},
       # `optional:` rather than `only: [:dev, :test]`, because the checks under
       # `lib/ithibati/credo/` are for consumers and an `only:` dependency never reaches one:
       # measured in a throwaway consumer, the guard is then false when this library compiles in
@@ -152,7 +152,7 @@ defmodule Ithibati.MixProject do
       # consumer's own `MIX_ENV=prod` build.
       {:credo, "~> 1.7", optional: true, runtime: false},
       {:ex_slop, "~> 0.4.4", only: [:dev, :test], runtime: false},
-      {:jump_credo_checks, "~> 0.5.0", only: [:dev, :test], runtime: false},
+      {:jump_credo_checks, "~> 0.6.0", only: [:dev, :test], runtime: false},
       {:excellent_migrations, "~> 0.1.10", only: [:dev, :test], runtime: false},
       {:ex_doc, "~> 0.34", only: :dev, runtime: false},
       # HEEX in the guides is otherwise rendered unhighlighted beside the Elixir around it.
