@@ -157,7 +157,7 @@ defmodule Ithibati.MixProject do
       {:ex_doc, "~> 0.34", only: :dev, runtime: false},
       # HEEX in the guides is otherwise rendered unhighlighted beside the Elixir around it.
       {:makeup_eex, "~> 2.0", only: :dev, runtime: false},
-      {:makeup_html, "~> 0.2", only: :dev, runtime: false},
+      {:makeup_html, "~> 1.0", only: :dev, runtime: false},
       {:mix_audit, "~> 2.1", only: [:dev, :test], runtime: false}
     ] ++ optional_deps()
   end
