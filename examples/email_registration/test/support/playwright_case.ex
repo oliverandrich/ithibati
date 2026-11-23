@@ -10,17 +10,22 @@ defmodule IthibatiEmailWeb.PlaywrightCase do
   """
   use ExUnit.CaseTemplate
 
-  import PhoenixTest
+  import Fluffy.PhoenixTest
 
-  alias PhoenixTest.Playwright.Config
-  alias PlaywrightEx.Connection
+  alias Playwright.BrowserContext
 
   using do
     quote do
-      use PhoenixTest.Playwright.Case
+      use Playwright.Test
+
+      setup tags do
+        IthibatiEmail.DataCase.setup_sandbox(tags)
+        %{conn: Fluffy.PhoenixTest.start_session(:playwright)}
+      end
 
       setup %{conn: conn}, do: IthibatiEmailWeb.PlaywrightCase.fail_on_page_errors(conn)
 
+      import Fluffy.PhoenixTest
       import IthibatiEmailWeb.PlaywrightCase
       import Ithibati.Testing.Passkeys
 
@@ -36,9 +41,10 @@ defmodule IthibatiEmailWeb.PlaywrightCase do
   The collector is not linked, because `on_exit` runs after the test process has exited.
   The check runs before the browser context closes, because `on_exit` callbacks run in reverse order.
   """
-  def fail_on_page_errors(%{context_id: context}) do
+  def fail_on_page_errors(conn) do
     collector = spawn(fn -> collect_page_errors([]) end)
-    :ok = Connection.subscribe(PlaywrightEx.Supervisor.connection_name(), collector, context)
+    context = unwrap_and_return(conn, &Playwright.Page.context/1)
+    BrowserContext.on(context, :web_error, &send(collector, {:page_error, &1}))
 
     on_exit(fn ->
       send(collector, {:page_errors, self()})
@@ -47,7 +53,7 @@ defmodule IthibatiEmailWeb.PlaywrightCase do
         {:page_errors, []} -> :ok
         {:page_errors, errors} -> flunk("the page threw:\n\n" <> Enum.join(errors, "\n\n"))
       after
-        Config.global(:timeout) ->
+        3_000 ->
           Process.exit(collector, :kill)
           flunk("the page error collector did not answer")
       end
@@ -56,19 +62,13 @@ defmodule IthibatiEmailWeb.PlaywrightCase do
 
   defp collect_page_errors(errors) do
     receive do
-      {:playwright_msg, %{method: :page_error, params: params}} ->
-        collect_page_errors([page_error_message(params) | errors])
+      {:page_error, error} ->
+        collect_page_errors([Exception.message(Playwright.WebError.error(error)) | errors])
 
       {:page_errors, pid} ->
         send(pid, {:page_errors, Enum.reverse(errors)})
-
-      _other ->
-        collect_page_errors(errors)
     end
   end
-
-  defp page_error_message(%{error: %{error: %{message: message}}}), do: message
-  defp page_error_message(params), do: inspect(params)
 
   @doc """
   Visits `path` and waits until its LiveView is connected.
@@ -80,4 +80,8 @@ defmodule IthibatiEmailWeb.PlaywrightCase do
 
   @doc "Waits until the current page's LiveView is connected, for a page reached by a click."
   def connected(conn), do: assert_has(conn, "[data-phx-main].phx-connected")
+
+  @doc "Clears the browser's cookies, so the next page starts signed out."
+  def clear_cookies(%{session: session} = conn),
+    do: %{conn | session: Fluffy.clear_cookies(session)}
 end

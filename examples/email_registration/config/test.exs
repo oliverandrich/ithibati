@@ -21,18 +21,17 @@ config :ithibati_email, IthibatiEmailWeb.Endpoint,
   # Playwright drives a real browser, so the server has to be up.
   server: true
 
-# The browser features run in Playwright's Chrome for Testing, installed by `npm ci` and
-# `npx playwright install chromium` in `assets/`.
-config :phoenix_test,
-  otp_app: :ithibati_email,
-  endpoint: IthibatiEmailWeb.Endpoint,
-  playwright: [
-    timeout: 3_000,
-    # A cold CI runner took longer than the default four seconds to start the browser.
-    browser_launch_timeout: 30_000,
-    # A rerun with PW_SCREENSHOT=true keeps a screenshot of each feature in `screenshots/`.
-    screenshot: System.get_env("PW_SCREENSHOT", "false") in ~w(t true)
-  ]
+# The browser features run in Playwright's Chrome for Testing, installed by
+# `mix playwright.install chromium`.
+config :fluffy, endpoint: IthibatiEmailWeb.Endpoint
+
+config :playwright, :test,
+  action_timeout: 3_000,
+  navigation_timeout: 3_000,
+  expect: [timeout: 3_000],
+  # A rerun with PW_SCREENSHOT=true keeps a screenshot of each feature in `screenshots/`.
+  screenshot: if(System.get_env("PW_SCREENSHOT", "false") in ~w(t true), do: :on, else: :off),
+  output_dir: "screenshots"
 
 config :ithibati_email, :sql_sandbox, true
 

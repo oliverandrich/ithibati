@@ -16,9 +16,10 @@ defmodule IthibatiOpenWeb.HookFailuresTest do
   # attribute in the template, including the one the test just spoiled. Not starting the round trip
   # is the fix; `phx-submit` serialises the form from the DOM, so the server still sees the name.
   defp type(conn, value) do
-    evaluate(conn, "value => { document.querySelector('input[name=username]').value = value }",
-      is_function: true,
-      arg: value
+    evaluate(
+      conn,
+      "value => { document.querySelector('input[name=username]').value = value }",
+      value
     )
   end
 
@@ -55,8 +56,7 @@ defmodule IthibatiOpenWeb.HookFailuresTest do
       new MutationObserver(apply).observe(element, {attributes: true, attributeFilter: [attribute]})
       }
       """,
-      is_function: true,
-      arg: [attribute, value]
+      [attribute, value]
     )
 
     # Read back off the element rather than through a CSS query. `assert_has/3` counts only
@@ -81,17 +81,20 @@ defmodule IthibatiOpenWeb.HookFailuresTest do
       navigator.credentials[method] = () => Promise.reject(new DOMException(name, name))
       }
       """,
-      is_function: true,
-      arg: [method, name]
+      [method, name]
     )
   end
 
+  # Playwright returns JavaScript's `null`, the answer for a missing attribute, as `:null`.
   defp attribute_of(conn, attribute) do
-    value_of(
-      conn,
-      "attribute => document.getElementById('passkey').getAttribute(attribute)",
-      attribute
-    )
+    case value_of(
+           conn,
+           "attribute => document.getElementById('passkey').getAttribute(attribute)",
+           attribute
+         ) do
+      :null -> nil
+      value -> value
+    end
   end
 
   test "a missing data attribute is named, not reported as a failed ceremony", %{conn: conn} do

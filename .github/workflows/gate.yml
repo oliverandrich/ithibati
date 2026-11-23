@@ -310,10 +310,6 @@ jobs:
         with:
           persist-credentials: false
 
-      # Node for this job alone: Playwright runs on it. A file, as the toolchain pin above uses.
-      - name: Add node to this job's toolchain
-        run: printf '[tools]\nnode = "26"\n' > mise.local.toml
-
       - uses: jdx/mise-action@08ae2a091c038e1e05ec6f5115dc5c69d5a2a6b8 # v5.1.2
         with:
           version: 2026.9.5
@@ -329,20 +325,24 @@ jobs:
           key: ${{ runner.os }}-example-${{ matrix.example }}-${{ hashFiles(format('examples/{0}/mix.lock', matrix.example)) }}
           restore-keys: ${{ runner.os }}-example-${{ matrix.example }}-
 
-      # The lockfile pins playwright, and each playwright version pins its browser build.
+      # The lockfile pins playwright_ex, which pins its driver, and each driver its browser build.
       - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         if: ${{ !inputs.hardened }}
         with:
-          path: ~/.cache/ms-playwright
-          key: ${{ runner.os }}-playwright-${{ hashFiles(format('examples/{0}/assets/package-lock.json', matrix.example)) }}
+          path: |
+            ~/.cache/playwright
+            ~/.cache/ms-playwright
+          key: ${{ runner.os }}-playwright-${{ hashFiles(format('examples/{0}/mix.lock', matrix.example)) }}
 
       # The browser tests run in Playwright's Chrome for Testing. `--with-deps` adds the system
       # libraries it needs, which the runner image does not promise.
       - name: Install Playwright and its browser
-        working-directory: examples/${{ matrix.example }}/assets
+        working-directory: examples/${{ matrix.example }}
         run: |
-          npm ci --no-audit --no-fund
-          npx playwright install --with-deps chromium --only-shell
+          mix local.hex 2.5.1 --force
+          mix local.rebar --force
+          mix deps.get
+          MIX_ENV='test' mix playwright.install --with-deps chromium --only-shell
 
       # `mix precommit` rather than a second copy of it, the way mise.toml puts it for this
       # repository: following the example's own alias locally then means following the gate. It
@@ -351,9 +351,6 @@ jobs:
       - name: Run the example's gate
         working-directory: examples/${{ matrix.example }}
         run: |
-          mix local.hex 2.5.1 --force
-          mix local.rebar --force
-          mix deps.get
           # In the environment the gate runs in, not the default `dev`: `assets.setup` goes through
           # `app.config`, which compiles, so leaving it in `dev` builds the example, the library and
           # every dependency once in each environment. The binaries land in `_build/` either way.

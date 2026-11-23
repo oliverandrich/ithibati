@@ -10,6 +10,13 @@ upgrading to one of those releases.
 
 ## [Unreleased]
 
+### Changed
+
+- `Ithibati.Testing.Passkeys` and `Ithibati.Testing.Sessions` run on
+  [Fluffy](https://hexdocs.pm/fluffy) instead of `phoenix_test_playwright`, and take the
+  `Fluffy.PhoenixTest` session as `conn`. Replace the dependency and its setup as
+  [Browser tests](docs/testing.md) shows.
+
 ## [0.11.0] - 2026-10-20
 
 ### Added
