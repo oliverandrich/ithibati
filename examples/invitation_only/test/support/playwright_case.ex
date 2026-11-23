@@ -70,17 +70,6 @@ defmodule IthibatiInvitesWeb.PlaywrightCase do
     end
   end
 
-  @doc """
-  Visits `path` and waits until its LiveView is connected.
-
-  The page answers before its socket joins. Until then `phx-submit` is not bound, so a click goes
-  nowhere. Measured: without the wait about one suite run in three failed.
-  """
-  def open(conn, path), do: conn |> visit(path) |> connected()
-
-  @doc "Waits until the current page's LiveView is connected, for a page reached by a click."
-  def connected(conn), do: assert_has(conn, "[data-phx-main].phx-connected")
-
   @doc "Clears the browser's cookies, so the next page starts signed out."
   def clear_cookies(%{session: session} = conn),
     do: %{conn | session: Fluffy.clear_cookies(session)}

@@ -11,7 +11,7 @@ defmodule IthibatiEmailWeb.RegistrationFeatureTest do
     virtual_authenticator(conn)
 
     conn
-    |> open("/")
+    |> visit("/")
     |> refute_has("input[name=username]")
     |> refute_has("button", text: "Claim this instance")
     |> fill_in("Email address", with: "ada@example.test")
@@ -25,7 +25,7 @@ defmodule IthibatiEmailWeb.RegistrationFeatureTest do
     [url] = Regex.run(~r{https?://[^\s]+/invite/[A-Za-z0-9_-]+}, email.text_body)
 
     conn
-    |> open(url)
+    |> visit(url)
     |> assert_has("strong", text: "ada@example.test")
     |> click_button("Accept with a passkey")
     |> assert_path("/recovery-codes")
@@ -35,18 +35,17 @@ defmodule IthibatiEmailWeb.RegistrationFeatureTest do
     assert Repo.one!(Invitation).accepted_at
 
     conn
-    |> open("/inside")
+    |> visit("/inside")
     |> assert_has("p", text: "Signed in as ada@example.test.")
     |> click_link("sign out")
     |> assert_path("/")
-    |> connected()
     |> refute_has(".alert-success", text: "Signed in as")
     |> click_button("Sign in with a passkey")
     |> assert_has(".alert-success", text: "ada@example.test")
 
     conn
     |> clear_cookies()
-    |> open(url)
+    |> visit(url)
     |> assert_has(".alert-error", text: "has been used already, or it has expired")
     |> refute_has("button", text: "Accept with a passkey")
   end

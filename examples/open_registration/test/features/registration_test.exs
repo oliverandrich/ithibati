@@ -13,7 +13,7 @@ defmodule IthibatiOpenWeb.RegistrationTest do
     virtual_authenticator(conn)
 
     conn
-    |> open("/")
+    |> visit("/")
     |> fill_in("Username", with: "ada")
     |> click_button("Register")
     # The handler answers `%{redirect: "/recovery-codes"}` and the hook acts on it with a full page
@@ -34,9 +34,9 @@ defmodule IthibatiOpenWeb.RegistrationTest do
     assert length(credentials(conn)) == 1
 
     conn
-    |> open("/inside")
+    |> visit("/inside")
     |> assert_has("p", text: "Only ada sees this.")
-    |> open("/")
+    |> visit("/")
     |> sign_out("/session")
     |> refute_has(".alert-success")
 
@@ -55,7 +55,7 @@ defmodule IthibatiOpenWeb.RegistrationTest do
 
     conn
     |> Ithibati.Testing.Sessions.sign_in(account, IthibatiOpenWeb.Endpoint.session_options())
-    |> open("/inside")
+    |> visit("/inside")
     |> assert_has("p", text: "Only ada sees this.")
   end
 
@@ -65,7 +65,7 @@ defmodule IthibatiOpenWeb.RegistrationTest do
 
     conn
     |> Ithibati.Testing.Sessions.sign_in(account, IthibatiOpenWeb.Endpoint.session_options())
-    |> open("/inside")
+    |> visit("/inside")
     |> assert_has("p", text: "Only ada sees this.")
 
     digests = Ithibati.Identity.Sessions.revoke_all(account)
@@ -80,7 +80,7 @@ defmodule IthibatiOpenWeb.RegistrationTest do
     register(conn, "ada")
 
     conn
-    |> open("/")
+    |> visit("/")
     |> sign_out("/session")
     |> forget_credentials()
     |> click_button("Sign in with a passkey")
@@ -96,7 +96,7 @@ defmodule IthibatiOpenWeb.RegistrationTest do
     [code | _rest] = conn |> register("grace") |> recovery_codes()
 
     conn
-    |> open("/")
+    |> visit("/")
     |> sign_out("/session")
     |> fill_in("Lost your passkey? Use a recovery code", with: code)
     |> click_button("Sign in with a code")
@@ -107,7 +107,7 @@ defmodule IthibatiOpenWeb.RegistrationTest do
     assert Ithibati.Identity.RecoveryCodes.remaining(account) == 11
 
     conn
-    |> open("/")
+    |> visit("/")
     |> sign_out("/session")
     |> fill_in("Lost your passkey? Use a recovery code", with: code)
     |> click_button("Sign in with a code")
@@ -125,7 +125,7 @@ defmodule IthibatiOpenWeb.RegistrationTest do
     other = conn |> second_tab("/inside") |> assert_has("p", text: "Only ada sees this.")
 
     conn
-    |> open("/")
+    |> visit("/")
     |> sign_out("/session")
     |> refute_has(".alert-success")
 
@@ -143,18 +143,18 @@ defmodule IthibatiOpenWeb.RegistrationTest do
     [code | _] = first |> register("ada") |> recovery_codes()
 
     second
-    |> open("/")
+    |> visit("/")
     |> fill_in("Lost your passkey? Use a recovery code", with: code)
     |> click_button("Sign in with a code")
     |> assert_has(".alert-success", text: "Signed in as ada")
-    |> open("/inside")
+    |> visit("/inside")
     |> assert_has("p", text: "Only ada sees this.")
 
     account = Repo.get_by!(User, username: "ada")
     assert Repo.aggregate(Ecto.assoc(account, :sessions), :count) == 2
 
     first
-    |> open("/")
+    |> visit("/")
     |> sign_out("/sessions")
     |> refute_has(".alert-success")
 
@@ -170,7 +170,7 @@ defmodule IthibatiOpenWeb.RegistrationTest do
     virtual_authenticator(conn)
 
     conn
-    |> open("/")
+    |> visit("/")
     |> fill_in("Username", with: "Ada Lovelace!")
 
     refute value_of(conn, "() => document.querySelector('input[name=username]').checkValidity()")
@@ -191,6 +191,5 @@ defmodule IthibatiOpenWeb.RegistrationTest do
     |> evaluate("window.ithibatiLogoutPending = true")
     |> click("a[href='#{path}']")
     |> eventually("() => window.ithibatiLogoutPending !== true")
-    |> connected()
   end
 end

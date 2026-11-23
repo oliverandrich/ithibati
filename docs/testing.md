@@ -6,7 +6,7 @@ Ithibati ships two helpers for browser tests with [Fluffy](https://hexdocs.pm/fl
 
 | Module | Does |
 | --- | --- |
-| `Ithibati.Testing.Passkeys` | Adds a virtual authenticator to the page, lists its credentials and deletes them |
+| `Ithibati.Testing.Passkeys` | Adds a virtual authenticator to the browser, lists its credentials and deletes them |
 | `Ithibati.Testing.Sessions` | Signs the browser in by session cookie, without a ceremony |
 
 Both modules exist only when `fluffy` is a dependency. They take the `Fluffy.PhoenixTest`
@@ -82,5 +82,6 @@ def session_options, do: @session_options
 
 ## Limits
 
-The virtual authenticator comes from Chrome's DevTools Protocol, so it needs Playwright's
-Chromium. Firefox and WebKit have no equivalent.
+The virtual authenticator is Playwright's, so it works in Chromium, Firefox and WebKit. It
+replaces `navigator.credentials` with a script that reports no extension results and does not
+check the relying party id against the origin.

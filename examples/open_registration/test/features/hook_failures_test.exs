@@ -101,7 +101,7 @@ defmodule IthibatiOpenWeb.HookFailuresTest do
     virtual_authenticator(conn)
 
     conn
-    |> open("/")
+    |> visit("/")
     |> type("ada")
     |> spoil("data-registration-url", nil)
     |> click_button("Register")
@@ -117,7 +117,7 @@ defmodule IthibatiOpenWeb.HookFailuresTest do
     # there is no `error` key to report. Answering "unknown" there is what this actually did once,
     # and it told nobody anything — the status is the only thing that does.
     conn
-    |> open("/")
+    |> visit("/")
     |> type("ada")
     |> spoil("data-registration-challenge-url", "/no-such-route")
     |> click_button("Register")
@@ -129,7 +129,7 @@ defmodule IthibatiOpenWeb.HookFailuresTest do
     virtual_authenticator(conn)
 
     conn
-    |> open("/")
+    |> visit("/")
     # WebAuthn reports a dismissed dialog as a `NotAllowedError`, and turning that into
     # `ceremony_cancelled` instead of a failure that names the server is the hook's job.
     |> refuses("create", "NotAllowedError")
@@ -149,7 +149,7 @@ defmodule IthibatiOpenWeb.HookFailuresTest do
     # authenticator holds. The server never hears about it, so the word can only come from the
     # hook, and it is the same word the server uses when a browser ignores the exclude list.
     conn
-    |> open("/")
+    |> visit("/")
     |> refuses("create", "InvalidStateError")
     |> fill_in("Username", with: "ada")
     |> click_button("Register")
@@ -164,7 +164,7 @@ defmodule IthibatiOpenWeb.HookFailuresTest do
     register(conn, "ada")
 
     conn
-    |> open("/")
+    |> visit("/")
     # `navigator.credentials.get` raises this when the document is not fully active, which a
     # restore from the back-forward cache produces. Nothing about it says the device is enrolled,
     # and a word scoped to registration must not be reachable from here.
@@ -186,7 +186,7 @@ defmodule IthibatiOpenWeb.HookFailuresTest do
     # the JSON body, the hook and `ithibati:failed` into a sentence — the chain the README
     # describes and nothing executed until the browser tests did.
     conn
-    |> open("/")
+    |> visit("/")
     |> fill_in("Username", with: "ada")
     |> click_button("Register")
     |> assert_has(".alert-error", text: "That username is taken.")

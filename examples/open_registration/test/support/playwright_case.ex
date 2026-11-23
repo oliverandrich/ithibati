@@ -71,17 +71,6 @@ defmodule IthibatiOpenWeb.PlaywrightCase do
   end
 
   @doc """
-  Visits `path` and waits until its LiveView is connected.
-
-  The page answers before its socket joins. Until then `phx-submit` is not bound, so a click goes
-  nowhere. Measured: without the wait about one suite run in three failed.
-  """
-  def open(conn, path), do: conn |> visit(path) |> connected()
-
-  @doc "Waits until the current page's LiveView is connected, for a page reached by a click."
-  def connected(conn), do: assert_has(conn, "[data-phx-main].phx-connected")
-
-  @doc """
   Registers `username` with a passkey and lands on the recovery codes.
 
   Several features need this preamble before their own subject. It asserts the landing, so a
@@ -89,7 +78,7 @@ defmodule IthibatiOpenWeb.PlaywrightCase do
   """
   def register(conn, username) do
     conn
-    |> open("/")
+    |> visit("/")
     |> fill_in("Username", with: username)
     |> click_button("Register")
     |> assert_path("/recovery-codes")
@@ -105,7 +94,7 @@ defmodule IthibatiOpenWeb.PlaywrightCase do
   """
   def second_tab(%{session: session} = conn, path) do
     page = Fluffy.Playwright.new_page(session)
-    open(%{conn | session: Fluffy.Playwright.switch_page(session, page)}, path)
+    visit(%{conn | session: Fluffy.Playwright.switch_page(session, page)}, path)
   end
 
   @doc "Starts a second browser with its own cookies, for a test about two sessions."

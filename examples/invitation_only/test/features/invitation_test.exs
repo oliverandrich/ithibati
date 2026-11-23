@@ -17,10 +17,9 @@ defmodule IthibatiInvitesWeb.InvitationTest do
     {:ok, code} = Instance.issue_code()
 
     conn
-    |> open("/")
+    |> visit("/")
     |> fill_in("Operator code", with: code)
     |> click_button("Continue to first account")
-    |> connected()
   end
 
   defp claim(conn, username) do
@@ -36,7 +35,7 @@ defmodule IthibatiInvitesWeb.InvitationTest do
   # or not at all.
   defp invite_link(conn, username) do
     conn
-    |> open("/inside")
+    |> visit("/inside")
     |> fill_in("Their username", with: username)
     |> click_button("Create a link")
     |> assert_has("code")
@@ -55,12 +54,11 @@ defmodule IthibatiInvitesWeb.InvitationTest do
     {:ok, code} = Instance.issue_code()
 
     conn
-    |> open("/")
+    |> visit("/")
     |> assert_has("p", text: "Nobody has claimed this instance yet")
     |> refute_has("input[name=username]")
     |> fill_in("Operator code", with: code)
     |> click_button("Continue to first account")
-    |> connected()
     |> fill_in("Username", with: "ada")
     |> click_button("Claim this instance")
     |> assert_path("/recovery-codes")
@@ -74,11 +72,11 @@ defmodule IthibatiInvitesWeb.InvitationTest do
     # An assertion further down would hold whether or not this line did anything.
     conn
     |> clear_cookies()
-    |> open("/")
+    |> visit("/")
     |> refute_has(".alert-success", text: "Signed in as")
 
     conn
-    |> open(link)
+    |> visit(link)
     # The page names the account it will create and offers no field to change it — the refusal
     # `Invitations.accept/2` would give is turned into an interface that cannot ask for it.
     |> assert_has("p", text: "The account will be called")
@@ -88,7 +86,7 @@ defmodule IthibatiInvitesWeb.InvitationTest do
     |> assert_has("h1", text: "Your recovery codes")
 
     conn
-    |> open("/inside")
+    |> visit("/inside")
     |> assert_has("p", text: "Signed in as grace.")
 
     assert Repo.get_by(User, username: "grace")
@@ -105,13 +103,13 @@ defmodule IthibatiInvitesWeb.InvitationTest do
 
     conn
     |> clear_cookies()
-    |> open(link)
+    |> visit(link)
     |> click_button("Accept with a passkey")
     |> assert_path("/recovery-codes")
     |> assert_has("h1", text: "Your recovery codes")
 
-    spent = conn |> clear_cookies() |> open(link) |> main_text()
-    invented = conn |> open("/invite/a-token-nobody-ever-held") |> main_text()
+    spent = conn |> clear_cookies() |> visit(link) |> main_text()
+    invented = conn |> visit("/invite/a-token-nobody-ever-held") |> main_text()
 
     # Word for word, because anything else is a signal.
     assert spent == invented
@@ -124,7 +122,7 @@ defmodule IthibatiInvitesWeb.InvitationTest do
     claim(conn, "ada")
 
     conn
-    |> open("/")
+    |> visit("/")
     |> assert_has("p", text: "Registration is by invitation")
     |> refute_has("main input")
   end
