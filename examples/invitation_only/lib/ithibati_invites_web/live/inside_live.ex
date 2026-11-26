@@ -59,7 +59,7 @@ defmodule IthibatiInvitesWeb.InsideLive do
         refuses an acceptance whose account carries a different one.
       </p>
 
-      <form phx-change="validate" phx-submit="invite" class="mt-4">
+      <form id="invite" phx-change="validate" phx-submit="invite" class="mt-4">
         <.input
           name="username"
           value={@username}

@@ -181,9 +181,9 @@ defmodule Ithibati.MixProject do
         {:phoenix, "~> 1.8", optional: true},
         {:phoenix_live_view, "~> 1.1", optional: true},
         {:plug, "~> 1.16", optional: true},
-        # `Ithibati.Testing` drives a consumer's browser tests through it. Pinned to the patch
-        # line, because `Ithibati.Testing.Passkeys` sends protocol messages playwright_ex does not wrap.
-        {:phoenix_test_playwright, "~> 0.19.0", optional: true}
+        # `Ithibati.Testing` drives a consumer's browser tests through it.
+        {:fluffy, "~> 0.9.0-rc.7", optional: true},
+        {:playwright, "~> 1.65.0-rc.6", hex: :playwright_ex, optional: true}
       ]
     end
   end

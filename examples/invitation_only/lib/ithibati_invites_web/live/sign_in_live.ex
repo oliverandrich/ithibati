@@ -109,6 +109,7 @@ defmodule IthibatiInvitesWeb.SignInLive do
 
       <form
         :if={@needs_setup? and @setup_authorized?}
+        id="claim"
         phx-change="validate"
         phx-submit="register"
         class="mt-6"

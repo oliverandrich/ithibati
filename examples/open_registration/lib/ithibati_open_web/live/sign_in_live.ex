@@ -94,7 +94,7 @@ defmodule IthibatiOpenWeb.SignInLive do
 
       <div :if={@error} class="alert alert-error mt-6"><span>{@error}</span></div>
 
-      <form phx-change="validate" phx-submit="register" class="mt-6">
+      <form id="register" phx-change="validate" phx-submit="register" class="mt-6">
         <.input
           name="username"
           value={@username}

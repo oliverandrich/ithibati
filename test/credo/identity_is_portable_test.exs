@@ -166,6 +166,16 @@ defmodule Ithibati.Credo.IdentityIsPortableTest do
       |> refute_issues()
     end
 
+    test "the test helpers, which exist only beside Fluffy, may name them too" do
+      """
+      defmodule Ithibati.Testing.Sessions do
+        def conn, do: Plug.Test.conn(:get, "/")
+      end
+      """
+      |> check("lib/ithibati/testing/sessions.ex")
+      |> refute_issues()
+    end
+
     test "a file outside lib/ is none of this check's business" do
       """
       defmodule Ithibati.Support do

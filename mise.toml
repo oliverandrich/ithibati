@@ -135,19 +135,15 @@ run = ["mix deps.audit", "mix hex.audit"]
 description = "List the live backlog (everything not completed or scrapped)"
 run = "beans list --no-status completed --no-status scrapped"
 
-# Each example pins playwright in its own `assets/package-lock.json`, so each installs its browser.
+# Each example pins playwright_ex in its own `mix.lock`, so each installs its driver and browser.
 # A browser lands in Playwright's shared cache, one copy per Playwright version.
-# Node is a tool of this task alone, so the other CI jobs do not download it.
 [tasks.example-browsers]
 description = "Install Playwright and its headless Chrome for the examples' browser tests"
-tools = { node = "26" }
+env = { MIX_ENV = "test" }
 run = [
-  "npm ci --prefix examples/open_registration/assets --no-audit --no-fund",
-  "npm exec --prefix examples/open_registration/assets -- playwright install chromium --only-shell",
-  "npm ci --prefix examples/invitation_only/assets --no-audit --no-fund",
-  "npm exec --prefix examples/invitation_only/assets -- playwright install chromium --only-shell",
-  "npm ci --prefix examples/email_registration/assets --no-audit --no-fund",
-  "npm exec --prefix examples/email_registration/assets -- playwright install chromium --only-shell",
+  "cd examples/open_registration && mix deps.get && mix playwright.install chromium --only-shell",
+  "cd examples/invitation_only && mix deps.get && mix playwright.install chromium --only-shell",
+  "cd examples/email_registration && mix deps.get && mix playwright.install chromium --only-shell",
 ]
 
 [tasks.audit-email-example]

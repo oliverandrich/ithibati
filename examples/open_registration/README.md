@@ -31,7 +31,7 @@ that is what open means. `mix ecto.reset` starts over.
 `test/features/` drives these pages in Playwright's Chrome for Testing, through the JavaScript the
 library ships. `mix test` runs them like anything else.
 
-No installed Chrome is needed, but Playwright runs on node, so node must be on your `PATH`.
+No installed Chrome or node is needed.
 Install Playwright and its browser once, from the repository root:
 
 ```

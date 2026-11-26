@@ -44,14 +44,13 @@ defmodule IthibatiInvites.MixProject do
       {:phoenix, "~> 1.8.1"},
       {:phoenix_ecto, "~> 4.5"},
       {:swoosh, "~> 1.28"},
-      # Pinned to the patch line, not the minor. `Ithibati.Testing.Passkeys` sends protocol messages
-      # that playwright_ex does not wrap, so an internal change would break every feature at once.
-      {:phoenix_test_playwright, "~> 0.19.0", runtime: false, only: :test},
+      {:fluffy, "~> 0.9.0-rc.7", only: :test},
+      {:playwright, "~> 1.65.0-rc.6", hex: :playwright_ex, only: :test},
       {:ecto_sql, "~> 3.13"},
       {:postgrex, ">= 0.0.0"},
       {:phoenix_html, "~> 4.1"},
       {:phoenix_live_reload, "~> 1.2", only: :dev},
-      {:phoenix_live_view, "~> 1.1.0"},
+      {:phoenix_live_view, "~> 1.2.12"},
       {:heroicons,
        github: "tailwindlabs/heroicons",
        tag: "v2.2.0",

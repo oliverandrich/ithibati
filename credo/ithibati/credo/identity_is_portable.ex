@@ -19,7 +19,8 @@ defmodule Ithibati.Credo.IdentityIsPortable do
 
       Separately, and for every core module rather than that one: `phoenix`, `phoenix_live_view`
       and `plug` are optional dependencies, so a consumer who does not want them must still get a
-      core that compiles. Nothing under `lib/` outside the web half may name one.
+      core that compiles. Nothing under `lib/` outside the web half and the test helpers may name
+      one.
 
       If the new code genuinely needs the other thing, it belongs above this — in the web half, or
       in the consuming application.
@@ -51,7 +52,9 @@ defmodule Ithibati.Credo.IdentityIsPortable do
 
   @optional_deps [:Phoenix, :Plug]
 
-  @web_root "lib/ithibati/web/"
+  # `Ithibati.Testing` exists only beside Fluffy, which brings Phoenix, LiveView and Plug with it,
+  # so a consumer without them never compiles it either.
+  @above_core ["lib/ithibati/web/", "lib/ithibati/testing/"]
 
   # Matched in the AST, not against a filename. A path has to be kept equal to where the
   # module actually is, by hand and by a test; `defmodule` cannot drift from the module it declares.
@@ -74,7 +77,7 @@ defmodule Ithibati.Credo.IdentityIsPortable do
   # count as core is the load-bearing half of the optional-dependency rule.
   defp core?(filename) do
     path = Path.relative_to_cwd(filename)
-    String.starts_with?(path, "lib/") and not String.starts_with?(path, @web_root)
+    String.starts_with?(path, "lib/") and not String.starts_with?(path, @above_core)
   end
 
   defp scan(source_file, issue_meta) do

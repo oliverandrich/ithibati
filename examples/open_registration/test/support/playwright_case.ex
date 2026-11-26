@@ -10,19 +10,22 @@ defmodule IthibatiOpenWeb.PlaywrightCase do
   """
   use ExUnit.CaseTemplate
 
-  import PhoenixTest
+  import Fluffy.PhoenixTest
 
-  alias PhoenixTest.Playwright.Config
-  alias PlaywrightEx.BrowserContext
-  alias PlaywrightEx.Connection
-  alias PlaywrightEx.Frame
+  alias Playwright.BrowserContext
 
   using do
     quote do
-      use PhoenixTest.Playwright.Case
+      use Playwright.Test
+
+      setup tags do
+        IthibatiOpen.DataCase.setup_sandbox(tags)
+        %{conn: Fluffy.PhoenixTest.start_session(:playwright)}
+      end
 
       setup %{conn: conn}, do: IthibatiOpenWeb.PlaywrightCase.fail_on_page_errors(conn)
 
+      import Fluffy.PhoenixTest
       import IthibatiOpenWeb.PlaywrightCase
       import Ithibati.Testing.Passkeys
 
@@ -38,9 +41,10 @@ defmodule IthibatiOpenWeb.PlaywrightCase do
   The collector is not linked, because `on_exit` runs after the test process has exited.
   The check runs before the browser context closes, because `on_exit` callbacks run in reverse order.
   """
-  def fail_on_page_errors(%{context_id: context}) do
+  def fail_on_page_errors(conn) do
     collector = spawn(fn -> collect_page_errors([]) end)
-    :ok = Connection.subscribe(PlaywrightEx.Supervisor.connection_name(), collector, context)
+    context = unwrap_and_return(conn, &Playwright.Page.context/1)
+    BrowserContext.on(context, :web_error, &send(collector, {:page_error, &1}))
 
     on_exit(fn ->
       send(collector, {:page_errors, self()})
@@ -49,7 +53,7 @@ defmodule IthibatiOpenWeb.PlaywrightCase do
         {:page_errors, []} -> :ok
         {:page_errors, errors} -> flunk("the page threw:\n\n" <> Enum.join(errors, "\n\n"))
       after
-        Config.global(:timeout) ->
+        3_000 ->
           Process.exit(collector, :kill)
           flunk("the page error collector did not answer")
       end
@@ -58,30 +62,13 @@ defmodule IthibatiOpenWeb.PlaywrightCase do
 
   defp collect_page_errors(errors) do
     receive do
-      {:playwright_msg, %{method: :page_error, params: params}} ->
-        collect_page_errors([page_error_message(params) | errors])
+      {:page_error, error} ->
+        collect_page_errors([Exception.message(Playwright.WebError.error(error)) | errors])
 
       {:page_errors, pid} ->
         send(pid, {:page_errors, Enum.reverse(errors)})
-
-      _other ->
-        collect_page_errors(errors)
     end
   end
-
-  defp page_error_message(%{error: %{error: %{message: message}}}), do: message
-  defp page_error_message(params), do: inspect(params)
-
-  @doc """
-  Visits `path` and waits until its LiveView is connected.
-
-  The page answers before its socket joins. Until then `phx-submit` is not bound, so a click goes
-  nowhere. Measured: without the wait about one suite run in three failed.
-  """
-  def open(conn, path), do: conn |> visit(path) |> connected()
-
-  @doc "Waits until the current page's LiveView is connected, for a page reached by a click."
-  def connected(conn), do: assert_has(conn, "[data-phx-main].phx-connected")
 
   @doc """
   Registers `username` with a passkey and lands on the recovery codes.
@@ -91,7 +78,7 @@ defmodule IthibatiOpenWeb.PlaywrightCase do
   """
   def register(conn, username) do
     conn
-    |> open("/")
+    |> visit("/")
     |> fill_in("Username", with: username)
     |> click_button("Register")
     |> assert_path("/recovery-codes")
@@ -106,13 +93,13 @@ defmodule IthibatiOpenWeb.PlaywrightCase do
   Unlike the first tab, it does not answer dialogs.
   """
   def second_tab(conn, path) do
-    {:ok, page} = BrowserContext.new_page(conn.context_id, timeout: Config.global(:timeout))
-    open(%{conn | page_id: page.guid, frame_id: page.main_frame.guid}, path)
+    page = Fluffy.Playwright.new_page(conn)
+    conn |> Fluffy.Playwright.switch_page(page) |> visit(path)
   end
 
   @doc "Starts a second browser with its own cookies, for a test about two sessions."
-  def another_browser(context) do
-    conn = PhoenixTest.Playwright.Case.new_session(Config.global(), context)
+  def another_browser(_context) do
+    conn = start_session(:playwright)
     fail_on_page_errors(conn)
     conn
   end
@@ -121,39 +108,13 @@ defmodule IthibatiOpenWeb.PlaywrightCase do
   def recovery_codes(conn) do
     conn
     |> assert_has("main li", count: 12)
-    |> value_of(
-      "() => Array.from(document.querySelectorAll('main li'), li => li.textContent.trim())"
-    )
+    |> Fluffy.all_text_contents(Fluffy.Locator.by_css("main li"))
+    |> Enum.map(&String.trim/1)
   end
 
-  @doc """
-  Calls the JavaScript function `function` in the page with `arg` and returns its result.
-
-  The function may return a Promise. The test receives what it resolves to.
-  """
-  def value_of(%{frame_id: frame}, function, arg \\ nil) do
-    opts = [expression: function, is_function: true, arg: arg, timeout: Config.global(:timeout)]
-
-    case Frame.evaluate(frame, opts) do
-      {:ok, value} -> value
-      {:error, error} -> flunk("the script failed: #{inspect(error)}\n\n#{function}")
-    end
-  end
-
-  @doc """
-  Waits until the JavaScript function `function` returns a truthy value in the page.
-
-  For page state no selector can express. The browser polls on each animation frame.
-  """
-  def eventually(%{frame_id: frame} = conn, function) do
-    opts = [
-      expression: function,
-      is_function: true,
-      polling: "raf",
-      timeout: Config.global(:timeout)
-    ]
-
-    assert {:ok, _} = Frame.wait_for_function(frame, opts), "never true: #{function}"
+  @doc "Runs the JavaScript `expression` in the page, a function called with `arg`, and returns `conn`."
+  def evaluate(conn, expression, arg \\ nil) do
+    Fluffy.Playwright.evaluate(conn, expression, arg)
     conn
   end
 end

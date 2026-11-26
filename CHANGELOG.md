@@ -10,6 +10,17 @@ upgrading to one of those releases.
 
 ## [Unreleased]
 
+### Changed
+
+- `Ithibati.Testing.Passkeys` and `Ithibati.Testing.Sessions` run on
+  [Fluffy](https://hexdocs.pm/fluffy) instead of `phoenix_test_playwright`, and take the
+  `Fluffy.PhoenixTest` session as `conn`. Replace the dependency and its setup as
+  [Browser tests](docs/testing.md) shows.
+- `Ithibati.Testing.Passkeys` uses Playwright's virtual authenticator instead of Chrome's
+  DevTools Protocol, so it works in Firefox and WebKit too. The authenticator belongs to the
+  browser context, so pages of the same context share it, and `credentials/1` returns
+  Playwright's credential maps.
+
 ## [0.11.0] - 2026-10-20
 
 ### Added
