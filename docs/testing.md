@@ -18,7 +18,7 @@ Add the dependency for tests:
 
 ```elixir
 # mix.exs
-{:fluffy, "~> 0.9.0-rc.5", only: :test}
+{:fluffy, "~> 0.9.0-rc.7", only: :test}
 ```
 
 Install Playwright's driver and its browser:

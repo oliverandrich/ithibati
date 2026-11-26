@@ -69,8 +69,4 @@ defmodule IthibatiEmailWeb.PlaywrightCase do
         send(pid, {:page_errors, Enum.reverse(errors)})
     end
   end
-
-  @doc "Clears the browser's cookies, so the next page starts signed out."
-  def clear_cookies(%{session: session} = conn),
-    do: %{conn | session: Fluffy.clear_cookies(session)}
 end

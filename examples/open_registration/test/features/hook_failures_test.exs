@@ -85,17 +85,8 @@ defmodule IthibatiOpenWeb.HookFailuresTest do
     )
   end
 
-  # Playwright returns JavaScript's `null`, the answer for a missing attribute, as `:null`.
-  defp attribute_of(conn, attribute) do
-    case value_of(
-           conn,
-           "attribute => document.getElementById('passkey').getAttribute(attribute)",
-           attribute
-         ) do
-      :null -> nil
-      value -> value
-    end
-  end
+  defp attribute_of(conn, attribute),
+    do: Fluffy.get_attribute(conn, Fluffy.Locator.by_css("#passkey"), attribute)
 
   test "a missing data attribute is named, not reported as a failed ceremony", %{conn: conn} do
     virtual_authenticator(conn)

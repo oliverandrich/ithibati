@@ -53,7 +53,7 @@ if Code.ensure_loaded?(Fluffy) do
     end
 
     defp authenticator(conn) do
-      %Playwright.Page{} = page = Fluffy.PhoenixTest.unwrap_and_return(conn, & &1)
+      %Playwright.Page{} = page = Fluffy.unwrap_and_return(conn, & &1)
       page |> Playwright.Page.context() |> BrowserContext.credentials()
     end
   end

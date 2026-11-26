@@ -69,15 +69,4 @@ defmodule IthibatiInvitesWeb.PlaywrightCase do
         send(pid, {:page_errors, Enum.reverse(errors)})
     end
   end
-
-  @doc "Clears the browser's cookies, so the next page starts signed out."
-  def clear_cookies(%{session: session} = conn),
-    do: %{conn | session: Fluffy.clear_cookies(session)}
-
-  @doc """
-  Calls the JavaScript function `function` in the page and returns its result.
-
-  The function may return a Promise. The test receives what it resolves to.
-  """
-  def value_of(%{session: session}, function), do: Fluffy.Playwright.evaluate(session, function)
 end

@@ -44,7 +44,7 @@ defmodule IthibatiEmailWeb.RegistrationFeatureTest do
     |> assert_has(".alert-success", text: "ada@example.test")
 
     conn
-    |> clear_cookies()
+    |> Fluffy.clear_cookies()
     |> visit(url)
     |> assert_has(".alert-error", text: "has been used already, or it has expired")
     |> refute_has("button", text: "Accept with a passkey")

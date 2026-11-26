@@ -173,7 +173,7 @@ defmodule IthibatiOpenWeb.RegistrationTest do
     |> visit("/")
     |> fill_in("Username", with: "Ada Lovelace!")
 
-    refute value_of(conn, "() => document.querySelector('input[name=username]').checkValidity()")
+    assert_has(conn, "input[name=username]:invalid")
 
     click_button(conn, "Register")
 
@@ -189,7 +189,7 @@ defmodule IthibatiOpenWeb.RegistrationTest do
   defp sign_out(conn, path) do
     conn
     |> evaluate("window.ithibatiLogoutPending = true")
-    |> click("a[href='#{path}']")
-    |> eventually("() => window.ithibatiLogoutPending !== true")
+    |> Fluffy.click(Fluffy.Locator.by_css("a[href='#{path}']"))
+    |> Fluffy.Playwright.wait_for_function("() => window.ithibatiLogoutPending !== true")
   end
 end

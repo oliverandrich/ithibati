@@ -92,9 +92,9 @@ defmodule IthibatiOpenWeb.PlaywrightCase do
   `fail_on_page_errors/1` covers it, because it watches the whole browser context.
   Unlike the first tab, it does not answer dialogs.
   """
-  def second_tab(%{session: session} = conn, path) do
-    page = Fluffy.Playwright.new_page(session)
-    visit(%{conn | session: Fluffy.Playwright.switch_page(session, page)}, path)
+  def second_tab(conn, path) do
+    page = Fluffy.Playwright.new_page(conn)
+    conn |> Fluffy.Playwright.switch_page(page) |> visit(path)
   end
 
   @doc "Starts a second browser with its own cookies, for a test about two sessions."
@@ -108,35 +108,13 @@ defmodule IthibatiOpenWeb.PlaywrightCase do
   def recovery_codes(conn) do
     conn
     |> assert_has("main li", count: 12)
-    |> value_of(
-      "() => Array.from(document.querySelectorAll('main li'), li => li.textContent.trim())"
-    )
+    |> Fluffy.all_text_contents(Fluffy.Locator.by_css("main li"))
+    |> Enum.map(&String.trim/1)
   end
-
-  @doc "Clicks the element `selector` matches."
-  def click(%{session: session} = conn, selector),
-    do: %{conn | session: Fluffy.click(session, Fluffy.Locator.by_css(selector))}
 
   @doc "Runs the JavaScript `expression` in the page, a function called with `arg`, and returns `conn`."
   def evaluate(conn, expression, arg \\ nil) do
-    value_of(conn, expression, arg)
+    Fluffy.Playwright.evaluate(conn, expression, arg)
     conn
-  end
-
-  @doc """
-  Calls the JavaScript function `function` in the page with `arg` and returns its result.
-
-  The function may return a Promise. The test receives what it resolves to.
-  """
-  def value_of(%{session: session}, function, arg \\ nil),
-    do: Fluffy.Playwright.evaluate(session, function, arg)
-
-  @doc """
-  Waits until the JavaScript function `function` returns a truthy value in the page.
-
-  For page state no selector can express. The browser polls on each animation frame.
-  """
-  def eventually(%{session: session} = conn, function) do
-    %{conn | session: Fluffy.Playwright.wait_for_function(session, function)}
   end
 end

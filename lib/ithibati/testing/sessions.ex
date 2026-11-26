@@ -17,7 +17,6 @@ if Code.ensure_loaded?(Fluffy) do
 
     alias Ithibati.Identity.Sessions
     alias Ithibati.Web.Gate
-    alias Plug.Session.Store
 
     @doc """
     Stores a new session for `account` and sets it as the browser's session cookie.
@@ -33,21 +32,7 @@ if Code.ensure_loaded?(Fluffy) do
       token = Sessions.generate_session_token(account)
       session = %{Gate.session_key() => token, "live_socket_id" => Gate.live_socket_id(token)}
 
-      cookie = %{
-        name: Keyword.fetch!(session_options, :key),
-        value: session_cookie(session, session_options),
-        url: Fluffy.base_url(conn.session)
-      }
-
-      %{conn | session: Fluffy.add_cookies(conn.session, [cookie])}
-    end
-
-    # What the endpoint's session store writes for `session`, so the endpoint reads it back.
-    defp session_cookie(session, session_options) do
-      store = Store.get(Keyword.fetch!(session_options, :store))
-      endpoint = Application.fetch_env!(:fluffy, :endpoint)
-      conn = %Plug.Conn{secret_key_base: endpoint.config(:secret_key_base)}
-      store.put(conn, nil, session, store.init(session_options))
+      Fluffy.add_session_cookie(conn, session, session_options: session_options)
     end
   end
 end

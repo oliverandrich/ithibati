@@ -39,11 +39,12 @@ defmodule IthibatiInvitesWeb.InvitationTest do
     |> fill_in("Their username", with: username)
     |> click_button("Create a link")
     |> assert_has("code")
-    |> value_of("() => document.querySelector('code').textContent.trim()")
+    |> Fluffy.text_content(Fluffy.Locator.by_css("code"))
+    |> String.trim()
   end
 
   defp main_text(conn) do
-    conn |> assert_has("main") |> value_of("() => document.querySelector('main').innerText")
+    conn |> assert_has("main") |> Fluffy.Playwright.inner_text(Fluffy.Locator.by_css("main"))
   end
 
   test "the first account claims the instance, and everyone after it arrives on a link", %{
@@ -71,7 +72,7 @@ defmodule IthibatiInvitesWeb.InvitationTest do
     # It is checked here, not later: accepting signs the invitee in either way.
     # An assertion further down would hold whether or not this line did anything.
     conn
-    |> clear_cookies()
+    |> Fluffy.clear_cookies()
     |> visit("/")
     |> refute_has(".alert-success", text: "Signed in as")
 
@@ -102,13 +103,13 @@ defmodule IthibatiInvitesWeb.InvitationTest do
     link = invite_link(conn, "grace")
 
     conn
-    |> clear_cookies()
+    |> Fluffy.clear_cookies()
     |> visit(link)
     |> click_button("Accept with a passkey")
     |> assert_path("/recovery-codes")
     |> assert_has("h1", text: "Your recovery codes")
 
-    spent = conn |> clear_cookies() |> visit(link) |> main_text()
+    spent = conn |> Fluffy.clear_cookies() |> visit(link) |> main_text()
     invented = conn |> visit("/invite/a-token-nobody-ever-held") |> main_text()
 
     # Word for word, because anything else is a signal.
